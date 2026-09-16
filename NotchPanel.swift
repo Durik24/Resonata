@@ -210,13 +210,18 @@ final class NotchPanelController {
     }
 
     /// The display to draw on: the pinned one if it's still connected, else the
-    /// automatic choice (notched screen, otherwise primary).
+    /// automatic choice — an external monitor when there is one, otherwise the
+    /// built-in screen. See `NSScreen.preferred`.
+    ///
+    /// A display change (`screensChanged`) re-reads this, which is what makes
+    /// the notch follow a monitor as it's plugged in and unplugged without
+    /// anything else having to notice.
     private var targetScreen: NSScreen? {
         if let pinnedScreenID,
            let pinned = NSScreen.screens.first(where: { $0.displayID == pinnedScreenID }) {
             return pinned
         }
-        return NSScreen.notched
+        return NSScreen.preferred
     }
 
     /// Moves the notch to the next display in the list, wrapping around.

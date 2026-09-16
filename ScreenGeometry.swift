@@ -154,15 +154,31 @@ extension NSScreen {
         deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID
     }
 
-    /// The screen to draw on: the notched one if it's connected, otherwise the
-    /// display that owns the menu bar.
+    /// Whether this is the laptop's own panel rather than something plugged in.
+    var isBuiltIn: Bool {
+        guard let displayID else { return hasNotch }
+        return CGDisplayIsBuiltin(displayID) != 0
+    }
+
+    /// The screen to draw on, absent a manual choice: an external display if
+    /// one is connected, otherwise the built-in one.
     ///
-    /// Closing the lid removes the built-in screen from `screens`, so this
-    /// falls through to the external display and the app draws a pill there
-    /// instead; opening it again moves back. `screens.first` is the primary
-    /// display — deliberately not `main`, which follows the key window and so
-    /// would hop between monitors as you click around.
-    static var notched: NSScreen? {
-        screens.first(where: { $0.hasNotch }) ?? screens.first ?? main
+    /// External first, on purpose. With a monitor attached the laptop screen is
+    /// usually off to one side or closed, and a notch you have to turn your
+    /// head to see isn't doing its job. Plugging a monitor in therefore moves
+    /// the pill onto it; unplugging brings it home. Among several externals the
+    /// primary wins — it's the one with the menu bar, which is where a notch
+    /// belongs.
+    ///
+    /// `screens.first` is the primary display — deliberately not `main`, which
+    /// follows the key window and so would hop between monitors as you click
+    /// around.
+    static var preferred: NSScreen? {
+        let externals = screens.filter { !$0.isBuiltIn }
+        if let primary = screens.first, !primary.isBuiltIn { return primary }
+        return externals.first
+            ?? screens.first(where: { $0.hasNotch })
+            ?? screens.first
+            ?? main
     }
 }

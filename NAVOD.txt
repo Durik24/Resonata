@@ -134,8 +134,12 @@ KROK 7 — Vyzkoušej ovládání
   - Posuvník                     dá se chytit a táhnout;
                                  kliknutí kamkoliv na lištu
                                  skočí na dané místo
-  - Ikona dvou obdélníků         přepne notch na druhý monitor
-    (vpravo nahoře)              (jen když máš víc displejů)
+  - Externí monitor              po připojení se notch sám
+                                 přesune na monitor; po odpojení
+                                 se vrátí na notebook
+  - Ikona dvou obdélníků         ruční přepnutí na jiný displej
+    (vpravo nahoře)              (jen když máš víc displejů);
+                                 ruční volba má přednost
   - Celoobrazovkový režim        notch se sám schová
 
 Když hudbu pozastavíš, po 15 sekundách se notch smrskne zpátky na
