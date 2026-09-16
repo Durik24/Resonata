@@ -1,0 +1,276 @@
+RESONATA — POSTUP KROK ZA KROKEM
+==================================
+
+Přehrávač hudby v notchi MacBooku. Ukazuje, co hraje ve Spotify nebo
+Apple Music; po najetí myší se rozbalí na obal alba, název, posuvník
+a ovládání.
+
+Na rozdíl od jiných notch aplikací hudbu opravdu POSLOUCHÁ: sloupce
+v notchi jsou skutečné spektrum zvuku, který z Macu jde (FFT), a celý
+notch se na každou dobu lehce nadechne. Funguje to i pro zvuk
+z prohlížeče, i když k němu nejsou žádná metadata.
+
+Dělej kroky popořadě. Kroky 1 až 5 jsou povinné, zbytek je volitelný.
+
+
+────────────────────────────────────────────────────────────────
+KROK 1 — Ověř, že máš čím to sestavit
+────────────────────────────────────────────────────────────────
+
+Otevři aplikaci Terminál a napiš:
+
+    swift --version
+
+Když to vypíše číslo verze, pokračuj krokem 2.
+Když to zahlásí chybu, nainstaluj nástroje příkazem:
+
+    xcode-select --install
+
+Potvrď dialog, počkej na dokončení instalace a zkus swift --version
+znovu.
+
+Potřebuješ macOS 14 (Sonoma) nebo novější.
+
+
+────────────────────────────────────────────────────────────────
+KROK 2 — Rozbal archiv a přejdi do složky
+────────────────────────────────────────────────────────────────
+
+Rozbal ZIP dvojklikem. Vznikne složka se soubory .swift a build.sh.
+
+V Terminálu napiš  cd  a mezeru, pak do okna Terminálu přetáhni myší
+tu složku z Finderu a zmáčkni Enter. Bude to vypadat nějak takhle:
+
+    cd /Users/tvojejmeno/Downloads/notchmusic
+
+
+────────────────────────────────────────────────────────────────
+KROK 3 — Jednou vytvoř podpisový certifikát
+────────────────────────────────────────────────────────────────
+
+    ./setup-signing.sh
+
+Zeptá se to jednou až dvakrát na heslo k počítači — to je klíčenka,
+ne skript. Vytvoří certifikát "Resonata Dev" a od té chvíle si macOS
+pamatuje udělená oprávnění i po každém novém sestavení.
+
+Bez tohoto kroku to funguje taky, ale po KAŽDÉM ./build.sh by ses
+musel znovu proklikat oprávněními z kroku 5.
+
+
+────────────────────────────────────────────────────────────────
+KROK 4 — Sestav a spusť
+────────────────────────────────────────────────────────────────
+
+    ./build.sh run
+
+Trvá to pár sekund. Xcode otevírat nemusíš. Když to dopadne dobře,
+vypíše to "Built ..." a "Launched.".
+
+Když to zahlásí "permission denied", nejdřív povol spuštění:
+
+    chmod +x build.sh
+
+a příkaz zopakuj.
+
+
+────────────────────────────────────────────────────────────────
+KROK 5 — Pusť si hudbu
+────────────────────────────────────────────────────────────────
+
+Otevři Spotify nebo Apple Music a spusť jakoukoliv skladbu.
+
+Bez hrající hudby je notch schválně prázdný a splývá s výřezem —
+nevypadá to, že by aplikace běžela. To je v pořádku.
+
+
+────────────────────────────────────────────────────────────────
+KROK 6 — Povol dvě oprávnění  ← BEZ TOHOTO TO NEBUDE FUNGOVAT
+────────────────────────────────────────────────────────────────
+
+a) AUTOMATIZACE — čtení, co hraje.
+   Chvíli po spuštění hudby vyskočí dialog "Resonata chce ovládat
+   Spotify". Klikni na OK.
+
+b) ZÁZNAM OBRAZOVKY — poslech zvuku.
+   Spektrum se čte přes ScreenCaptureKit, a ten je pod stejným
+   oprávněním jako záznam obrazovky, i když se z obrazovky nic
+   nečte (video se zahazuje v rozlišení 2x2). Bez něj sloupce běží
+   jen na náhradní falešné animaci.
+
+Když se dialogy neobjevily nebo jsi je zavřel:
+
+  1. Nastavení systému
+  2. Soukromí a zabezpečení
+  3. Automatizace  → zapni u Resonata Spotify (případně Hudba)
+  4. Záznam obrazovky a systémový zvuk → zapni Resonata
+     (po zapnutí je potřeba aplikaci vypnout a znovu spustit:
+      pkill -x Resonata && open Resonata.app)
+
+Hotovo. V notchi se objeví obal alba a sloupce, které skáčou podle
+hudby.
+
+
+────────────────────────────────────────────────────────────────
+KROK 7 — Vyzkoušej ovládání
+────────────────────────────────────────────────────────────────
+
+  - Sloupce v notchi             skutečné spektrum: vlevo basy,
+                                 vpravo výšky
+  - Každá doba (kopák)           notch se o pár bodů nadechne a
+                                 barva obalu na okamžik zjasní
+  - Zvuk z prohlížeče            sloupce reagují i bez Spotify;
+                                 název a obal se ale nezobrazí
+  - Najeď myší na notch          rozbalí se velký panel, dole
+                                 běží celé 32sloupcové spektrum
+  - Odjeď myší                   zase se sbalí
+  - Tlačítka                     předchozí / pauza / další
+  - Posuvník                     dá se chytit a táhnout;
+                                 kliknutí kamkoliv na lištu
+                                 skočí na dané místo
+  - Ikona dvou obdélníků         přepne notch na druhý monitor
+    (vpravo nahoře)              (jen když máš víc displejů)
+  - Celoobrazovkový režim        notch se sám schová
+
+Když hudbu pozastavíš, po 15 sekundách se notch smrskne zpátky na
+velikost výřezu a zhasne. Skladba se ale nezapomene — po najetí myší
+je pořád vidět a dá se znovu pustit.
+
+
+────────────────────────────────────────────────────────────────
+KROK 8 (volitelně) — Spouštění po přihlášení
+────────────────────────────────────────────────────────────────
+
+Aplikace se sama po restartu nespustí. Když to chceš:
+
+  1. Nastavení systému
+  2. Obecné
+  3. Položky přihlášení
+  4. Tlačítkem + přidej Resonata.app ze složky s projektem
+
+
+────────────────────────────────────────────────────────────────
+KROK 9 (volitelně) — Úprava vzhledu
+────────────────────────────────────────────────────────────────
+
+Všechny rozměry jsou v jednom souboru, ať je nemusíš hledat.
+
+ScreenGeometry.swift, blok NotchMetrics:
+
+    fakeWidth              šířka pilulky na monitoru bez výřezu
+    fakeHeight             výška tamtéž
+    collapsedContentWidth  o kolik se pilulka roztáhne, když hraje
+    collapsedExtraHeight   posun spodní hrany (záporné = výš)
+    collapsedInset         odsazení obalu a vlnky od krajů
+    waveformNudge          posun vlnky do stran
+    beatPulseScale         o kolik se notch nadechne na dobu
+                           (0.03 = 3 %; nad 0.06 to už cuká)
+    beatWashBloom          o kolik zjasní barva obalu na dobu
+
+AudioSpectrum.swift, nahoře ve třídě SpectrumAnalyzer:
+
+    floorDb / ceilingDb    rozsah hlasitosti, který sloupce
+                           pokrývají (ticho → plná výška)
+    attack / release       jak rychle sloupce vyskočí / klesnou
+    beatRatio              citlivost detekce dob (nižší = víc dob)
+
+Když ladíš spektrum, pusť si čísla do terminálu:
+
+    RESONATA_DEBUG_BANDS=1 ./Resonata.app/Contents/MacOS/Resonata
+
+Dvakrát za sekundu vypíše sloupce jako grafík a tečku za každou
+zachycenou dobu.
+
+NotchView.swift, nahoře ve struktuře NotchView:
+
+    expandedWidth          šířka rozbaleného panelu
+    expandedHeight         výška rozbaleného panelu
+
+Po každé změně znovu spusť:
+
+    ./build.sh run
+
+POZOR na jednotky: v kódu jsou body, ne pixely. Retina displej
+renderuje na dvojnásobek, takže jeden bod jsou zhruba dva pixely.
+
+Pilulka na monitoru bez výřezu je schválně užší než na notebooku.
+Nejde o chybu: monitor má nižší hustotu pixelů, takže stejný počet
+bodů na něm zabere fyzicky větší plochu. Přepočet je v komentáři
+u fakeWidth.
+
+
+────────────────────────────────────────────────────────────────
+VYPNUTÍ A ODINSTALACE
+────────────────────────────────────────────────────────────────
+
+Ukončit:      pkill -x Resonata
+Odinstalovat: smaž složku a případně odeber položku přihlášení
+              z Kroku 8. Certifikát "Resonata Dev" jde smazat
+              v Klíčence. Nikam jinam se nic neukládá.
+
+
+────────────────────────────────────────────────────────────────
+KDYŽ TO NEFUNGUJE
+────────────────────────────────────────────────────────────────
+
+Notch je pořád prázdný, i když hudba hraje
+  → Skoro jistě chybí povolení Automatizace z Kroku 6.
+    Zkontroluj Nastavení systému → Soukromí a zabezpečení →
+    Automatizace.
+
+Sloupce se hýbou, ale ne podle hudby (pravidelně, jako metronom)
+  → Chybí Záznam obrazovky z Kroku 6. Běží náhradní falešná
+    animace. Zapni oprávnění a aplikaci restartuj.
+
+Tlačítka nedělají nic
+  → Taky Krok 6a. Ovládání jde přes stejné povolení jako čtení.
+
+Po novém sestavení se to zeptá na povolení znovu
+  → Přeskočil jsi Krok 3. Bez certifikátu bere macOS každé
+    sestavení jako novou aplikaci. Spusť ./setup-signing.sh.
+
+Notch se neukazuje vůbec
+  → Máš zapnutý celoobrazovkový režim? Aplikace se v něm schovává
+    schválně. Taky zkontroluj, že běží: pgrep -x Resonata
+
+Chci vidět, co se děje uvnitř
+  → log stream --predicate 'process == "Resonata"'
+    Chyby komunikace se Spotify se sem vypisují.
+
+
+────────────────────────────────────────────────────────────────
+CO JE V KTERÉM SOUBORU
+────────────────────────────────────────────────────────────────
+
+ResonataApp.swift      start aplikace, skrytí ikony z Docku
+AudioSpectrum.swift    poslech zvuku (ScreenCaptureKit), FFT,
+                       rozdělení do pásem, detekce dob
+setup-signing.sh       jednorázový podpisový certifikát
+NotchPanel.swift       okno nad menu barem, sledování myši,
+                       přepínání displejů, skrývání ve fullscreenu
+NotchView.swift        vzhled sbaleného i rozbaleného stavu,
+                       vytažení barvy z obalu alba
+NotchShape.swift       silueta notche
+NowPlaying.swift       čtení údajů ze Spotify a Music, ovládání
+ScreenGeometry.swift   rozměry notche a všechny konstanty
+build.sh               sestavení bez Xcode projektu
+
+
+────────────────────────────────────────────────────────────────
+ZNÁMÁ OMEZENÍ
+────────────────────────────────────────────────────────────────
+
+- Název a obal čte jen ze Spotify a Apple Music. U hudby
+  z prohlížeče nebo VLC sloupce reagují (zvuk je zvuk), ale název
+  a obal se nezobrazí. Od macOS 15.4 Apple uzavřel systémové
+  rozhraní MediaRemote jen pro vlastní procesy, takže se musí
+  mluvit přímo s přehrávači.
+
+- U černobílých obalů zůstane panel černý bez barevného nádechu.
+  Je to záměr — vymýšlet barvu, která v obalu není, dopadá špatně.
+
+- Spotřeba procesoru (M4, hudba hraje): kolem 4–6 %. Z toho je
+  většina FFT a vykreslování sloupců 30x za sekundu. Původní verze
+  s falešnou animací a dotazem na Spotify každou sekundu brala
+  3,7–4,8 %; samotný přechod na notifikace ji srazil na 2,7 %,
+  a ten rozdíl teď platí za skutečné spektrum.

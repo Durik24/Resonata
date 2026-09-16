@@ -1,0 +1,5 @@
+# Build product — ./build.sh regenerates it.
+Resonata.app/
+# Per-machine Claude Code permissions.
+.claude/settings.local.json
+.DS_Store
