@@ -1,8 +1,9 @@
 # Resonata — the notch that hears the music
 
 A Dynamic-Island-style music player pinned over the MacBook notch. Collapsed, it
-shows the album art and a spectrum; hover and it expands to the title, a
-scrubber, transport controls, and the full spectrum.
+shows the album art and a spectrum; click it and it expands to the title, a
+scrubber, transport controls, and the full spectrum. Click anywhere else to
+close it.
 
 The difference from every other notch app: **it listens.** The bars are a real
 FFT of the audio leaving the machine, not an animation, and the notch itself

@@ -45,16 +45,14 @@ final class NotchModel: ObservableObject {
     @Published var lyrics: [LyricLine]?
 
     /// The expanded panel grows a row when there are lyrics to show. Lives on
-    /// the model because `NotchPanelController` needs the same number for its
-    /// hover rect — a panel that is taller than its hot zone closes under the
-    /// cursor the moment it reaches the lyrics.
+    /// the model so the panel controller and the view size from one number.
     var expandedHeight: CGFloat {
         NotchView.expandedHeight + (lyrics == nil ? 0 : NotchView.lyricsHeight)
     }
 
     /// The collapsed pill carries artwork and waveform only while playback is
     /// live. Idle, it shrinks back to the bare cutout — but `track` is still
-    /// there, so hovering brings up the last song and its play button.
+    /// there, so a click brings up the last song and its play button.
     var showsCollapsedContent: Bool { track != nil && !isIdle }
 }
 
@@ -198,11 +196,14 @@ struct NotchView: View {
             // click-through so you can still reach the menu bar beside it.
             // Same radii as the drawn shape, or the hit area lags the visual.
             .contentShape(shape)
-            // Hover is driven by NotchPanelController watching the real pointer
-            // position, NOT by .onHover here. Expanding resizes the window,
-            // which rebuilds this view's tracking areas and fires a phantom
-            // exit — so .onHover would cancel the very expand that triggered
-            // it, and the first hover would do nothing.
+            // A click on the pill opens the panel. Closing is a click anywhere
+            // outside it, which `NotchPanelController` watches for. Clicks on
+            // the open panel's background do nothing — the buttons and the
+            // scrubber take their own, and anything else is just resting the
+            // pointer there.
+            .onTapGesture {
+                if !model.isExpanded { model.isExpanded = true }
+            }
 
             Spacer(minLength: 0)
         }

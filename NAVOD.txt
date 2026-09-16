@@ -2,7 +2,7 @@ RESONATA — POSTUP KROK ZA KROKEM
 ==================================
 
 Přehrávač hudby v notchi MacBooku. Ukazuje, co hraje ve Spotify nebo
-Apple Music; po najetí myší se rozbalí na obal alba, název, posuvník
+Apple Music; po kliknutí se rozbalí na obal alba, název, posuvník
 a ovládání.
 
 Na rozdíl od jiných notch aplikací hudbu opravdu POSLOUCHÁ: sloupce
@@ -121,7 +121,7 @@ KROK 7 — Vyzkoušej ovládání
                                  barva obalu na okamžik zjasní
   - Zvuk z prohlížeče            sloupce reagují i bez Spotify;
                                  název a obal se ale nezobrazí
-  - Najeď myší na notch          rozbalí se velký panel, dole
+  - Klikni na notch              rozbalí se velký panel, dole
                                  běží celé 32sloupcové spektrum
   - Text písně                   když ho LRCLIB zná, panel se
                                  zvětší o tři řádky: aktuální
@@ -129,7 +129,7 @@ KROK 7 — Vyzkoušej ovládání
                                  podle času skladby jako karaoke.
                                  Stahuje se jednou, pak z cache
                                  (~/Library/Caches/com.local.resonata)
-  - Odjeď myší                   zase se sbalí
+  - Klikni kamkoliv mimo panel   zase se sbalí
   - Tlačítka                     předchozí / pauza / další
   - Posuvník                     dá se chytit a táhnout;
                                  kliknutí kamkoliv na lištu
@@ -143,7 +143,7 @@ KROK 7 — Vyzkoušej ovládání
   - Celoobrazovkový režim        notch se sám schová
 
 Když hudbu pozastavíš, po 15 sekundách se notch smrskne zpátky na
-velikost výřezu a zhasne. Skladba se ale nezapomene — po najetí myší
+velikost výřezu a zhasne. Skladba se ale nezapomene — po kliknutí
 je pořád vidět a dá se znovu pustit.
 
 

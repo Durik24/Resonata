@@ -43,38 +43,6 @@ final class NotchPanel: NSPanel {
     override var canBecomeMain: Bool { false }
 }
 
-/// Content view that reports the pointer the instant it moves over the window.
-///
-/// A polling timer can only ever notice the pointer on its next tick; a
-/// tracking area is told by the window server the moment the pointer crosses
-/// in. `.activeAlways` is what makes it fire for an app that is never active,
-/// and `.inVisibleRect` keeps the area matched to the view through every
-/// resize without rebuilding it by hand.
-///
-/// Enter, exit and move all funnel into one callback, and that callback must
-/// *not* be "expand on enter, collapse on exit": expanding resizes the window,
-/// which resets the tracking area and emits an exit the pointer never made.
-/// The callback runs the same pointer-versus-rect test the timer runs, so a
-/// phantom exit looks at where the pointer actually is and does nothing.
-final class HoverReportingView: NSView {
-    var onPointer: (() -> Void)?
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        for area in trackingAreas { removeTrackingArea(area) }
-        addTrackingArea(NSTrackingArea(
-            rect: .zero,
-            options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
-            owner: self,
-            userInfo: nil
-        ))
-    }
-
-    override func mouseEntered(with event: NSEvent) { onPointer?() }
-    override func mouseExited(with event: NSEvent) { onPointer?() }
-    override func mouseMoved(with event: NSEvent) { onPointer?() }
-}
-
 /// Owns the panel and keeps it glued to the notch across display changes.
 @MainActor
 final class NotchPanelController {
@@ -93,54 +61,15 @@ final class NotchPanelController {
     private var observer: NSObjectProtocol?
     private var cancellables = Set<AnyCancellable>()
     private var shrink: DispatchWorkItem?
-    private var mouseMonitors: [Any] = []
-    private var hoverTimer: Timer?
+    private var clickMonitors: [Any] = []
     private var visibilityTimer: Timer?
     private var wasExpanded = false
 
     /// Whether a full-screen app owns the target display, as of the last
     /// visibility check. Cached because the check walks the window server's
-    /// entire on-screen list, and the hover tick used to ask it 33 times a
-    /// second — which is both wasteful and a place for the tick to stall.
+    /// entire on-screen list, so it is asked on the visibility timer rather
+    /// than on every event.
     private var fullScreenCovered = false
-
-    /// How far above the screen's top edge the hot zone extends.
-    ///
-    /// `NSRect.contains` excludes the rect's maximum edges, and a pointer flung
-    /// at the notch comes to rest pinned against the top of the screen — where
-    /// its y is *exactly* `frame.maxY`, the one row the test rejects. That was
-    /// the "sometimes it doesn't notice me": it depended on whether the cursor
-    /// had stopped one pixel short. Nothing can be above the screen, so the
-    /// slack costs nothing.
-    private static let topSlack: CGFloat = 40
-
-    /// How far the hot zone extends past the *expanded* panel, below and to
-    /// either side.
-    ///
-    /// This was the flapping. The transport buttons sit at the bottom of the
-    /// panel, and reaching down for them overshoots its edge by 20–35 points
-    /// almost every time — at which point a hot zone that matched the shape
-    /// exactly closed the panel under the cursor. Once open, the zone has to be
-    /// bigger than the thing it protects.
-    private static let expandedBottomSlack: CGFloat = 80
-    private static let expandedSideSlack: CGFloat = 48
-
-    /// How long the pointer must stay outside before an open panel closes.
-    ///
-    /// A single "outside" reading is not a decision to leave — it is a fast
-    /// flick that briefly crossed the edge. Opening stays instant; only
-    /// closing waits, and a quarter of a second is short enough that a real
-    /// exit never feels sticky.
-    private static let collapseGrace: CFAbsoluteTime = 0.25
-    private var outsideSince: CFAbsoluteTime?
-
-    /// Run with `RESONATA_DEBUG_HOVER=1` to log every hover decision made while
-    /// the pointer is anywhere near the pill: where the pointer was, the rect
-    /// it was tested against, and which path asked. For the class of bug that
-    /// only a real mouse reproduces.
-    private static let debugHover =
-        ProcessInfo.processInfo.environment["RESONATA_DEBUG_HOVER"] == "1"
-    private var lastHoverLog: (inside: Bool, at: CFAbsoluteTime) = (false, 0)
 
     /// Display the user pinned via the switch button, if any. Stored as an id
     /// because NSScreen instances are replaced on every display change.
@@ -157,17 +86,7 @@ final class NotchPanelController {
         model.switchScreen = { [weak self] in self?.moveToNextScreen() }
 
         let panel = NotchPanel(contentRect: frame(for: screen))
-        let hosting = NSHostingView(rootView: NotchView(model: model))
-        let container = HoverReportingView(frame: hosting.frame)
-        container.autoresizesSubviews = true
-        hosting.autoresizingMask = [.width, .height]
-        container.addSubview(hosting)
-        panel.contentView = container
-        hosting.frame = container.bounds
-        // Instant path. The monitors and the timer below are the backstops.
-        container.onPointer = { [weak self] in
-            MainActor.assumeIsolated { self?.updateHover(from: "tracking") }
-        }
+        panel.contentView = NSHostingView(rootView: NotchView(model: model))
         self.panel = panel
         // Starts hidden: nothing is playing yet at launch.
         updateVisibility()
@@ -210,53 +129,27 @@ final class NotchPanelController {
             MainActor.assumeIsolated { self?.screensChanged() }
         }
 
-        // Hover, tracked from the pointer itself rather than from a SwiftUI
-        // `.onHover` on the content.
-        //
-        // The view can't track its own hover reliably here: expanding resizes
-        // the window, resizing rebuilds the hosting view's tracking areas, and
-        // that emits a mouse-exit even though the pointer never moved. The
-        // exit collapses the panel again, so the first hover appears to do
-        // nothing and you have to hover a second time. Comparing the real
-        // pointer location against a rect has no such feedback loop.
-        //
-        // Global monitors fire while another app is active — which is always,
-        // since we're an .accessory app — and the local one covers the case
-        // where we've taken focus. Mouse monitors need no special permission.
-        let handler: (NSEvent) -> Void = { [weak self] _ in
-            MainActor.assumeIsolated { self?.updateHover(from: "monitor") }
+        // Opening is a click on the pill, handled in the view. Closing is a
+        // click anywhere else, handled here: a *global* monitor by definition
+        // never sees events delivered to our own windows, so every click it
+        // reports is, by construction, a click outside the panel. No rect
+        // test, no pointer tracking, nothing that can disagree with what the
+        // user actually did.
+        let outsideClick: (NSEvent) -> Void = { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.model.isExpanded else { return }
+                self.model.isExpanded = false
+            }
         }
-        if let global = NSEvent.addGlobalMonitorForEvents(
-            matching: [.mouseMoved, .leftMouseDragged], handler: handler
+        if let monitor = NSEvent.addGlobalMonitorForEvents(
+            matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown],
+            handler: outsideClick
         ) {
-            mouseMonitors.append(global)
-        }
-        let local = NSEvent.addLocalMonitorForEvents(
-            matching: [.mouseMoved, .leftMouseDragged],
-            handler: { event in handler(event); return event }
-        )
-        if let local { mouseMonitors.append(local) }
-
-        // The tracking area on the content view is what makes hover instant;
-        // polling the pointer is the backstop that makes it *reliable*.
-        //
-        // Neither monitor can see the moment that matters. A *global* monitor
-        // by definition doesn't receive events delivered to our own app — and
-        // the instant the pointer crosses onto the panel, the event is ours, so
-        // the monitor goes silent exactly when "entered" happens. The local
-        // monitor doesn't cover it either: we're an .accessory app and never
-        // become active, so we're not in the responder path. Reading
-        // `NSEvent.mouseLocation` on a timer has no such blind spot.
-        // 0.03 rather than 0.08: this interval is the worst-case lag between
-        // the pointer arriving and the panel opening, and at 0.08 that delay
-        // was doing as much to make the open feel slow as the animation was.
-        // The tick itself is a rect test against `NSEvent.mouseLocation`.
-        hoverTimer = Timer.scheduledTimer(withTimeInterval: 0.03, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.updateHover(from: "timer") }
+            clickMonitors.append(monitor)
         }
 
-        // Full-screen state is polled too, and for the same reason the hover is:
-        // the space-change notification fires at the *start* of the transition,
+        // Full-screen state is polled: the space-change notification fires at
+        // the *start* of the transition,
         // when the window hasn't resized yet, so a single check right then sees
         // the pre-transition layout and nothing ever re-checks it.
         visibilityTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
@@ -289,7 +182,6 @@ final class NotchPanelController {
     /// size on a screen that may not even have a notch.
     private func screensChanged() {
         guard let screen = targetScreen else { return }
-        if Self.debugHover { NSLog("hover: screensChanged -> forced collapse") }
         model.isExpanded = false
         adoptGeometry(of: screen)
         reposition()
@@ -331,78 +223,6 @@ final class NotchPanelController {
         if model.hasRealNotch != screen.hasNotch { model.hasRealNotch = screen.hasNotch }
         let multiple = NSScreen.screens.count > 1
         if model.canSwitchScreens != multiple { model.canSwitchScreens = multiple }
-    }
-
-    /// Expanded whenever the pointer is inside the shape currently on screen.
-    ///
-    /// The rect deliberately differs by state: collapsed, only the pill itself
-    /// counts, so the panel doesn't pop open from halfway across the menu bar;
-    /// expanded, the whole expanded shape counts, so moving down onto the
-    /// buttons doesn't close it under your cursor.
-    private func updateHover(from source: String = "?") {
-        guard let screen = targetScreen else {
-            if Self.debugHover { NSLog("hover[%@]: no target screen", source) }
-            return
-        }
-        guard !fullScreenCovered else {
-            if Self.debugHover { NSLog("hover[%@]: ignored, full-screen app covers display", source) }
-            return
-        }
-
-        let size = model.isExpanded
-            ? CGSize(width: NotchView.expandedWidth, height: model.expandedHeight)
-            : CGSize(width: screen.notchSize.width
-                        + (model.showsCollapsedContent
-                            ? NotchMetrics.collapsedContentWidth : 0),
-                     height: screen.notchSize.height + NotchMetrics.collapsedExtraHeight)
-
-        // Origin is the bottom-left, so extra height grows upward, past the
-        // top of the screen. See `topSlack`.
-        var hot = NSRect(
-            x: screen.frame.midX - size.width / 2,
-            y: screen.frame.maxY - size.height,
-            width: size.width,
-            height: size.height + Self.topSlack
-        )
-        if model.isExpanded {
-            hot.origin.x -= Self.expandedSideSlack
-            hot.size.width += Self.expandedSideSlack * 2
-            hot.origin.y -= Self.expandedBottomSlack
-            hot.size.height += Self.expandedBottomSlack
-        }
-
-        let mouse = NSEvent.mouseLocation
-        let inside = hot.contains(mouse)
-
-        if Self.debugHover {
-            // Only when the pointer is somewhere near — and then on every change
-            // of verdict, or at most a few times a second while it holds.
-            let near = hot.insetBy(dx: -160, dy: -160).contains(mouse)
-            let now = CFAbsoluteTimeGetCurrent()
-            if near, inside != lastHoverLog.inside || now - lastHoverLog.at > 0.25 {
-                lastHoverLog = (inside, now)
-                NSLog("hover[%@]: mouse (%.0f, %.0f) hot x %.0f–%.0f y %.0f–%.0f -> %@ (expanded=%d, screen %.0fx%.0f at %.0f,%.0f)",
-                      source, mouse.x, mouse.y, hot.minX, hot.maxX, hot.minY, hot.maxY,
-                      inside ? "INSIDE" : "outside", model.isExpanded ? 1 : 0,
-                      screen.frame.width, screen.frame.height, screen.frame.minX, screen.frame.minY)
-            }
-        }
-
-        if inside {
-            outsideSince = nil
-            if !model.isExpanded {
-                if Self.debugHover { NSLog("hover[%@]: EXPAND", source) }
-                model.isExpanded = true
-            }
-        } else if model.isExpanded {
-            let now = CFAbsoluteTimeGetCurrent()
-            guard let since = outsideSince else { outsideSince = now; return }
-            if now - since >= Self.collapseGrace {
-                if Self.debugHover { NSLog("hover[%@]: COLLAPSE", source) }
-                outsideSince = nil
-                model.isExpanded = false
-            }
-        }
     }
 
     private func updateVisibility() {
