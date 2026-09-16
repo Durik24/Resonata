@@ -66,6 +66,22 @@ final class NotchPanelController {
     private var visibilityTimer: Timer?
     private var wasExpanded = false
 
+    /// Whether a full-screen app owns the target display, as of the last
+    /// visibility check. Cached because the check walks the window server's
+    /// entire on-screen list, and the hover tick used to ask it 33 times a
+    /// second — which is both wasteful and a place for the tick to stall.
+    private var fullScreenCovered = false
+
+    /// How far above the screen's top edge the hot zone extends.
+    ///
+    /// `NSRect.contains` excludes the rect's maximum edges, and a pointer flung
+    /// at the notch comes to rest pinned against the top of the screen — where
+    /// its y is *exactly* `frame.maxY`, the one row the test rejects. That was
+    /// the "sometimes it doesn't notice me": it depended on whether the cursor
+    /// had stopped one pixel short. Nothing can be above the screen, so the
+    /// slack costs nothing.
+    private static let topSlack: CGFloat = 40
+
     /// Display the user pinned via the switch button, if any. Stored as an id
     /// because NSScreen instances are replaced on every display change.
     private var pinnedScreenID: CGDirectDisplayID?
@@ -253,7 +269,7 @@ final class NotchPanelController {
     /// expanded, the whole expanded shape counts, so moving down onto the
     /// buttons doesn't close it under your cursor.
     private func updateHover() {
-        guard let screen = targetScreen, !screen.isShowingFullScreenApp else { return }
+        guard let screen = targetScreen, !fullScreenCovered else { return }
 
         let size = model.isExpanded
             ? CGSize(width: NotchView.expandedWidth, height: model.expandedHeight)
@@ -266,7 +282,9 @@ final class NotchPanelController {
             x: screen.frame.midX - size.width / 2,
             y: screen.frame.maxY - size.height,
             width: size.width,
-            height: size.height
+            // Origin is the bottom-left, so extra height grows upward, past
+            // the top of the screen. See `topSlack`.
+            height: size.height + Self.topSlack
         )
 
         let inside = hot.contains(NSEvent.mouseLocation)
@@ -274,6 +292,7 @@ final class NotchPanelController {
     }
 
     private func updateVisibility() {
+        fullScreenCovered = targetScreen?.isShowingFullScreenApp ?? false
         apply(expanded: model.isExpanded, hasTrack: model.showsCollapsedContent)
     }
 
@@ -283,7 +302,7 @@ final class NotchPanelController {
         // Always present, playing or not. With a real notch the collapsed shape
         // is exactly the hardware cutout, so an idle notch is indistinguishable
         // from the bezel — nothing to hide. Full screen is the one exception.
-        if screen.isShowingFullScreenApp {
+        if fullScreenCovered {
             if panel.isVisible { panel.orderOut(nil) }
         } else if !panel.isVisible {
             panel.orderFrontRegardless()
