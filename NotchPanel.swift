@@ -50,14 +50,14 @@ final class NotchPanel: NSPanel {
     /// animation on it — and in practice it fired about one click in ten.
     /// When collapsed, the window is exactly the pill, so a mouse-down anywhere
     /// in it *is* a click on the pill. No recognition needed.
-    var onMouseDown: (() -> Void)?
+    var onMouseDown: ((NSPoint) -> Void)?
 
     override func sendEvent(_ event: NSEvent) {
         if event.type == .leftMouseDown {
             if Self.debugClick {
                 NSLog("click: mouse-down reached the panel at %@", NSStringFromPoint(event.locationInWindow))
             }
-            onMouseDown?()
+            onMouseDown?(event.locationInWindow)
         }
         super.sendEvent(event)
     }
@@ -121,11 +121,23 @@ final class NotchPanelController {
 
         let panel = NotchPanel(contentRect: frame(for: screen))
         panel.contentView = FirstClickHostingView(rootView: NotchView(model: model))
-        panel.onMouseDown = { [weak self] in
+        panel.onMouseDown = { [weak self] location in
             MainActor.assumeIsolated {
-                guard let self, !self.model.isExpanded else { return }
-                if NotchPanel.debugClick { NSLog("click: EXPAND") }
-                self.model.isExpanded = true
+                guard let self else { return }
+                if !self.model.isExpanded {
+                    // Collapsed, the window is exactly the pill: any click is
+                    // a click on it.
+                    if NotchPanel.debugClick { NSLog("click: EXPAND") }
+                    self.model.isExpanded = true
+                } else if !self.expandedShapeRect.contains(location) {
+                    // Expanded, the window is a 640x280 canvas and the panel
+                    // is drawn in the top-centre of it. A click in the
+                    // transparent margin is ours, so the global monitor never
+                    // sees it — but to the user it is plainly a click outside
+                    // the panel, and it should close it like one.
+                    if NotchPanel.debugClick { NSLog("click: in the margin -> COLLAPSE") }
+                    self.model.isExpanded = false
+                }
             }
         }
         self.panel = panel
@@ -265,6 +277,16 @@ final class NotchPanelController {
         if model.hasRealNotch != screen.hasNotch { model.hasRealNotch = screen.hasNotch }
         let multiple = NSScreen.screens.count > 1
         if model.canSwitchScreens != multiple { model.canSwitchScreens = multiple }
+    }
+
+    /// Where the expanded panel is drawn, in window coordinates: top-centre
+    /// of the canvas, the size the view draws it at.
+    private var expandedShapeRect: NSRect {
+        let width = NotchView.expandedWidth
+        let height = model.expandedHeight
+        return NSRect(x: (Self.canvasWidth - width) / 2,
+                      y: Self.canvasHeight - height,
+                      width: width, height: height)
     }
 
     private func updateVisibility() {
