@@ -22,6 +22,11 @@ final class LyricsStore: ObservableObject {
     /// not synced, not fetched yet, or nothing playing.
     @Published private(set) var lines: [LyricLine]?
 
+    /// A fetch is in flight for the current track. The view keeps the lyrics
+    /// row's height reserved while this is true, so skipping tracks doesn't
+    /// make the panel shrink and grow again a second later.
+    @Published private(set) var isFetching = false
+
     private var current: String?
     private var task: Task<Void, Never>?
 
@@ -50,6 +55,7 @@ final class LyricsStore: ObservableObject {
             current = nil
             task?.cancel()
             lines = nil
+            isFetching = false
             return
         }
 
@@ -59,16 +65,19 @@ final class LyricsStore: ObservableObject {
         task?.cancel()
         lines = nil
 
-        if misses.contains(key) { return }
+        if misses.contains(key) { isFetching = false; return }
 
         if let cached = Self.readCache(key) {
             lines = cached
+            isFetching = false
             return
         }
 
+        isFetching = true
         task = Task { [weak self] in
             let result = await Self.fetch(track)
             guard !Task.isCancelled, let self, self.current == key else { return }
+            self.isFetching = false
             if let result, !result.isEmpty {
                 self.lines = result
                 Self.writeCache(key, lines: result)

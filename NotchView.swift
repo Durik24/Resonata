@@ -43,11 +43,18 @@ final class NotchModel: ObservableObject {
 
     /// Synced lyrics for the current track, when LRCLIB has them.
     @Published var lyrics: [LyricLine]?
+    /// Lyrics are being looked up for the current track.
+    @Published var lyricsPending = false
+
+    /// Whether the panel shows a lyrics row: real lyrics, or the space for
+    /// them while a lookup is in flight — so the panel doesn't shrink and
+    /// grow back on every track change.
+    var showsLyricsRow: Bool { lyrics != nil || lyricsPending }
 
     /// The expanded panel grows a row when there are lyrics to show. Lives on
     /// the model so the panel controller and the view size from one number.
     var expandedHeight: CGFloat {
-        NotchView.expandedHeight + (lyrics == nil ? 0 : NotchView.lyricsHeight)
+        NotchView.expandedHeight + (showsLyricsRow ? NotchView.lyricsHeight : 0)
     }
 
     /// The collapsed pill carries artwork and waveform only while playback is
@@ -337,8 +344,8 @@ struct NotchView: View {
     private var expanded: some View {
         VStack(spacing: 0) {
             expandedMain
-            if let lyrics = model.lyrics {
-                LyricsView(lines: lyrics, track: model.track)
+            if model.showsLyricsRow {
+                LyricsView(lines: model.lyrics ?? [], track: model.track)
                     .frame(height: Self.lyricsHeight - 8)
                     .padding(.top, 8)
                     .transition(Self.crossfade)

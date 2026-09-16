@@ -65,11 +65,12 @@ enum NotchMetrics {
 
     /// How much the notch grows on a beat, as a fraction of its size.
     ///
-    /// Small on purpose. At 0.03 the collapsed pill gets about six points wider
-    /// and one taller, which is enough to see and not enough to notice — the
-    /// cutout appears to breathe. Past about 0.06 it starts to twitch instead,
-    /// and reads as a rendering glitch rather than as the music.
-    static let beatPulseScale: CGFloat = 0.03
+    /// Off. It was 0.03, and on the collapsed pill that was a six-point breath;
+    /// on the expanded panel the same fraction is a fourteen-point jolt two or
+    /// three times a second, which reads as the panel flapping open and shut
+    /// rather than as the music. The colour bloom below carries the beat on
+    /// its own. Set to ~0.02 to try the breath again on the pill.
+    static let beatPulseScale: CGFloat = 0
 
     /// How much brighter the artwork colour wash gets on a beat, as a
     /// multiplier on its opacity. 1.0 would double it.

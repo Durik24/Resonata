@@ -59,6 +59,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .sink { [weak self] lines in self?.model.lyrics = lines }
             .store(in: &cancellables)
 
+        lyrics.$isFetching
+            .sink { [weak self] pending in self?.model.lyricsPending = pending }
+            .store(in: &cancellables)
+
         // Kept separate from `track` on purpose: idle only silences the
         // collapsed pill, the track stays loaded so it can be resumed.
         nowPlaying.$isIdle
