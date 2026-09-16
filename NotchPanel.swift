@@ -43,6 +43,17 @@ final class NotchPanel: NSPanel {
     override var canBecomeMain: Bool { false }
 }
 
+/// Hosting view that treats the first click as a click.
+///
+/// A window that isn't key gets its first mouse-down as "activate me" and the
+/// click itself is swallowed, unless the view under it opts in. This panel is
+/// never key — it's an accessory app and a non-activating panel — so without
+/// this the first click on the pill would do nothing and the second would
+/// open it, which is indistinguishable from a bug.
+final class FirstClickHostingView<Content: View>: NSHostingView<Content> {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+}
+
 /// Owns the panel and keeps it glued to the notch across display changes.
 @MainActor
 final class NotchPanelController {
@@ -86,7 +97,7 @@ final class NotchPanelController {
         model.switchScreen = { [weak self] in self?.moveToNextScreen() }
 
         let panel = NotchPanel(contentRect: frame(for: screen))
-        panel.contentView = NSHostingView(rootView: NotchView(model: model))
+        panel.contentView = FirstClickHostingView(rootView: NotchView(model: model))
         self.panel = panel
         // Starts hidden: nothing is playing yet at launch.
         updateVisibility()
