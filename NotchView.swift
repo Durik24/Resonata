@@ -100,18 +100,17 @@ struct NotchView: View {
     /// modifiers gives the container and its contents separate springs, and two
     /// springs that disagree by even a little read as broken.
     ///
-    /// Response 0.2 rather than the 0.38 it started at: the panel is open
-    /// before you've finished moving the pointer, which is the difference
-    /// between "it opened" and "it was already open". Damping is high enough
-    /// that it lands rather than bounces — at this speed any overshoot reads
-    /// as a wobble, not as physics.
-    private static let expand = Animation.spring(response: 0.2, dampingFraction: 0.88)
+    /// Response 0.13, down from the 0.38 it started at and the 0.2 after that:
+    /// the panel should pop rather than unfold. Damping is high enough that it
+    /// lands rather than bounces — at this speed any overshoot reads as a
+    /// wobble, not as physics.
+    private static let expand = Animation.spring(response: 0.13, dampingFraction: 0.9)
 
     /// The content swap is a crossfade, deliberately *not* a spring. A scale or
     /// slide transition here competes with the box stretching underneath it,
     /// which is the other half of what looks wrong.
     private static let crossfade = AnyTransition.opacity
-        .animation(.easeInOut(duration: 0.09))
+        .animation(.easeInOut(duration: 0.05))
 
     /// Device-space black, deliberately not `Color.black`.
     ///
