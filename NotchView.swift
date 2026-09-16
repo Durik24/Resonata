@@ -41,6 +41,14 @@ final class NotchModel: ObservableObject {
     /// Mirrors `AudioSpectrumSource.beat`. Increments once per detected beat.
     @Published var beat = 0
 
+    /// The current track's artwork, decoded once per URL.
+    ///
+    /// The collapsed pill and the expanded panel are different views, and
+    /// each used to carry its own `AsyncImage` — so every open re-fetched the
+    /// art and the panel appeared a beat before its picture did. Loading it
+    /// here, once, means both draw it on their first frame.
+    @Published var artwork: NSImage?
+
     /// Synced lyrics for the current track, when LRCLIB has them.
     @Published var lyrics: [LyricLine]?
     /// Lyrics are being looked up for the current track.
@@ -217,7 +225,12 @@ struct NotchView: View {
         // Keyed on the artwork URL, so it runs once per track rather than on
         // every one-second poll.
         .task(id: model.track?.artworkURL) {
-            accent = await ArtworkAccent.color(from: model.track?.artworkURL)
+            let url = model.track?.artworkURL
+            async let colour = ArtworkAccent.color(from: url)
+            async let image = Self.loadArtwork(url)
+            let (c, i) = await (colour, image)
+            accent = c
+            model.artwork = i
         }
         .animation(.easeInOut(duration: 0.5), value: accent)
         .onChange(of: model.beat) { _, _ in
@@ -531,14 +544,26 @@ struct NotchView: View {
         return String(format: "%d:%02d", total / 60, total % 60)
     }
 
+    /// Fetches and decodes the artwork off the main thread.
+    private static func loadArtwork(_ url: URL?) async -> NSImage? {
+        guard let url else { return nil }
+        let data: Data?
+        if url.isFileURL {
+            data = try? Data(contentsOf: url)
+        } else {
+            data = try? await URLSession.shared.data(from: url).0
+        }
+        guard let data else { return nil }
+        return NSImage(data: data)
+    }
+
     private func artwork(size: CGFloat) -> some View {
         Group {
-            if let url = model.track?.artworkURL {
-                AsyncImage(url: url) { image in
-                    image.resizable().scaledToFill()
-                } placeholder: {
-                    Color.white.opacity(0.1)
-                }
+            if let image = model.artwork {
+                Image(nsImage: image).resizable().scaledToFill()
+            } else if model.track?.artworkURL != nil {
+                // Loading. Same shape as the art so nothing shifts when it lands.
+                Color.white.opacity(0.1)
             } else {
                 ZStack {
                     Color.white.opacity(0.1)
