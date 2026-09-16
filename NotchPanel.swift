@@ -41,6 +41,29 @@ final class NotchPanel: NSPanel {
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+
+    /// Called for every mouse-down that reaches this window.
+    ///
+    /// Opening is handled here rather than with a SwiftUI tap gesture. A tap
+    /// recogniser wants a down and an up on the same view with no drift in
+    /// between, on a subtree that redraws thirty times a second with a scale
+    /// animation on it — and in practice it fired about one click in ten.
+    /// When collapsed, the window is exactly the pill, so a mouse-down anywhere
+    /// in it *is* a click on the pill. No recognition needed.
+    var onMouseDown: (() -> Void)?
+
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .leftMouseDown {
+            if Self.debugClick {
+                NSLog("click: mouse-down reached the panel at %@", NSStringFromPoint(event.locationInWindow))
+            }
+            onMouseDown?()
+        }
+        super.sendEvent(event)
+    }
+
+    /// `RESONATA_DEBUG_CLICK=1` logs every mouse-down the panel receives.
+    static let debugClick = ProcessInfo.processInfo.environment["RESONATA_DEBUG_CLICK"] == "1"
 }
 
 /// Hosting view that treats the first click as a click.
@@ -98,6 +121,13 @@ final class NotchPanelController {
 
         let panel = NotchPanel(contentRect: frame(for: screen))
         panel.contentView = FirstClickHostingView(rootView: NotchView(model: model))
+        panel.onMouseDown = { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, !self.model.isExpanded else { return }
+                if NotchPanel.debugClick { NSLog("click: EXPAND") }
+                self.model.isExpanded = true
+            }
+        }
         self.panel = panel
         // Starts hidden: nothing is playing yet at launch.
         updateVisibility()
@@ -149,6 +179,7 @@ final class NotchPanelController {
         let outsideClick: (NSEvent) -> Void = { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, self.model.isExpanded else { return }
+                if NotchPanel.debugClick { NSLog("click: outside -> COLLAPSE") }
                 self.model.isExpanded = false
             }
         }

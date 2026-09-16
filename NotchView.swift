@@ -196,14 +196,10 @@ struct NotchView: View {
             // click-through so you can still reach the menu bar beside it.
             // Same radii as the drawn shape, or the hit area lags the visual.
             .contentShape(shape)
-            // A click on the pill opens the panel. Closing is a click anywhere
-            // outside it, which `NotchPanelController` watches for. Clicks on
-            // the open panel's background do nothing — the buttons and the
-            // scrubber take their own, and anything else is just resting the
-            // pointer there.
-            .onTapGesture {
-                if !model.isExpanded { model.isExpanded = true }
-            }
+            // Opening and closing are both handled in AppKit — see
+            // `NotchPanel.onMouseDown` and the global monitor in the
+            // controller. Nothing here reacts to clicks; the buttons and the
+            // scrubber take their own.
 
             Spacer(minLength: 0)
         }
