@@ -100,17 +100,18 @@ struct NotchView: View {
     /// modifiers gives the container and its contents separate springs, and two
     /// springs that disagree by even a little read as broken.
     ///
-    /// Response 0.08, critically damped: as fast as it can go and still be
-    /// seen to move, with no overshoot at all. It started life at 0.38.
-    /// Anything below this is a hard cut, which on a shape growing out of
-    /// the bezel reads as a glitch rather than as speed.
-    private static let expand = Animation.spring(response: 0.08, dampingFraction: 1)
+    /// Effectively a hard cut: the panel is at its final size on the next
+    /// frame. It started life as a 0.38s spring and was walked down from
+    /// there; at 0.0001s this is "no animation" while keeping every
+    /// `.animation(_, value:)` site exactly as it is, so a spring can be put
+    /// back with one number.
+    private static let expand = Animation.linear(duration: 0.0001)
 
     /// The content swap is a crossfade, deliberately *not* a spring. A scale or
     /// slide transition here competes with the box stretching underneath it,
     /// which is the other half of what looks wrong.
     private static let crossfade = AnyTransition.opacity
-        .animation(.easeInOut(duration: 0.03))
+        .animation(.linear(duration: 0.0001))
 
     /// Device-space black, deliberately not `Color.black`.
     ///
