@@ -123,6 +123,12 @@ KROK 7 — Vyzkoušej ovládání
                                  název a obal se ale nezobrazí
   - Najeď myší na notch          rozbalí se velký panel, dole
                                  běží celé 32sloupcové spektrum
+  - Text písně                   když ho LRCLIB zná, panel se
+                                 zvětší o tři řádky: aktuální
+                                 jasně, sousední ztlumeně. Běží
+                                 podle času skladby jako karaoke.
+                                 Stahuje se jednou, pak z cache
+                                 (~/Library/Caches/com.local.resonata)
   - Odjeď myší                   zase se sbalí
   - Tlačítka                     předchozí / pauza / další
   - Posuvník                     dá se chytit a táhnout;
@@ -245,6 +251,7 @@ CO JE V KTERÉM SOUBORU
 ResonataApp.swift      start aplikace, skrytí ikony z Docku
 AudioSpectrum.swift    poslech zvuku (ScreenCaptureKit), FFT,
                        rozdělení do pásem, detekce dob
+Lyrics.swift           stažení textu z LRCLIB, parsování LRC, cache
 setup-signing.sh       jednorázový podpisový certifikát
 NotchPanel.swift       okno nad menu barem, sledování myši,
                        přepínání displejů, skrývání ve fullscreenu

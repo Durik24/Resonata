@@ -21,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// expanded panel draws directly; the collapsed pill averages the same
     /// numbers down to three, which is far cheaper than running the FFT twice.
     private let spectrum = SystemAudioSpectrum(bandCount: 32)
+    private let lyrics = LyricsStore()
 
     private var cancellables = Set<AnyCancellable>()
 
@@ -46,7 +47,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .store(in: &cancellables)
 
         nowPlaying.$track
-            .sink { [weak self] track in self?.model.track = track }
+            .sink { [weak self] track in
+                self?.model.track = track
+                // Cheap when the song hasn't changed — the store keys on the
+                // song, not on the position, so a re-sync is a no-op.
+                self?.lyrics.load(for: track)
+            }
+            .store(in: &cancellables)
+
+        lyrics.$lines
+            .sink { [weak self] lines in self?.model.lyrics = lines }
             .store(in: &cancellables)
 
         // Kept separate from `track` on purpose: idle only silences the

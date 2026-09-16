@@ -41,6 +41,17 @@ final class NotchModel: ObservableObject {
     /// Mirrors `AudioSpectrumSource.beat`. Increments once per detected beat.
     @Published var beat = 0
 
+    /// Synced lyrics for the current track, when LRCLIB has them.
+    @Published var lyrics: [LyricLine]?
+
+    /// The expanded panel grows a row when there are lyrics to show. Lives on
+    /// the model because `NotchPanelController` needs the same number for its
+    /// hover rect — a panel that is taller than its hot zone closes under the
+    /// cursor the moment it reaches the lyrics.
+    var expandedHeight: CGFloat {
+        NotchView.expandedHeight + (lyrics == nil ? 0 : NotchView.lyricsHeight)
+    }
+
     /// The collapsed pill carries artwork and waveform only while playback is
     /// live. Idle, it shrinks back to the bare cutout — but `track` is still
     /// there, so hovering brings up the last song and its play button.
@@ -71,7 +82,10 @@ struct NotchView: View {
 
     static let expandedWidth: CGFloat = 470
     /// Tall enough to seat the content below the cutout without cramping it.
+    /// The base height, without lyrics — see `NotchModel.expandedHeight`.
     static let expandedHeight: CGFloat = 190
+    /// Three lines of lyric and the breathing room around them.
+    static let lyricsHeight: CGFloat = 58
 
     /// One spring, one clock.
     ///
@@ -105,7 +119,7 @@ struct NotchView: View {
 
     private var size: CGSize {
         model.isExpanded
-            ? CGSize(width: Self.expandedWidth, height: Self.expandedHeight)
+            ? CGSize(width: Self.expandedWidth, height: model.expandedHeight)
             // Idle shrinks the pill back to the bare cutout, not just blacks it
             // out — an idle pill that keeps the full playing width stays
             // visibly longer than the hardware notch.
@@ -318,6 +332,26 @@ struct NotchView: View {
     // MARK: Expanded — artwork, metadata, scrubber, transport
 
     private var expanded: some View {
+        VStack(spacing: 0) {
+            expandedMain
+            if let lyrics = model.lyrics {
+                LyricsView(lines: lyrics, track: model.track)
+                    .frame(height: Self.lyricsHeight - 8)
+                    .padding(.top, 8)
+                    .transition(Self.crossfade)
+            }
+        }
+        // Clear the hardware cutout. The expanded panel is centred and wider
+        // than the notch, but its top strip runs *behind* the notch, where
+        // there is no screen at all. Anything drawn there — the title, in
+        // practice — simply doesn't exist. Start below it.
+        .padding(.top, notchSize.height + 6)
+        .padding(.bottom, 18)
+        // Laid out at the final width from frame one — see `clipShape` above.
+        .frame(width: Self.expandedWidth - 40, alignment: .leading)
+    }
+
+    private var expandedMain: some View {
         HStack(spacing: 16) {
             artwork(size: 92)
 
@@ -364,14 +398,6 @@ struct NotchView: View {
                 }
             }
         }
-        // Clear the hardware cutout. The expanded panel is centred and wider
-        // than the notch, but its top strip runs *behind* the notch, where
-        // there is no screen at all. Anything drawn there — the title, in
-        // practice — simply doesn't exist. Start below it.
-        .padding(.top, notchSize.height + 6)
-        .padding(.bottom, 18)
-        // Laid out at the final width from frame one — see `clipShape` above.
-        .frame(width: Self.expandedWidth - 40, alignment: .leading)
     }
 
     /// Commands go to whichever player the current track came from, so this is
@@ -780,5 +806,52 @@ struct SpectrumBars: View {
         // rather than bars pulsing in unison.
         let phase = time * 3.2 + Double(bar) * 0.9
         return 0.35 + 0.65 * abs(sin(phase))
+    }
+}
+
+/// Three lines of lyric: the one being sung, bright, with its neighbours dimmed
+/// either side. Slides up a line as the song moves on.
+struct LyricsView: View {
+    var lines: [LyricLine]
+    var track: Track?
+
+    var body: some View {
+        // Ten times a second is plenty for something that changes every few
+        // seconds, and it is only built while the panel is open.
+        TimelineView(.animation(minimumInterval: 1 / 10,
+                                paused: track?.isPlaying != true)) { context in
+            let position = track?.position(at: context.date) ?? 0
+            let index = LyricsStore.index(in: lines, at: position)
+            rows(around: index)
+                // Keyed on the index, so each new line is a fresh view that
+                // slides in rather than the old text morphing into the new.
+                .id(index)
+                .transition(.asymmetric(
+                    insertion: .move(edge: .bottom).combined(with: .opacity),
+                    removal: .move(edge: .top).combined(with: .opacity)
+                ))
+                .animation(.spring(response: 0.35, dampingFraction: 0.85), value: index)
+        }
+        .clipped()
+    }
+
+    private func rows(around index: Int?) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            row(at: (index ?? 0) - 1, dim: true)
+            row(at: index, dim: false)
+            row(at: (index ?? -1) + 1, dim: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func row(at index: Int?, dim: Bool) -> some View {
+        let text = index.flatMap { lines.indices.contains($0) ? lines[$0].text : nil } ?? ""
+        Text(text.isEmpty ? "\u{2026}" : text)
+            .font(.system(size: dim ? 11 : 13, weight: dim ? .regular : .semibold))
+            .foregroundStyle(.white.opacity(dim ? 0.38 : 0.95))
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .frame(height: 15)
     }
 }

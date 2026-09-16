@@ -42,7 +42,8 @@ keychain; `build.sh` uses it when present.
 | `NotchPanel.swift` | Borderless `NSPanel` above the menu bar, repositions on display changes |
 | `NowPlaying.swift` | Reads Spotify/Music over AppleScript, driven by their change notifications; interpolates the playhead between syncs |
 | `AudioSpectrum.swift` | ScreenCaptureKit audio tap → Hann window → `vDSP_fft_zrip` → 32 log-spaced bands → beat detection |
-| `NotchView.swift` | Collapsed and expanded SwiftUI states with a spring between them; spectrum bars; beat pulse |
+| `Lyrics.swift` | Synced lyrics from LRCLIB, LRC parsing, on-disk cache |
+| `NotchView.swift` | Collapsed and expanded SwiftUI states with a spring between them; spectrum bars; beat pulse; lyrics row |
 | `ResonataApp.swift` | Wires it together, sets `.accessory` activation policy |
 | `setup-signing.sh` | One-time: creates the "Resonata Dev" signing identity |
 
@@ -148,11 +149,12 @@ it. NotchNook itself is closed source.
 - Live progress bar interpolated between syncs — `Track.position(at:)`
 - Click-and-drag scrubbing
 - Real audio-reactive visualizer, with beat detection
+- Synced lyrics: LRCLIB `/get` with an exact match, falling back to `/search`
+  on title and artist; the expanded panel grows a three-line row when a song
+  has them. Cached under `~/Library/Caches/com.local.resonata/lyrics/`.
 
 ## Next steps
 
-- Synced lyrics (LRCLIB is free and keyless; the interpolated playhead is
-  exactly what makes line-by-line highlighting stay in time)
 - Swap in `mediaremote-adapter` for titles and artwork from every source
 - Core Audio process taps (macOS 14.4+) instead of ScreenCaptureKit: tap only
   the player's audio, under the lighter audio-recording permission

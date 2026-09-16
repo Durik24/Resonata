@@ -11,7 +11,7 @@ mkdir -p "$APP/Contents/MacOS"
 
 swiftc -O -target "$(uname -m)-apple-macos14.0" \
     -o "$APP/Contents/MacOS/Resonata" \
-    AudioSpectrum.swift NotchPanel.swift NotchShape.swift ResonataApp.swift \
+    AudioSpectrum.swift Lyrics.swift NotchPanel.swift NotchShape.swift ResonataApp.swift \
     NotchView.swift NowPlaying.swift ScreenGeometry.swift
 
 cat > "$APP/Contents/Info.plist" <<'PLIST'

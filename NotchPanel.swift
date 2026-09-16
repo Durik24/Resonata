@@ -52,7 +52,9 @@ final class NotchPanelController {
     /// resizing an NSWindow every frame looks terrible, animating a SwiftUI
     /// shape inside a fixed window looks like Apple did it.
     static let canvasWidth: CGFloat = 640
-    static let canvasHeight: CGFloat = 220
+    /// Room for the expanded panel at its tallest — with lyrics — plus the
+    /// beat pulse, which scales it a little past that.
+    static let canvasHeight: CGFloat = 280
 
     private var panel: NotchPanel?
     private let model: NotchModel
@@ -249,7 +251,7 @@ final class NotchPanelController {
         guard let screen = targetScreen, !screen.isShowingFullScreenApp else { return }
 
         let size = model.isExpanded
-            ? CGSize(width: NotchView.expandedWidth, height: NotchView.expandedHeight)
+            ? CGSize(width: NotchView.expandedWidth, height: model.expandedHeight)
             : CGSize(width: screen.notchSize.width
                         + (model.showsCollapsedContent
                             ? NotchMetrics.collapsedContentWidth : 0),
