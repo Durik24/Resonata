@@ -43,6 +43,38 @@ final class NotchPanel: NSPanel {
     override var canBecomeMain: Bool { false }
 }
 
+/// Content view that reports the pointer the instant it moves over the window.
+///
+/// A polling timer can only ever notice the pointer on its next tick; a
+/// tracking area is told by the window server the moment the pointer crosses
+/// in. `.activeAlways` is what makes it fire for an app that is never active,
+/// and `.inVisibleRect` keeps the area matched to the view through every
+/// resize without rebuilding it by hand.
+///
+/// Enter, exit and move all funnel into one callback, and that callback must
+/// *not* be "expand on enter, collapse on exit": expanding resizes the window,
+/// which resets the tracking area and emits an exit the pointer never made.
+/// The callback runs the same pointer-versus-rect test the timer runs, so a
+/// phantom exit looks at where the pointer actually is and does nothing.
+final class HoverReportingView: NSView {
+    var onPointer: (() -> Void)?
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        for area in trackingAreas { removeTrackingArea(area) }
+        addTrackingArea(NSTrackingArea(
+            rect: .zero,
+            options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        ))
+    }
+
+    override func mouseEntered(with event: NSEvent) { onPointer?() }
+    override func mouseExited(with event: NSEvent) { onPointer?() }
+    override func mouseMoved(with event: NSEvent) { onPointer?() }
+}
+
 /// Owns the panel and keeps it glued to the notch across display changes.
 @MainActor
 final class NotchPanelController {
@@ -97,7 +129,17 @@ final class NotchPanelController {
         model.switchScreen = { [weak self] in self?.moveToNextScreen() }
 
         let panel = NotchPanel(contentRect: frame(for: screen))
-        panel.contentView = NSHostingView(rootView: NotchView(model: model))
+        let hosting = NSHostingView(rootView: NotchView(model: model))
+        let container = HoverReportingView(frame: hosting.frame)
+        container.autoresizesSubviews = true
+        hosting.autoresizingMask = [.width, .height]
+        container.addSubview(hosting)
+        panel.contentView = container
+        hosting.frame = container.bounds
+        // Instant path. The monitors and the timer below are the backstops.
+        container.onPointer = { [weak self] in
+            MainActor.assumeIsolated { self?.updateHover() }
+        }
         self.panel = panel
         // Starts hidden: nothing is playing yet at launch.
         updateVisibility()
@@ -167,8 +209,8 @@ final class NotchPanelController {
         )
         if let local { mouseMonitors.append(local) }
 
-        // Polling the pointer is what actually drives hover; the monitors above
-        // are only there to make it feel instant.
+        // The tracking area on the content view is what makes hover instant;
+        // polling the pointer is the backstop that makes it *reliable*.
         //
         // Neither monitor can see the moment that matters. A *global* monitor
         // by definition doesn't receive events delivered to our own app — and
