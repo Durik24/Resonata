@@ -221,6 +221,21 @@ final class NotchPanelController {
             clickMonitors.append(monitor)
         }
 
+        // Debug: `com.local.resonata.toggle` opens or closes the panel from
+        // outside, so the open can be driven and photographed from a script.
+        if NotchPanel.debugClick {
+            DistributedNotificationCenter.default().addObserver(
+                forName: Notification.Name("com.local.resonata.toggle"), object: nil, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    let opening = !self.model.isExpanded
+                    self.setExpanded(opening)
+                    if opening { self.debugSnapshots() }
+                }
+            }
+        }
+
         // Full-screen state is polled: the space-change notification fires at
         // the *start* of the transition,
         // when the window hasn't resized yet, so a single check right then sees
@@ -326,7 +341,7 @@ final class NotchPanelController {
         let dir = ProcessInfo.processInfo.environment["RESONATA_DEBUG_DIR"] ?? NSTemporaryDirectory()
         let t0 = CFAbsoluteTimeGetCurrent()
         let tag = Int(t0) % 1000
-        for delay in [0.1, 0.5, 1.0, 2.0, 3.0, 4.0, 6.0] {
+        for delay in [0.05, 0.15, 0.3, 0.6, 1.5] {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
                 MainActor.assumeIsolated {
                     guard let self, let panel = self.panel, let view = panel.contentView else { return }
@@ -338,7 +353,7 @@ final class NotchPanelController {
                     guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
                     view.cacheDisplay(in: view.bounds, to: rep)
                     if let png = rep.representation(using: .png, properties: [:]) {
-                        let url = URL(fileURLWithPath: dir).appendingPathComponent(String(format: "snap-%03d-%.1fs.png", tag, delay))
+                        let url = URL(fileURLWithPath: dir).appendingPathComponent(String(format: "snap-%03d-%.2fs.png", tag, delay))
                         try? png.write(to: url)
                     }
                 }

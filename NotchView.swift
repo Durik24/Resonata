@@ -207,7 +207,14 @@ struct NotchView: View {
                 content
                     .padding(.horizontal, model.isExpanded ? 20 : 6)
             }
-            .frame(width: size.width, height: size.height)
+            // Not a plain `.frame(width:height:)`. That reports its *final*
+            // size to the parent and renders the *animated* size centred in
+            // that slot — so on open the pill sat at the centre of where the
+            // panel would end up and grew toward the top, visibly detached
+            // from the notch. `AnimatedFrame` interpolates through layout, so
+            // the parent places the shape at the top using its real size on
+            // every frame.
+            .modifier(AnimatedFrame(size: size))
             // Both states are laid out at their final size and clipped, so the
             // content is revealed by the growing box rather than re-laid-out on
             // every frame of it. Without this the title truncates and un-
@@ -921,5 +928,26 @@ struct LyricsView: View {
             .lineLimit(1)
             .truncationMode(.tail)
             .frame(height: 15)
+    }
+}
+
+/// A `.frame(width:height:)` whose size interpolates *through layout*.
+///
+/// SwiftUI animates an ordinary frame by rendering the interpolated size
+/// inside the slot the parent allotted for the final size — centred. For a
+/// shape that must stay glued to the top edge of the screen, that is exactly
+/// wrong. An `Animatable` modifier re-runs its body with the interpolated
+/// value on every frame, so the parent lays the view out at its current size
+/// and top alignment holds throughout.
+struct AnimatedFrame: ViewModifier, Animatable {
+    var size: CGSize
+
+    var animatableData: AnimatablePair<CGFloat, CGFloat> {
+        get { AnimatablePair(size.width, size.height) }
+        set { size = CGSize(width: newValue.first, height: newValue.second) }
+    }
+
+    func body(content: Content) -> some View {
+        content.frame(width: size.width, height: size.height)
     }
 }
