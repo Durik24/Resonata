@@ -413,7 +413,7 @@ final class NotchPanelController {
     }
 
     private func apply(expanded: Bool, hasTrack: Bool) {
-        guard let panel, targetScreen != nil else { return }
+        guard panel != nil, targetScreen != nil else { return }
 
         shrink?.cancel()
 
