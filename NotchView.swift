@@ -115,10 +115,16 @@ struct NotchView: View {
     /// all until something unrelated woke it (see `NotchPanelController`).
     /// With rendering fixed, a 0.22s spring is what the open should feel like.
     ///
-    /// Currently a hard cut by request: the panel is at its final size on the
-    /// next frame. Put a spring back here (0.22s, damping 0.86 read well) to
-    /// animate it; every `.animation(_, value:)` site stays as it is.
-    private static let expand = Animation.linear(duration: 0.0001)
+    /// Opening and closing are deliberately *not* animated: nothing is keyed
+    /// on `isExpanded`, so the panel is at its final size on the next frame.
+    /// Everything else that changes size — the pill widening for a track,
+    /// narrowing when it stops, the lyrics row arriving — settles on this.
+    /// To animate the open as well, key one more `.animation(settle, value:)`
+    /// on `model.isExpanded` where the others are.
+    private static let settle = Animation.spring(response: 0.3, dampingFraction: 0.85)
+
+    /// Fades for content swapping in place: artwork, titles, glyphs.
+    private static let fade = Animation.easeInOut(duration: 0.25)
 
     /// The content swap is a crossfade, deliberately *not* a spring. A scale or
     /// slide transition here competes with the box stretching underneath it,
@@ -216,18 +222,13 @@ struct NotchView: View {
             // click-through so you can still reach the menu bar beside it.
             // Same radii as the drawn shape, or the hit area lags the visual.
             .contentShape(shape)
-            // The single animation source, applied *here* — to the shape and
-            // its contents — and not at the root. Keyed on `size` rather than
-            // `isExpanded` so a track appearing while collapsed widens smoothly
-            // too.
-            //
-            // It used to sit on the root, below the frame that fills the
-            // window. That frame's height jumps 32 → 280 when the window grows,
-            // and animating it meant a 32pt-tall frame growing inside a 280pt
-            // window — centred, as any undersized frame is — so the whole
-            // panel began in the middle of the window and slid up to the top
-            // as it grew. That was the "pops up from the bottom".
-            .animation(Self.expand, value: size)
+            // Size animations live *here*, on the shape, and never at the
+            // root: the root frame fills the window, whose height jumps
+            // 32 → 280 on open, and animating that frame centred the whole
+            // panel mid-window and slid it up. Keyed on what changes size
+            // while the panel stays in one state — never on `isExpanded`.
+            .animation(Self.settle, value: model.showsCollapsedContent)
+            .animation(Self.settle, value: model.showsLyricsRow)
             // Opening and closing are both handled in AppKit — see
             // `NotchPanel.onMouseDown` and the global monitor in the
             // controller. Nothing here reacts to clicks; the buttons and the
@@ -324,6 +325,8 @@ struct NotchView: View {
                         .foregroundStyle(.white.opacity(0.9))
                         .lineLimit(1)
                         .truncationMode(.tail)
+                        .contentTransition(.opacity)
+                        .animation(Self.fade, value: model.track?.title)
                     Spacer(minLength: 8)
                     waveform
                 }
@@ -334,6 +337,7 @@ struct NotchView: View {
         // from the edges; the pill itself keeps its size.
         .frame(width: collapsedContentWidth)
         .opacity(model.showsCollapsedContent ? 1 : 0)
+        .animation(Self.fade, value: model.showsCollapsedContent)
     }
 
     /// Usable width inside the collapsed pill, once the padding and the inset
@@ -378,9 +382,10 @@ struct NotchView: View {
                 LyricsView(lines: model.lyrics ?? [], track: model.track)
                     .frame(height: Self.lyricsHeight - 8)
                     .padding(.top, 8)
-                    .transition(Self.crossfade)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
+        .animation(Self.settle, value: model.showsLyricsRow)
         // Clear the hardware cutout. The expanded panel is centred and wider
         // than the notch, but its top strip runs *behind* the notch, where
         // there is no screen at all. Anything drawn there — the title, in
@@ -399,10 +404,14 @@ struct NotchView: View {
                 Text(model.track?.title ?? "Nothing playing")
                     .font(.system(size: 15, weight: .semibold))
                     .lineLimit(1)
+                    .contentTransition(.opacity)
+                    .animation(Self.fade, value: model.track?.title)
                 Text(model.track?.artist ?? "")
                     .font(.system(size: 12))
                     .foregroundStyle(.white.opacity(0.55))
                     .lineLimit(1)
+                    .contentTransition(.opacity)
+                    .animation(Self.fade, value: model.track?.artist)
 
                 progress
                     .padding(.top, 10)
@@ -578,9 +587,12 @@ struct NotchView: View {
         Group {
             if let image = model.artwork {
                 Image(nsImage: image).resizable().scaledToFill()
+                    .transition(.opacity)
+                    .id(model.track?.artworkURL)
             } else if model.track?.artworkURL != nil {
                 // Loading. Same shape as the art so nothing shifts when it lands.
                 Color.white.opacity(0.1)
+                    .transition(.opacity)
             } else {
                 ZStack {
                     Color.white.opacity(0.1)
@@ -589,6 +601,8 @@ struct NotchView: View {
                 }
             }
         }
+        .animation(Self.fade, value: model.artwork == nil)
+        .animation(Self.fade, value: model.track?.artworkURL)
         .frame(width: size, height: size)
         // Spotify's album art is barely rounded — roughly a 0.07 ratio. The
         // 0.22 this started with reads as a squircle app icon, not a record.
@@ -606,6 +620,9 @@ struct NotchView: View {
             Image(systemName: symbol)
                 .font(.system(size: 15, weight: .medium))
                 .foregroundStyle(.white)
+                // play ⇄ pause morphs rather than snapping.
+                .contentTransition(.symbolEffect(.replace))
+                .animation(Self.fade, value: symbol)
                 // A 15pt glyph is a tiny target; pad the hit area out to
                 // something you can actually hit without aiming.
                 .frame(width: 30, height: 26)
