@@ -412,8 +412,16 @@ final class NotchPanelController {
 
     private func reposition(expanded: Bool, hasTrack: Bool) {
         guard let panel, let screen = targetScreen else { return }
+        // `display: false`, deliberately. With `true`, AppKit repainted the
+        // resized window at once with SwiftUI's *previous* content — and its
+        // layers anchor bottom-left, so the old pill flashed at the bottom of
+        // the grown window for a frame before SwiftUI moved it to the top and
+        // began the spring: a visible jump from below. Leaving the display to
+        // SwiftUI's own pass, a moment later, draws the first frame of the new
+        // state straight into the new frame.
         panel.setFrame(frame(for: screen, expanded: expanded, hasTrack: hasTrack),
-                       display: true)
+                       display: false)
+        panel.contentView?.needsLayout = true
     }
 
     private func frame(
