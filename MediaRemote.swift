@@ -36,6 +36,7 @@ final class MediaRemoteNowPlaying: ObservableObject, NowPlayingSource {
     private var artworkKey: String?
     private var artworkURL: URL?
     private var startupTimer: Timer?
+    private var idleTimer: Timer?
 
     /// How long a paused track stays on screen before it's dropped — the same
     /// rule as the AppleScript source, for the same reasons.
@@ -114,6 +115,8 @@ final class MediaRemoteNowPlaying: ObservableObject, NowPlayingSource {
     func stop() {
         startupTimer?.invalidate()
         startupTimer = nil
+        idleTimer?.invalidate()
+        idleTimer = nil
         if let process, process.isRunning { process.terminate() }
         process = nil
         if Self.active === self { Self.active = nil }
@@ -158,10 +161,25 @@ final class MediaRemoteNowPlaying: ObservableObject, NowPlayingSource {
 
         // Same idle rule as the AppleScript source: a paused track stays for
         // a while, so the pill doesn't vanish the moment you pause to talk.
+        //
+        // Unlike that source, nothing here polls: a paused player sends no
+        // further payloads, so the question "paused long enough yet?" would
+        // never be asked again and the pill never went idle. The timer asks
+        // it once the timeout has passed.
+        idleTimer?.invalidate()
+        idleTimer = nil
         if let t = track, !t.isPlaying {
             let since = pausedSince ?? Date()
             pausedSince = since
-            isIdle = Date().timeIntervalSince(since) > Self.pausedTimeout
+            let elapsed = Date().timeIntervalSince(since)
+            isIdle = elapsed > Self.pausedTimeout
+            if !isIdle {
+                idleTimer = Timer.scheduledTimer(
+                    withTimeInterval: Self.pausedTimeout - elapsed + 0.1, repeats: false
+                ) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.apply() }
+                }
+            }
         } else {
             pausedSince = nil
             isIdle = false
