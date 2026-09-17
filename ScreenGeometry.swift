@@ -117,12 +117,25 @@ extension NSScreen {
 
         // CGWindow bounds are top-left origin, anchored to the primary display;
         // NSScreen is bottom-left origin. Flip before comparing.
-        let target = CGRect(
+        let whole = CGRect(
             x: frame.minX,
             y: primary.frame.maxY - frame.maxY,
             width: frame.width,
             height: frame.height
         )
+
+        // On a display with a notch, a full-screen window normally does *not*
+        // cover the whole display: macOS keeps the strip beside the cutout
+        // black and sizes the window below it, `safeAreaInsets.top` short.
+        // (Apps can opt into the cutout area; then they match `whole`.) Both
+        // shapes mean "this display belongs to one app now".
+        let belowNotch = CGRect(
+            x: whole.minX,
+            y: whole.minY + safeAreaInsets.top,
+            width: whole.width,
+            height: whole.height - safeAreaInsets.top
+        )
+        let targets = safeAreaInsets.top > 0 ? [whole, belowNotch] : [whole]
 
         guard let windows = CGWindowListCopyWindowInfo(
             [.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID
@@ -137,10 +150,12 @@ extension NSScreen {
             else { return false }
 
             let tolerance: CGFloat = 2
-            return abs(bounds.minX - target.minX) < tolerance
-                && abs(bounds.minY - target.minY) < tolerance
-                && abs(bounds.width - target.width) < tolerance
-                && abs(bounds.height - target.height) < tolerance
+            return targets.contains { target in
+                abs(bounds.minX - target.minX) < tolerance
+                    && abs(bounds.minY - target.minY) < tolerance
+                    && abs(bounds.width - target.width) < tolerance
+                    && abs(bounds.height - target.height) < tolerance
+            }
         }
     }
 
