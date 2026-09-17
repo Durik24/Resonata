@@ -235,7 +235,10 @@ final class MediaRemoteNowPlaying: ObservableObject, NowPlayingSource {
     }
 
     nonisolated func seek(to position: TimeInterval) {
-        Self.run(["seek", String(format: "%.3f", max(0, position))])
+        // An integer number of *microseconds* — the adapter divides by a
+        // million itself. Seconds with a decimal point parse as nothing and
+        // seek to zero.
+        Self.run(["seek", String(Int((max(0, position) * 1_000_000).rounded()))])
     }
 
     private nonisolated static func run(_ arguments: [String]) {
