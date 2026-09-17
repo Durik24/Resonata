@@ -98,6 +98,7 @@ final class NotchPanelController {
     private var clickMonitors: [Any] = []
     private var visibilityTimer: Timer?
     private var wasExpanded = false
+    private var wasShowingContent = false
 
     /// Whether a full-screen app owns the target display, as of the last
     /// visibility check. Cached because the check walks the window server's
@@ -127,8 +128,16 @@ final class NotchPanelController {
                 if !self.model.isExpanded {
                     // Collapsed, the window is exactly the pill: any click is
                     // a click on it.
+                    //
+                    // Set on the next run-loop pass, not inside the event
+                    // dispatch. Published from within `sendEvent`, the change
+                    // resized the window at once but SwiftUI didn't re-render
+                    // for seconds — until some unrelated publish woke it. From
+                    // outside the dispatch it renders on the next frame; the
+                    // explicit layout below makes sure of it.
                     if NotchPanel.debugClick { NSLog("click: EXPAND") }
-                    self.model.isExpanded = true
+                    self.setExpanded(true)
+                    if NotchPanel.debugClick { self.debugSnapshots() }
                 } else if !self.expandedShapeRect.contains(location) {
                     // Expanded, the window is a 640x280 canvas and the panel
                     // is drawn in the top-centre of it. A click in the
@@ -136,7 +145,7 @@ final class NotchPanelController {
                     // sees it — but to the user it is plainly a click outside
                     // the panel, and it should close it like one.
                     if NotchPanel.debugClick { NSLog("click: in the margin -> COLLAPSE") }
-                    self.model.isExpanded = false
+                    self.setExpanded(false)
                 }
             }
         }
@@ -192,7 +201,7 @@ final class NotchPanelController {
             MainActor.assumeIsolated {
                 guard let self, self.model.isExpanded else { return }
                 if NotchPanel.debugClick { NSLog("click: outside -> COLLAPSE") }
-                self.model.isExpanded = false
+                self.setExpanded(false)
             }
         }
         if let monitor = NSEvent.addGlobalMonitorForEvents(
@@ -279,6 +288,54 @@ final class NotchPanelController {
         if model.canSwitchScreens != multiple { model.canSwitchScreens = multiple }
     }
 
+    /// Applies an expand/collapse from outside the current event dispatch and
+    /// makes the hosting view lay out at once.
+    ///
+    /// Published from *within* an event handler — `sendEvent`, or a monitor
+    /// callback — the change resized the window immediately but SwiftUI did
+    /// not re-render for seconds, until some unrelated publish woke it. From
+    /// the next run-loop pass it renders on the next frame, and the explicit
+    /// layout removes any remaining doubt.
+    private func setExpanded(_ expanded: Bool) {
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, self.model.isExpanded != expanded else { return }
+                self.model.isExpanded = expanded
+                self.panel?.contentView?.needsLayout = true
+                self.panel?.contentView?.layoutSubtreeIfNeeded()
+                self.panel?.displayIfNeeded()
+            }
+        }
+    }
+
+    /// Debug: photograph our own content view at fixed delays after an open,
+    /// and log the window's frame and visibility at each. Shows whether the
+    /// app has *drawn* the expanded panel when it thinks it has — the window
+    /// is ours, so this needs no permission.
+    private func debugSnapshots() {
+        let dir = ProcessInfo.processInfo.environment["RESONATA_DEBUG_DIR"] ?? NSTemporaryDirectory()
+        let t0 = CFAbsoluteTimeGetCurrent()
+        let tag = Int(t0) % 1000
+        for delay in [0.1, 0.5, 1.0, 2.0, 3.0, 4.0, 6.0] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                MainActor.assumeIsolated {
+                    guard let self, let panel = self.panel, let view = panel.contentView else { return }
+                    let dt = CFAbsoluteTimeGetCurrent() - t0
+                    NSLog("snap +%.2fs: expanded=%d frame=%@ visible=%d onScreen=%d occlusion=%lu",
+                          dt, self.model.isExpanded ? 1 : 0, NSStringFromRect(panel.frame),
+                          panel.isVisible ? 1 : 0, panel.isOnActiveSpace ? 1 : 0,
+                          panel.occlusionState.rawValue)
+                    guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
+                    view.cacheDisplay(in: view.bounds, to: rep)
+                    if let png = rep.representation(using: .png, properties: [:]) {
+                        let url = URL(fileURLWithPath: dir).appendingPathComponent(String(format: "snap-%03d-%.1fs.png", tag, delay))
+                        try? png.write(to: url)
+                    }
+                }
+            }
+        }
+    }
+
     /// Where the expanded panel is drawn, in window coordinates: top-centre
     /// of the canvas, the size the view draws it at.
     private var expandedShapeRect: NSRect {
@@ -316,12 +373,17 @@ final class NotchPanelController {
         // clipped, and then the window snapped out to catch up. That snap is
         // the jump you see when you hit play in Spotify.
         let closingAfterExpand = wasExpanded && !expanded
+        // The pill narrowing when playback stops is a shrink too. Resizing the
+        // window first moved its origin to the right while the content was
+        // still drawn wide — the pill visibly jumped sideways, then shrank.
+        let losingContent = !expanded && wasShowingContent && !hasTrack
         wasExpanded = expanded
+        wasShowingContent = hasTrack
 
         // Grow immediately — the SwiftUI spring needs the room to animate into,
         // and the extra area is transparent anyway. Shrink only once the
         // collapse has finished playing, or we'd clip our own animation.
-        if expanded || !closingAfterExpand {
+        if expanded || !(closingAfterExpand || losingContent) {
             reposition(expanded: expanded, hasTrack: hasTrack)
         } else {
             let work = DispatchWorkItem { [weak self] in

@@ -357,6 +357,9 @@ struct NotchView: View {
     private var expanded: some View {
         VStack(spacing: 0) {
             expandedMain
+                .onAppear {
+                    if NotchPanel.debugClick { NSLog("click: expanded body APPEARED") }
+                }
             if model.showsLyricsRow {
                 LyricsView(lines: model.lyrics ?? [], track: model.track)
                     .frame(height: Self.lyricsHeight - 8)
