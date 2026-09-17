@@ -212,6 +212,18 @@ struct NotchView: View {
             // click-through so you can still reach the menu bar beside it.
             // Same radii as the drawn shape, or the hit area lags the visual.
             .contentShape(shape)
+            // The single animation source, applied *here* — to the shape and
+            // its contents — and not at the root. Keyed on `size` rather than
+            // `isExpanded` so a track appearing while collapsed widens smoothly
+            // too.
+            //
+            // It used to sit on the root, below the frame that fills the
+            // window. That frame's height jumps 32 → 280 when the window grows,
+            // and animating it meant a 32pt-tall frame growing inside a 280pt
+            // window — centred, as any undersized frame is — so the whole
+            // panel began in the middle of the window and slid up to the top
+            // as it grew. That was the "pops up from the bottom".
+            .animation(Self.expand, value: size)
             // Opening and closing are both handled in AppKit — see
             // `NotchPanel.onMouseDown` and the global monitor in the
             // controller. Nothing here reacts to clicks; the buttons and the
@@ -220,9 +232,6 @@ struct NotchView: View {
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        // The single animation source. Keyed on `size` rather than `isExpanded`
-        // so a track appearing while collapsed widens smoothly too.
-        .animation(Self.expand, value: size)
         // Keyed on the artwork URL, so it runs once per track rather than on
         // every one-second poll.
         .task(id: model.track?.artworkURL) {
