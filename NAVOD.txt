@@ -119,8 +119,8 @@ KROK 7 — Vyzkoušej ovládání
                                  vpravo výšky
   - Každá doba (kopák)           notch se o pár bodů nadechne a
                                  barva obalu na okamžik zjasní
-  - Zvuk z prohlížeče            sloupce reagují i bez Spotify;
-                                 název a obal se ale nezobrazí
+  - Zvuk z prohlížeče            funguje jako každý jiný přehrávač:
+                                 název, obal, tlačítka i posuvník
   - Klikni na notch              rozbalí se velký panel, dole
                                  běží celé 32sloupcové spektrum
   - Text písně                   když ho LRCLIB zná, panel se
@@ -256,6 +256,8 @@ ResonataApp.swift      start aplikace, skrytí ikony z Docku
 AudioSpectrum.swift    poslech zvuku (ScreenCaptureKit), FFT,
                        rozdělení do pásem, detekce dob
 Lyrics.swift           stažení textu z LRCLIB, parsování LRC, cache
+MediaRemote.swift      název/obal/ovládání pro libovolný přehrávač
+Vendor/                mediaremote-adapter (BSD-3), sestavuje build.sh
 setup-signing.sh       jednorázový podpisový certifikát
 NotchPanel.swift       okno nad menu barem, sledování myši,
                        přepínání displejů, skrývání ve fullscreenu
@@ -271,11 +273,12 @@ build.sh               sestavení bez Xcode projektu
 ZNÁMÁ OMEZENÍ
 ────────────────────────────────────────────────────────────────
 
-- Název a obal čte jen ze Spotify a Apple Music. U hudby
-  z prohlížeče nebo VLC sloupce reagují (zvuk je zvuk), ale název
-  a obal se nezobrazí. Od macOS 15.4 Apple uzavřel systémové
-  rozhraní MediaRemote jen pro vlastní procesy, takže se musí
-  mluvit přímo s přehrávači.
+- Název a obal teď čte pro jakýkoliv přehrávač (YouTube v prohlížeči,
+  VLC, podcasty) přes systémové rozhraní MediaRemote. Apple ho od
+  macOS 15.4 uzavřel pro cizí procesy, ale /usr/bin/perl je Applem
+  podepsaný — aplikace ho tedy spouští s malým rámcem (Vendor/
+  mediaremote-adapter) a čte výstup. Když to na nějakém macOS
+  nefunguje, spadne to samo zpět na Spotify/Music přes AppleScript.
 
 - U černobílých obalů zůstane panel černý bez barevného nádechu.
   Je to záměr — vymýšlet barvu, která v obalu není, dopadá špatně.

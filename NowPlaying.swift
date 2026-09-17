@@ -452,7 +452,18 @@ enum TransportCommand: String {
     case previous = "previous track"
 }
 
+@MainActor
 func transport(_ command: TransportCommand, in app: String) {
+    // With MediaRemote streaming, commands go through it: it reaches every
+    // player, not just the two with AppleScript dictionaries.
+    if let adapter = MediaRemoteNowPlaying.active {
+        switch command {
+        case .playPause: adapter.send(.togglePlayPause)
+        case .next: adapter.send(.nextTrack)
+        case .previous: adapter.send(.previousTrack)
+        }
+        return
+    }
     let script = "tell application \"\(app)\" to \(command.rawValue)"
     Task.detached(priority: .userInitiated) {
         var error: NSDictionary?
@@ -470,7 +481,13 @@ func transport(_ command: TransportCommand, in app: String) {
 ///
 /// Runs off the main thread: `NSAppleScript` blocks, and a scrub sends one of
 /// these per drag update.
+@MainActor
 func seek(to position: TimeInterval, in app: String) {
+    if let adapter = MediaRemoteNowPlaying.active {
+        adapter.seek(to: position)
+        NotificationCenter.default.post(name: .resonataDidCommandPlayer, object: nil)
+        return
+    }
     let clamped = max(0, position)
     // %.3f formats POSIX-style regardless of locale. Handing AppleScript a
     // comma-separated number here would be a syntax error.

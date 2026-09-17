@@ -44,6 +44,8 @@ keychain; `build.sh` uses it when present.
 | `NowPlaying.swift` | Reads Spotify/Music over AppleScript, driven by their change notifications; interpolates the playhead between syncs |
 | `AudioSpectrum.swift` | ScreenCaptureKit audio tap → Hann window → `vDSP_fft_zrip` → 32 log-spaced bands → beat detection |
 | `Lyrics.swift` | Synced lyrics from LRCLIB, LRC parsing, on-disk cache |
+| `MediaRemote.swift` | System-wide now-playing via the vendored adapter; transport and seek for any player; AppleScript fallback |
+| `Vendor/mediaremote-adapter/` | BSD-3 sources of the adapter, built into the bundle by `build.sh` |
 | `NotchView.swift` | Collapsed and expanded SwiftUI states with a spring between them; spectrum bars; beat pulse; lyrics row |
 | `ResonataApp.swift` | Wires it together, sets `.accessory` activation policy |
 | `setup-signing.sh` | One-time: creates the "Resonata Dev" signing identity |
@@ -145,6 +147,17 @@ it. NotchNook itself is closed source.
   `com.apple.iTunes.playerInfo`); listen for those and poll only as a slow
   safety net. Interpolate the playhead in between.
 
+## Now-playing for every player
+
+`MediaRemote.swift` runs the vendored [mediaremote-adapter](Vendor/mediaremote-adapter)
+(`/usr/bin/perl` loading a small framework built by `build.sh`) and streams
+MediaRemote's own now-playing state: title, artist, album, position, play
+state and artwork for *any* app — a YouTube tab, VLC, a podcast player. The
+transport buttons and the scrubber go through it too, so they work for those
+apps. If the adapter can't start or MediaRemote doesn't answer on a given
+macOS, the app falls back to the AppleScript source automatically and behaves
+as before. Verified on macOS 26.5.
+
 ## Done
 
 - Live progress bar interpolated between syncs — `Track.position(at:)`
@@ -156,6 +169,5 @@ it. NotchNook itself is closed source.
 
 ## Next steps
 
-- Swap in `mediaremote-adapter` for titles and artwork from every source
 - Core Audio process taps (macOS 14.4+) instead of ScreenCaptureKit: tap only
   the player's audio, under the lighter audio-recording permission

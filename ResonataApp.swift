@@ -15,7 +15,12 @@ struct ResonataApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let model = NotchModel()
     private lazy var controller = NotchPanelController(model: model)
-    private let nowPlaying = AppleScriptNowPlaying()
+    /// MediaRemote first — it sees every player. If the adapter can't start
+    /// or MediaRemote won't answer on this macOS, the AppleScript source takes
+    /// over and the app behaves exactly as it did before Phase 5.
+    private let mediaRemote = MediaRemoteNowPlaying()
+    private var appleScript: AppleScriptNowPlaying?
+    private var sourceCancellables = Set<AnyCancellable>()
 
     /// One analysis feeds every view that draws bars. 32 bands is what the
     /// expanded panel draws directly; the collapsed pill averages the same
@@ -46,7 +51,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
 
         controller.show()
-        nowPlaying.start()
+        startNowPlaying()
 
         // Held, not observed — the bars pull the latest frame when they draw.
         model.spectrum = spectrum
@@ -62,15 +67,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .sink { [weak self] beat in self?.model.beat = beat }
             .store(in: &cancellables)
 
-        nowPlaying.$track
-            .sink { [weak self] track in
-                self?.model.track = track
-                // Cheap when the song hasn't changed — the store keys on the
-                // song, not on the position, so a re-sync is a no-op.
-                self?.lyrics.load(for: track)
-            }
-            .store(in: &cancellables)
-
         lyrics.$lines
             .sink { [weak self] lines in self?.model.lyrics = lines }
             .store(in: &cancellables)
@@ -79,15 +75,73 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .sink { [weak self] pending in self?.model.lyricsPending = pending }
             .store(in: &cancellables)
 
-        // Kept separate from `track` on purpose: idle only silences the
-        // collapsed pill, the track stays loaded so it can be resumed.
-        nowPlaying.$isIdle
-            .sink { [weak self] idle in self?.model.isIdle = idle }
+    }
+
+    private func startNowPlaying() {
+        guard MediaRemoteNowPlaying.isBundled else {
+            NSLog("Resonata: MediaRemote adapter not bundled; using AppleScript")
+            useAppleScript()
+            return
+        }
+        bind(mediaRemote)
+        mediaRemote.start()
+        mediaRemote.$status
+            .sink { [weak self] status in
+                switch status {
+                case .streaming: NSLog("Resonata: now-playing via MediaRemote")
+                case .failed: self?.useAppleScript()
+                case .starting: break
+                }
+            }
             .store(in: &cancellables)
     }
 
+    private func useAppleScript() {
+        guard appleScript == nil else { return }
+        NSLog("Resonata: now-playing via AppleScript")
+        let source = AppleScriptNowPlaying()
+        appleScript = source
+        bind(source)
+        source.start()
+    }
+
+    /// Routes one source's track and idle state into the model. Rebinding
+    /// drops the previous source's subscriptions.
+    private func bind(_ source: some NowPlayingSource) {
+        sourceCancellables.removeAll()
+        // Both sources publish the same two things; take them by concrete
+        // type so the @Published publishers are available.
+        let trackPublisher: AnyPublisher<Track?, Never>
+        let idlePublisher: AnyPublisher<Bool, Never>
+        if let s = source as? MediaRemoteNowPlaying {
+            trackPublisher = s.$track.eraseToAnyPublisher()
+            idlePublisher = s.$isIdle.eraseToAnyPublisher()
+        } else if let s = source as? AppleScriptNowPlaying {
+            trackPublisher = s.$track.eraseToAnyPublisher()
+            idlePublisher = s.$isIdle.eraseToAnyPublisher()
+        } else {
+            return
+        }
+
+        trackPublisher
+            .sink { [weak self] track in
+                self?.model.track = track
+                // Cheap when the song hasn't changed — the store keys on the
+                // song, not on the position, so a re-sync is a no-op.
+                self?.lyrics.load(for: track)
+            }
+            .store(in: &sourceCancellables)
+
+        // Kept separate from `track` on purpose: idle only silences the
+        // collapsed pill, the track stays loaded so it can be resumed.
+        idlePublisher
+            .sink { [weak self] idle in self?.model.isIdle = idle }
+            .store(in: &sourceCancellables)
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
-        nowPlaying.stop()
+        mediaRemote.stop()
+        appleScript?.stop()
         spectrum.stop()
     }
 }

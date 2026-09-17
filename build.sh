@@ -11,8 +11,37 @@ mkdir -p "$APP/Contents/MacOS"
 
 swiftc -O -target "$(uname -m)-apple-macos14.0" \
     -o "$APP/Contents/MacOS/Resonata" \
-    AudioSpectrum.swift Lyrics.swift NotchPanel.swift NotchShape.swift ResonataApp.swift \
-    NotchView.swift NowPlaying.swift ScreenGeometry.swift
+    AudioSpectrum.swift Lyrics.swift MediaRemote.swift NotchPanel.swift NotchShape.swift \
+    ResonataApp.swift NotchView.swift NowPlaying.swift ScreenGeometry.swift
+
+# MediaRemote adapter (Vendor/mediaremote-adapter): a small Objective-C
+# framework that /usr/bin/perl loads to read now-playing for every player.
+# Built here with clang so no CMake is needed. Bundled, never linked.
+ADAPTER=Vendor/mediaremote-adapter
+FW="$APP/Contents/Frameworks/MediaRemoteAdapter.framework"
+mkdir -p "$FW/Versions/A/Resources" "$FW/Versions/A/Headers" "$APP/Contents/Resources"
+clang -dynamiclib -fobjc-arc -fvisibility=default -arch "$(uname -m)" -mmacosx-version-min=14.0 \
+    -I"$ADAPTER/include" -I"$ADAPTER/src" \
+    -framework Foundation -framework AppKit -framework UniformTypeIdentifiers \
+    -install_name @rpath/MediaRemoteAdapter.framework/Versions/A/MediaRemoteAdapter \
+    -o "$FW/Versions/A/MediaRemoteAdapter" \
+    "$ADAPTER"/src/adapter/*.m "$ADAPTER"/src/private/*.m "$ADAPTER"/src/utility/*.m
+cp "$ADAPTER/include/MediaRemoteAdapter.h" "$FW/Versions/A/Headers/"
+cat > "$FW/Versions/A/Resources/Info.plist" <<'FWPLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+    <key>CFBundleIdentifier</key>         <string>com.vandenbe.MediaRemoteAdapter</string>
+    <key>CFBundleName</key>               <string>MediaRemoteAdapter</string>
+    <key>CFBundleExecutable</key>         <string>MediaRemoteAdapter</string>
+    <key>CFBundlePackageType</key>        <string>FMWK</string>
+    <key>CFBundleShortVersionString</key> <string>0.1</string>
+    <key>CFBundleVersion</key>            <string>0.1.0</string>
+</dict></plist>
+FWPLIST
+( cd "$FW" && ln -sfn A Versions/Current && ln -sfn Versions/Current/MediaRemoteAdapter MediaRemoteAdapter \
+  && ln -sfn Versions/Current/Resources Resources && ln -sfn Versions/Current/Headers Headers )
+cp "$ADAPTER/bin/mediaremote-adapter.pl" "$APP/Contents/Resources/"
 
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
