@@ -121,7 +121,17 @@ final class NotchPanelController {
         model.switchScreen = { [weak self] in self?.moveToNextScreen() }
 
         let panel = NotchPanel(contentRect: frame(for: screen))
-        panel.contentView = FirstClickHostingView(rootView: NotchView(model: model))
+        let hosting = FirstClickHostingView(rootView: NotchView(model: model))
+        // The controller owns the window's size; the hosting view must not.
+        //
+        // By default an NSHostingView sizes its window to SwiftUI's content.
+        // With the notch shape animating *through layout*, the content's
+        // reported size changes on every frame — and the window followed it,
+        // anchored at its left edge: mid-close the window became 259x78 at
+        // x=750, the pill was drawn centred in *that*, and so it slid right
+        // and then snapped back under the notch at the deferred shrink.
+        hosting.sizingOptions = []
+        panel.contentView = hosting
         panel.onMouseDown = { [weak self] location in
             MainActor.assumeIsolated {
                 guard let self else { return }
@@ -137,7 +147,7 @@ final class NotchPanelController {
                     // explicit layout below makes sure of it.
                     if NotchPanel.debugClick { NSLog("click: EXPAND") }
                     self.setExpanded(true)
-                    if NotchPanel.debugClick { self.debugSnapshots() }
+                    if NotchPanel.debugClick { self.debugSnapshots(tag: "open") }
                 } else if !self.expandedShapeRect.contains(location) {
                     // Expanded, the window is a 640x280 canvas and the panel
                     // is drawn in the top-centre of it. A click in the
@@ -146,6 +156,7 @@ final class NotchPanelController {
                     // the panel, and it should close it like one.
                     if NotchPanel.debugClick { NSLog("click: in the margin -> COLLAPSE") }
                     self.setExpanded(false)
+                    if NotchPanel.debugClick { self.debugSnapshots(tag: "close") }
                 }
             }
         }
@@ -212,6 +223,7 @@ final class NotchPanelController {
                 guard let self, self.model.isExpanded else { return }
                 if NotchPanel.debugClick { NSLog("click: outside -> COLLAPSE") }
                 self.setExpanded(false)
+                if NotchPanel.debugClick { self.debugSnapshots(tag: "close") }
             }
         }
         if let monitor = NSEvent.addGlobalMonitorForEvents(
@@ -231,7 +243,7 @@ final class NotchPanelController {
                     guard let self else { return }
                     let opening = !self.model.isExpanded
                     self.setExpanded(opening)
-                    if opening { self.debugSnapshots() }
+                    self.debugSnapshots(tag: opening ? "open" : "close")
                 }
             }
         }
@@ -337,23 +349,22 @@ final class NotchPanelController {
     /// and log the window's frame and visibility at each. Shows whether the
     /// app has *drawn* the expanded panel when it thinks it has — the window
     /// is ours, so this needs no permission.
-    private func debugSnapshots() {
+    private func debugSnapshots(tag: String = "open") {
         let dir = ProcessInfo.processInfo.environment["RESONATA_DEBUG_DIR"] ?? NSTemporaryDirectory()
         let t0 = CFAbsoluteTimeGetCurrent()
-        let tag = Int(t0) % 1000
         for delay in [0.05, 0.15, 0.3, 0.6, 1.5] {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
                 MainActor.assumeIsolated {
                     guard let self, let panel = self.panel, let view = panel.contentView else { return }
                     let dt = CFAbsoluteTimeGetCurrent() - t0
-                    NSLog("snap +%.2fs: expanded=%d frame=%@ visible=%d onScreen=%d occlusion=%lu",
-                          dt, self.model.isExpanded ? 1 : 0, NSStringFromRect(panel.frame),
-                          panel.isVisible ? 1 : 0, panel.isOnActiveSpace ? 1 : 0,
-                          panel.occlusionState.rawValue)
+                    NSLog("snap[%@] +%.2fs: expanded=%d content=%d idle=%d frame=%@ notch=%@",
+                          tag, dt, self.model.isExpanded ? 1 : 0,
+                          self.model.showsCollapsedContent ? 1 : 0, self.model.isIdle ? 1 : 0,
+                          NSStringFromRect(panel.frame), NSStringFromSize(self.model.notchSize))
                     guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
                     view.cacheDisplay(in: view.bounds, to: rep)
                     if let png = rep.representation(using: .png, properties: [:]) {
-                        let url = URL(fileURLWithPath: dir).appendingPathComponent(String(format: "snap-%03d-%.2fs.png", tag, delay))
+                        let url = URL(fileURLWithPath: dir).appendingPathComponent(String(format: "snap-%@-%.2fs.png", tag, delay))
                         try? png.write(to: url)
                     }
                 }
