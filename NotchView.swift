@@ -300,7 +300,23 @@ struct NotchView: View {
     @ViewBuilder
     private var content: some View {
         if model.isExpanded {
-            expanded.transition(Self.crossfade)
+            // The panel's content is laid out at its final size and revealed
+            // by the growing box — and since the box grows from the top
+            // centre, the first thing visible is the *middle* of the panel,
+            // which reads as the content popping out from there. Scaling it
+            // with the box's current height, anchored at the top centre,
+            // makes the whole panel zoom out of the notch and back into it.
+            // `AnimatedFrame` runs layout every frame, so the reader sees the
+            // interpolated size.
+            GeometryReader { geo in
+                expanded
+                    .frame(width: geo.size.width, alignment: .top)
+                    .scaleEffect(
+                        max(0.05, min(1, geo.size.height / model.expandedHeight)),
+                        anchor: .top
+                    )
+            }
+            .transition(Self.crossfade)
         } else {
             collapsed.transition(Self.crossfade)
         }
