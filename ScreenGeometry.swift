@@ -137,6 +137,15 @@ extension NSScreen {
         )
         let targets = safeAreaInsets.top > 0 ? [whole, belowNotch] : [whole]
 
+        // A window that fills the area below the notch is *also* exactly what
+        // a maximised window on an ordinary desktop looks like, because the
+        // menu bar is the notch's height. The difference is the menu bar
+        // itself: a true full-screen Space hides it, and `visibleFrame` then
+        // reaches the top of the display. Without this, every desktop with a
+        // maximised window lost the pill.
+        let menuBarHidden = visibleFrame.maxY >= frame.maxY - 1
+        guard menuBarHidden else { return false }
+
         guard let windows = CGWindowListCopyWindowInfo(
             [.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID
         ) as? [[String: Any]] else { return false }
