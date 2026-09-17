@@ -176,6 +176,16 @@ final class NotchPanelController {
         model.$isExpanded
             .removeDuplicates()
             .combineLatest(collapsedContentVisible)
+            // Deliver on the next run-loop pass, never inside the publish.
+            //
+            // `@Published` fires on *willSet*. Resizing the window right there
+            // made the hosting view lay out and render SwiftUI while
+            // `isExpanded` still read its old value — so SwiftUI drew the
+            // collapsed pill, cleared its dirty flag, and believed it was up
+            // to date. Nothing re-rendered it until something else published:
+            // with music playing, the spectrum's next tick a frame later;
+            // idle, the ten-second re-sync. That was the "opens after 8s".
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] expanded, hasTrack in
                 self?.apply(expanded: expanded, hasTrack: hasTrack)
             }

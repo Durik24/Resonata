@@ -29,6 +29,8 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <!-- No Dock icon, no app switcher entry — it lives in the notch. -->
     <key>LSUIElement</key>               <true/>
     <!-- Required, or the AppleScript calls to Spotify/Music are killed on sight. -->
+    <!-- Never App Nap: a napped agent draws a click's result seconds late. -->
+    <key>NSAppSleepDisabled</key>          <true/>
     <key>NSAppleEventsUsageDescription</key>
     <string>Resonata reads what you are currently playing.</string>
 </dict>

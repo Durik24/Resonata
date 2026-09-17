@@ -25,9 +25,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var cancellables = Set<AnyCancellable>()
 
+    /// Keeps the process out of App Nap for as long as it lives.
+    ///
+    /// An agent app spawned by launchd is a background app as far as the
+    /// scheduler is concerned, and macOS naps it: timers and drawing get
+    /// multi-second tolerances. That showed up as a click on the pill taking
+    /// five to eight seconds to *draw* — the state changed at once, the window
+    /// resized at once, and SwiftUI's render was simply not run until
+    /// something else woke the process. Launched from a terminal it inherits
+    /// a foreground role and the same click renders in 84ms.
+    private var activity: NSObjectProtocol?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // No Dock icon, no menu bar entry — it lives in the notch.
         NSApp.setActivationPolicy(.accessory)
+
+        activity = ProcessInfo.processInfo.beginActivity(
+            options: [.userInitiated, .latencyCritical],
+            reason: "Resonata draws in response to clicks and to live audio"
+        )
 
         controller.show()
         nowPlaying.start()
