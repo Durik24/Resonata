@@ -108,18 +108,19 @@ struct NotchView: View {
     /// modifiers gives the container and its contents separate springs, and two
     /// springs that disagree by even a little read as broken.
     ///
-    /// Effectively a hard cut: the panel is at its final size on the next
-    /// frame. It started life as a 0.38s spring and was walked down from
-    /// there; at 0.0001s this is "no animation" while keeping every
-    /// `.animation(_, value:)` site exactly as it is, so a spring can be put
-    /// back with one number.
-    private static let expand = Animation.linear(duration: 0.0001)
+    /// A quick spring: visible as motion, over before it registers as a wait.
+    ///
+    /// This was walked all the way down to a hard cut while chasing an
+    /// "opens slowly" report that turned out to be SwiftUI not rendering at
+    /// all until something unrelated woke it (see `NotchPanelController`).
+    /// With rendering fixed, a 0.22s spring is what the open should feel like.
+    private static let expand = Animation.spring(response: 0.22, dampingFraction: 0.86)
 
     /// The content swap is a crossfade, deliberately *not* a spring. A scale or
     /// slide transition here competes with the box stretching underneath it,
     /// which is the other half of what looks wrong.
     private static let crossfade = AnyTransition.opacity
-        .animation(.linear(duration: 0.0001))
+        .animation(.easeInOut(duration: 0.12))
 
     /// Device-space black, deliberately not `Color.black`.
     ///
