@@ -248,6 +248,20 @@ final class NotchPanelController {
             }
         }
 
+        // Debug: `com.local.resonata.playpause` toggles playback in the
+        // current track's player, so idle states can be reproduced from a
+        // script.
+        if NotchPanel.debugClick {
+            DistributedNotificationCenter.default().addObserver(
+                forName: Notification.Name("com.local.resonata.playpause"), object: nil, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let source = self?.model.track?.source else { return }
+                    transport(.playPause, in: source)
+                }
+            }
+        }
+
         // Full-screen state is polled: the space-change notification fires at
         // the *start* of the transition,
         // when the window hasn't resized yet, so a single check right then sees
@@ -382,22 +396,24 @@ final class NotchPanelController {
                       width: width, height: height)
     }
 
+    /// Visibility only. This used to route through `apply`, which also owns
+    /// the deferred window shrink — so every half-second tick cancelled a
+    /// pending shrink and resized the window at once, cutting the close
+    /// animation short at a random moment and, for one frame, showing the old
+    /// wide layout inside the new narrow window: the pill jumped right, then
+    /// back.
     private func updateVisibility() {
+        guard let panel else { return }
         fullScreenCovered = targetScreen?.isShowingFullScreenApp ?? false
-        apply(expanded: model.isExpanded, hasTrack: model.showsCollapsedContent)
-    }
-
-    private func apply(expanded: Bool, hasTrack: Bool) {
-        guard let panel, targetScreen != nil else { return }
-
-        // Always present, playing or not. With a real notch the collapsed shape
-        // is exactly the hardware cutout, so an idle notch is indistinguishable
-        // from the bezel — nothing to hide. Full screen is the one exception.
         if fullScreenCovered {
             if panel.isVisible { panel.orderOut(nil) }
         } else if !panel.isVisible {
             panel.orderFrontRegardless()
         }
+    }
+
+    private func apply(expanded: Bool, hasTrack: Bool) {
+        guard let panel, targetScreen != nil else { return }
 
         shrink?.cancel()
 
@@ -447,7 +463,12 @@ final class NotchPanelController {
         // state straight into the new frame.
         panel.setFrame(frame(for: screen, expanded: expanded, hasTrack: hasTrack),
                        display: false)
+        // ...and lay SwiftUI out at the new size *now*, in the same pass, so
+        // the next frame drawn is the new layout in the new frame — never the
+        // old layout, anchored at the window's corner, in a frame of another
+        // size.
         panel.contentView?.needsLayout = true
+        panel.contentView?.layoutSubtreeIfNeeded()
     }
 
     private func frame(
