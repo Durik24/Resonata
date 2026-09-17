@@ -210,7 +210,7 @@ final class AppleScriptNowPlaying: ObservableObject, NowPlayingSource {
     /// time you pause to talk to someone, and it takes the transport controls
     /// away exactly when you want to press play. Not never, either — a track
     /// paused half an hour ago is just stale.
-    private static let pausedTimeout: TimeInterval = 15
+    private static let pausedTimeout: TimeInterval = 10
 
     private var pausedSince: Date?
 

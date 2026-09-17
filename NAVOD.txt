@@ -142,7 +142,7 @@ KROK 7 — Vyzkoušej ovládání
                                  ruční volba má přednost
   - Celoobrazovkový režim        notch se sám schová
 
-Když hudbu pozastavíš, po 15 sekundách se notch smrskne zpátky na
+Když hudbu pozastavíš, po 10 sekundách se notch smrskne zpátky na
 velikost výřezu a zhasne. Skladba se ale nezapomene — po kliknutí
 je pořád vidět a dá se znovu pustit.
 

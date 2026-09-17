@@ -40,7 +40,7 @@ final class MediaRemoteNowPlaying: ObservableObject, NowPlayingSource {
 
     /// How long a paused track stays on screen before it's dropped — the same
     /// rule as the AppleScript source, for the same reasons.
-    private static let pausedTimeout: TimeInterval = 15
+    private static let pausedTimeout: TimeInterval = 10
 
     private nonisolated static var scriptURL: URL? {
         Bundle.main.url(forResource: "mediaremote-adapter", withExtension: "pl")
