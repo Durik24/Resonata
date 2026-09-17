@@ -115,22 +115,20 @@ struct NotchView: View {
     /// all until something unrelated woke it (see `NotchPanelController`).
     /// With rendering fixed, a 0.22s spring is what the open should feel like.
     ///
-    /// Opening and closing are deliberately *not* animated: nothing is keyed
-    /// on `isExpanded`, so the panel is at its final size on the next frame.
-    /// Everything else that changes size — the pill widening for a track,
-    /// narrowing when it stops, the lyrics row arriving — settles on this.
-    /// To animate the open as well, key one more `.animation(settle, value:)`
-    /// on `model.isExpanded` where the others are.
-    private static let settle = Animation.spring(response: 0.3, dampingFraction: 0.85)
+    /// Everything that changes size — the panel opening and closing, the pill
+    /// widening for a track, narrowing when it stops, the lyrics row arriving
+    /// — settles on this one spring. Unhurried on purpose: long enough to be
+    /// watched, damped enough to land without a wobble.
+    private static let settle = Animation.spring(response: 0.45, dampingFraction: 0.82)
 
     /// Fades for content swapping in place: artwork, titles, glyphs.
-    private static let fade = Animation.easeInOut(duration: 0.25)
+    private static let fade = Animation.easeInOut(duration: 0.4)
 
     /// The content swap is a crossfade, deliberately *not* a spring. A scale or
     /// slide transition here competes with the box stretching underneath it,
     /// which is the other half of what looks wrong.
     private static let crossfade = AnyTransition.opacity
-        .animation(.linear(duration: 0.0001))
+        .animation(.easeInOut(duration: 0.22))
 
     /// Device-space black, deliberately not `Color.black`.
     ///
@@ -225,8 +223,9 @@ struct NotchView: View {
             // Size animations live *here*, on the shape, and never at the
             // root: the root frame fills the window, whose height jumps
             // 32 → 280 on open, and animating that frame centred the whole
-            // panel mid-window and slid it up. Keyed on what changes size
-            // while the panel stays in one state — never on `isExpanded`.
+            // panel mid-window and slid it up. Here, the shape grows out of
+            // the notch and the frame around it simply snaps to fit.
+            .animation(Self.settle, value: model.isExpanded)
             .animation(Self.settle, value: model.showsCollapsedContent)
             .animation(Self.settle, value: model.showsLyricsRow)
             // Opening and closing are both handled in AppKit — see
