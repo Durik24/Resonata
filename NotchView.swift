@@ -207,8 +207,6 @@ struct NotchView: View {
                 size: size,
                 topRadius: model.isExpanded ? 12 : 0,
                 bottomRadius: model.isExpanded ? 24 : 7,
-                canvas: CGSize(width: NotchPanelController.canvasWidth,
-                               height: NotchPanelController.canvasHeight),
                 background: { shape in
                     AnyView(ZStack {
                         shape.fill(Self.panelBlack)
@@ -955,7 +953,7 @@ struct LyricsView: View {
 /// 2. Even then, SwiftUI animates the view's *position* on its own, a frame
 ///    ahead of the layout-driven size — and the shape sat a few points below
 ///    the notch while it grew: the "little gap". Aligning to the top of a
-///    fixed canvas *inside* this body sidesteps that: results of an
+///    constant outer frame *inside* this body sidesteps that: results of an
 ///    animatable body are applied directly, never re-animated, and the node
 ///    the parent places never changes size or position at all.
 /// 3. The clip, the hit shape and the fills must use the *same* interpolated
@@ -964,9 +962,6 @@ struct NotchFrame: ViewModifier, Animatable {
     var size: CGSize
     var topRadius: CGFloat
     var bottomRadius: CGFloat
-    /// The fixed area the shape is placed in, top-centre. The window is this
-    /// size when expanded; collapsed, the window simply clips it.
-    var canvas: CGSize
     /// What to draw under the content, given the current silhouette.
     var background: (NotchShape) -> AnyView
 
@@ -995,6 +990,14 @@ struct NotchFrame: ViewModifier, Animatable {
             // Hit-test the silhouette only — the rest of the panel stays
             // click-through so you can still reach the menu bar beside it.
             .contentShape(shape)
-            .frame(width: canvas.width, height: canvas.height, alignment: .top)
+            // Fill whatever the window is and pin the shape to its top
+            // centre. Not a fixed canvas size: the hosting view reports a
+            // fixed frame as the content's intrinsic size, and AppKit then
+            // refuses to shrink the window below it — the pill window stayed
+            // 640 wide at the origin meant for a 303-wide one, 168pt right of
+            // the notch. The window's size is the controller's business; the
+            // controller never resizes it mid-animation, so this outer frame
+            // is constant while anything inside moves.
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 }
