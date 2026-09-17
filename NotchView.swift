@@ -177,13 +177,6 @@ struct NotchView: View {
     var body: some View {
         VStack(spacing: 0) {
             ZStack {
-                shape.fill(Self.panelBlack)
-                // The wash sits *over* solid black, never replacing it — the
-                // collapsed pill has to stay black enough to pass for the
-                // bezel, and a gradient that bottoms out anywhere above black
-                // would give the illusion away.
-                shape.fill(accentWash)
-
                 // Full spectrum along the bottom edge, under the controls.
                 // Kept faint and behind `content` on purpose: at this size a
                 // bright equaliser competes with the artwork and the title for
@@ -207,26 +200,29 @@ struct NotchView: View {
                 content
                     .padding(.horizontal, model.isExpanded ? 20 : 6)
             }
-            // Not a plain `.frame(width:height:)`. That reports its *final*
-            // size to the parent and renders the *animated* size centred in
-            // that slot — so on open the pill sat at the centre of where the
-            // panel would end up and grew toward the top, visibly detached
-            // from the notch. `AnimatedFrame` interpolates through layout, so
-            // the parent places the shape at the top using its real size on
-            // every frame.
-            .modifier(AnimatedFrame(size: size))
-            // Both states are laid out at their final size and clipped, so the
-            // content is revealed by the growing box rather than re-laid-out on
-            // every frame of it. Without this the title truncates and un-
-            // truncates mid-animation and the artwork jumps.
-            .clipShape(shape)
+            // The notch itself: size, radii, fills, clip and hit shape, all
+            // in one animatable modifier — see `NotchFrame` for why it has
+            // to be one, and why the top alignment lives inside it.
+            .modifier(NotchFrame(
+                size: size,
+                topRadius: model.isExpanded ? 12 : 0,
+                bottomRadius: model.isExpanded ? 24 : 7,
+                canvas: CGSize(width: NotchPanelController.canvasWidth,
+                               height: NotchPanelController.canvasHeight),
+                background: { shape in
+                    AnyView(ZStack {
+                        shape.fill(Self.panelBlack)
+                        // The wash sits *over* solid black, never replacing
+                        // it — the collapsed pill has to stay black enough to
+                        // pass for the bezel, and a gradient that bottoms out
+                        // anywhere above black would give the illusion away.
+                        shape.fill(accentWash)
+                    })
+                }
+            ))
             // The beat. Scaled from the top edge, so the pill grows down and
             // outward from the bezel rather than lifting off it.
             .scaleEffect(1 + beatPulse * NotchMetrics.beatPulseScale, anchor: .top)
-            // Hit-test the silhouette only — the rest of the panel stays
-            // click-through so you can still reach the menu bar beside it.
-            // Same radii as the drawn shape, or the hit area lags the visual.
-            .contentShape(shape)
             // Size animations live *here*, on the shape, and never at the
             // root: the root frame fills the window, whose height jumps
             // 32 → 280 on open, and animating that frame centred the whole
@@ -947,23 +943,58 @@ struct LyricsView: View {
     }
 }
 
-/// A `.frame(width:height:)` whose size interpolates *through layout*.
+/// The notch's frame, silhouette and fills, animated as one unit.
 ///
-/// SwiftUI animates an ordinary frame by rendering the interpolated size
-/// inside the slot the parent allotted for the final size — centred. For a
-/// shape that must stay glued to the top edge of the screen, that is exactly
-/// wrong. An `Animatable` modifier re-runs its body with the interpolated
-/// value on every frame, so the parent lays the view out at its current size
-/// and top alignment holds throughout.
-struct AnimatedFrame: ViewModifier, Animatable {
+/// Three things had to end up in one `Animatable` modifier:
+///
+/// 1. A plain `.frame(width:height:)` reports its *final* size to the parent
+///    and renders the *animated* size centred in that slot, so an opening
+///    panel started in the middle of its final area. An animatable modifier
+///    re-runs its body with the interpolated size, so layout is real on
+///    every frame.
+/// 2. Even then, SwiftUI animates the view's *position* on its own, a frame
+///    ahead of the layout-driven size — and the shape sat a few points below
+///    the notch while it grew: the "little gap". Aligning to the top of a
+///    fixed canvas *inside* this body sidesteps that: results of an
+///    animatable body are applied directly, never re-animated, and the node
+///    the parent places never changes size or position at all.
+/// 3. The clip, the hit shape and the fills must use the *same* interpolated
+///    radii as each other, so they are built here from the same numbers.
+struct NotchFrame: ViewModifier, Animatable {
     var size: CGSize
+    var topRadius: CGFloat
+    var bottomRadius: CGFloat
+    /// The fixed area the shape is placed in, top-centre. The window is this
+    /// size when expanded; collapsed, the window simply clips it.
+    var canvas: CGSize
+    /// What to draw under the content, given the current silhouette.
+    var background: (NotchShape) -> AnyView
 
-    var animatableData: AnimatablePair<CGFloat, CGFloat> {
-        get { AnimatablePair(size.width, size.height) }
-        set { size = CGSize(width: newValue.first, height: newValue.second) }
+    var animatableData: AnimatablePair<AnimatablePair<CGFloat, CGFloat>,
+                                       AnimatablePair<CGFloat, CGFloat>> {
+        get {
+            AnimatablePair(AnimatablePair(size.width, size.height),
+                           AnimatablePair(topRadius, bottomRadius))
+        }
+        set {
+            size = CGSize(width: newValue.first.first, height: newValue.first.second)
+            topRadius = newValue.second.first
+            bottomRadius = newValue.second.second
+        }
     }
 
     func body(content: Content) -> some View {
-        content.frame(width: size.width, height: size.height)
+        let shape = NotchShape(topRadius: topRadius, bottomRadius: bottomRadius)
+        content
+            .frame(width: size.width, height: size.height)
+            .background(background(shape))
+            // Both states are laid out at their final size and clipped, so
+            // the content is revealed by the growing box rather than
+            // re-laid-out on every frame of it.
+            .clipShape(shape)
+            // Hit-test the silhouette only — the rest of the panel stays
+            // click-through so you can still reach the menu bar beside it.
+            .contentShape(shape)
+            .frame(width: canvas.width, height: canvas.height, alignment: .top)
     }
 }
