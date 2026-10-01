@@ -6,9 +6,8 @@ Apple Music; po kliknutí se rozbalí na obal alba, název, posuvník
 a ovládání.
 
 Na rozdíl od jiných notch aplikací hudbu opravdu POSLOUCHÁ: sloupce
-v notchi jsou skutečné spektrum zvuku, který z Macu jde (FFT), a celý
-notch se na každou dobu lehce nadechne. Funguje to i pro zvuk
-z prohlížeče, i když k němu nejsou žádná metadata.
+v notchi jsou skutečné spektrum zvuku, který z Macu jde (FFT), a na
+každou dobu barva obalu krátce zjasní.
 
 Dělej kroky popořadě. Kroky 1 až 5 jsou povinné, zbytek je volitelný.
 
@@ -117,8 +116,7 @@ KROK 7 — Vyzkoušej ovládání
 
   - Sloupce v notchi             skutečné spektrum: vlevo basy,
                                  vpravo výšky
-  - Každá doba (kopák)           notch se o pár bodů nadechne a
-                                 barva obalu na okamžik zjasní
+  - Každá doba (kopák)           barva obalu na okamžik zjasní
   - Zvuk z prohlížeče            funguje jako každý jiný přehrávač:
                                  název, obal, tlačítka i posuvník
   - Klikni na notch              rozbalí se velký panel, dole
@@ -130,6 +128,13 @@ KROK 7 — Vyzkoušej ovládání
                                  Stahuje se jednou, pak z cache
                                  (~/Library/Caches/com.local.resonata)
   - Klikni kamkoliv mimo panel   zase se sbalí
+  - Pravé tlačítko na notch      menu: přepnout displej,
+    (nebo ctrl+klik)             spouštět po přihlášení,
+                                 ukončit aplikaci
+  - Scroll nad notchem           hlasitost: nahoru = hlasitěji
+                                 (kolečko i trackpad). Zvýšení
+                                 zruší ztlumení. V notchi se na
+                                 chvíli ukáže úroveň.
   - Tlačítka                     předchozí / pauza / další
   - Posuvník                     dá se chytit a táhnout;
                                  kliknutí kamkoliv na lištu
@@ -179,8 +184,6 @@ ScreenGeometry.swift, blok NotchMetrics:
     collapsedExtraHeight   posun spodní hrany (záporné = výš)
     collapsedInset         odsazení obalu a vlnky od krajů
     waveformNudge          posun vlnky do stran
-    beatPulseScale         o kolik se notch nadechne na dobu
-                           (0.03 = 3 %; nad 0.06 to už cuká)
     beatWashBloom          o kolik zjasní barva obalu na dobu
 
 AudioSpectrum.swift, nahoře ve třídě SpectrumAnalyzer:
@@ -230,7 +233,8 @@ spektrum, detekci dob a čtení z MediaRemote. Na konci vypíše
 VYPNUTÍ A ODINSTALACE
 ────────────────────────────────────────────────────────────────
 
-Ukončit:      pkill -x Resonata
+Ukončit:      pravé tlačítko na notch → Ukončit Resonata
+              (nebo v Terminálu: pkill -x Resonata)
 Odinstalovat: smaž složku a odeber položku přihlášení
               z Kroku 8. Certifikát "Resonata Dev" jde smazat
               v Klíčence. Nikam jinam se nic neukládá.
@@ -300,8 +304,9 @@ ZNÁMÁ OMEZENÍ
 - U černobílých obalů zůstane panel černý bez barevného nádechu.
   Je to záměr — vymýšlet barvu, která v obalu není, dopadá špatně.
 
-- Spotřeba procesoru (M4, hudba hraje): kolem 4–6 %. Z toho je
-  většina FFT a vykreslování sloupců 30x za sekundu. Původní verze
-  s falešnou animací a dotazem na Spotify každou sekundu brala
-  3,7–4,8 %; samotný přechod na notifikace ji srazil na 2,7 %,
-  a ten rozdíl teď platí za skutečné spektrum.
+- Spotřeba procesoru (M4): když hraje hudba, kolem 1,2–1,6 %;
+  když nehraje nic, 0 %. Poslech zvuku se vypne 10 s po
+  zastavení hudby a zapne se, jakmile něco začne hrát — jinak
+  by macOS (coreaudiod) zvuk aplikaci posílal pořád a stálo by
+  to baterii. Proto sloupce reagují jen na přehrávače, které
+  systému hlásí, co hrají (Spotify, Hudba, prohlížeče, VLC…).

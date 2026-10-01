@@ -47,6 +47,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// MediaRemote helper running with no parent. Turned into an ordinary quit.
     private var termination: DispatchSourceSignal?
 
+    /// Stops audio capture a while after playback stops — see `gateCapture`.
+    private var captureStop: DispatchWorkItem?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // No Dock icon, no menu bar entry — it lives in the notch.
         NSApp.setActivationPolicy(.accessory)
@@ -68,7 +71,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Held, not observed — the bars pull the latest frame when they draw.
         model.spectrum = spectrum
-        spectrum.start()
+
+        // Capture follows playback rather than running from launch.
+        model.$track
+            .map { $0?.isPlaying == true || NotchModel.debugForceLive }
+            .removeDuplicates()
+            .sink { [weak self] playing in self?.gateCapture(playing: playing) }
+            .store(in: &cancellables)
 
         // The one part of the spectrum that *is* worth publishing: whether to
         // run the animation clock at all.
@@ -79,6 +88,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         spectrum.$beat
             .sink { [weak self] beat in self?.model.beat = beat }
             .store(in: &cancellables)
+
+        // `RESONATA_DEBUG_FAKE_BEATS=1`: a beat twice a second (120 BPM), so
+        // the cost of the beat animation can be measured without music.
+        if ProcessInfo.processInfo.environment["RESONATA_DEBUG_FAKE_BEATS"] == "1" {
+            Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated { self?.model.beat &+= 1 }
+            }
+        }
 
         lyrics.$lines
             .sink { [weak self] lines in self?.model.lyrics = lines }
@@ -162,6 +179,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .store(in: &sourceCancellables)
     }
 
+    /// Audio capture runs only while something is playing.
+    ///
+    /// It isn't free in silence: ScreenCaptureKit keeps `coreaudiod` streaming
+    /// the system mix to us the whole time, measured at 1.5–7% of a core in
+    /// *coreaudiod* with nothing playing — none of which showed up as this
+    /// app's CPU. It stops ten seconds after playback does, the same delay
+    /// the pill uses to go idle, so pausing to talk doesn't bounce the stream;
+    /// pressing play starts it again in a fraction of a second.
+    ///
+    /// The cost: sound from something that doesn't report "now playing" to
+    /// the system no longer moves the bars. With MediaRemote that's rare.
+    private func gateCapture(playing: Bool) {
+        captureStop?.cancel()
+        captureStop = nil
+        if playing {
+            spectrum.start()
+        } else {
+            let stop = DispatchWorkItem { [weak self] in self?.spectrum.stop() }
+            captureStop = stop
+            DispatchQueue.main.asyncAfter(deadline: .now() + 10, execute: stop)
+        }
+    }
+
     /// Adds Resonata to System Settings › General › Login Items, once.
     ///
     /// It has no Dock icon and no window, so after a restart nothing hinted
@@ -175,20 +215,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // `.notFound` is the system losing track of the bundle — a rebuild
         // can do that — not the user saying no, so it's safe to re-register.
         guard !UserDefaults.standard.bool(forKey: key) || status == .notFound else { return }
-        do {
-            try SMAppService.mainApp.register()
-            UserDefaults.standard.set(true, forKey: key)
-            NSLog("Resonata: added to login items (status %ld)",
-                  SMAppService.mainApp.status.rawValue)
-        } catch {
-            NSLog("Resonata: could not add to login items: \(error)")
-        }
+        if LoginItem.set(true) { UserDefaults.standard.set(true, forKey: key) }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         mediaRemote.stop()
         appleScript?.stop()
         spectrum.stop()
+    }
+}
+
+/// Resonata's entry in System Settings › General › Login Items.
+enum LoginItem {
+    static var isEnabled: Bool { SMAppService.mainApp.status == .enabled }
+
+    @discardableResult
+    static func set(_ enabled: Bool) -> Bool {
+        do {
+            if enabled {
+                try SMAppService.mainApp.register()
+            } else {
+                try SMAppService.mainApp.unregister()
+            }
+            NSLog("Resonata: open at login %@ (status %ld)", enabled ? "on" : "off",
+                  SMAppService.mainApp.status.rawValue)
+            return true
+        } catch {
+            NSLog("Resonata: could not change open-at-login: \(error)")
+            return false
+        }
     }
 }
 

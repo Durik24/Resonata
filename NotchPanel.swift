@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import ScreenCaptureKit
 import SwiftUI
 
 /// A borderless, transparent, always-on-top panel.
@@ -51,13 +52,29 @@ final class NotchPanel: NSPanel {
     /// When collapsed, the window is exactly the pill, so a mouse-down anywhere
     /// in it *is* a click on the pill. No recognition needed.
     var onMouseDown: ((NSPoint) -> Void)?
+    /// Right-click, or control-click: the app's menu.
+    var onContextMenu: ((NSEvent) -> Void)?
+    /// Scrolling over the notch: the volume.
+    var onScroll: ((NSEvent) -> Void)?
 
     override func sendEvent(_ event: NSEvent) {
-        if event.type == .leftMouseDown {
+        switch event.type {
+        case .rightMouseDown:
+            onContextMenu?(event)
+            return
+        case .leftMouseDown where event.modifierFlags.contains(.control):
+            onContextMenu?(event)
+            return
+        case .leftMouseDown:
             if Self.debugClick {
                 NSLog("click: mouse-down reached the panel at %@", NSStringFromPoint(event.locationInWindow))
             }
             onMouseDown?(event.locationInWindow)
+        case .scrollWheel:
+            onScroll?(event)
+            return
+        default:
+            break
         }
         super.sendEvent(event)
     }
@@ -75,6 +92,21 @@ final class NotchPanel: NSPanel {
 /// open it, which is indistinguishable from a bug.
 final class FirstClickHostingView<Content: View>: NSHostingView<Content> {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+}
+
+/// A menu item that runs a closure, so the controller needn't be an NSObject.
+final class ClosureMenuItem: NSMenuItem {
+    private let handler: () -> Void
+
+    init(_ title: String, handler: @escaping () -> Void) {
+        self.handler = handler
+        super.init(title: title, action: #selector(fire), keyEquivalent: "")
+        target = self
+    }
+
+    required init(coder: NSCoder) { fatalError("not used") }
+
+    @objc private func fire() { handler() }
 }
 
 /// Owns the panel and keeps it glued to the notch across display changes.
@@ -109,6 +141,9 @@ final class NotchPanelController {
     /// Display the user pinned via the switch button, if any. Stored as an id
     /// because NSScreen instances are replaced on every display change.
     private var pinnedScreenID: CGDirectDisplayID?
+
+    /// Hides the volume meter a moment after the last scroll.
+    private var volumeHide: DispatchWorkItem?
 
     init(model: NotchModel) {
         self.model = model
@@ -160,8 +195,13 @@ final class NotchPanelController {
                 }
             }
         }
+        panel.onContextMenu = { [weak self] event in
+            MainActor.assumeIsolated { self?.showMenu(for: event) }
+        }
+        panel.onScroll = { [weak self] event in
+            MainActor.assumeIsolated { self?.scrollVolume(event) }
+        }
         self.panel = panel
-        // Starts hidden: nothing is playing yet at launch.
         updateVisibility()
 
         // The window is only ever as big as the shape currently drawn in it.
@@ -179,9 +219,11 @@ final class NotchPanelController {
         // by a whole shrink interval.
         // Sizing follows "is there something to show", which idle turns off —
         // so the pill shrinks back to the cutout when the music stops.
+        // The volume meter shows in the pill's wing, so it widens the pill
+        // too — even an idle one. Mirrors `NotchModel.showsCollapsedContent`.
         let collapsedContentVisible = model.$track.map { $0 != nil }
-            .combineLatest(model.$isIdle)
-            .map { hasTrack, idle in hasTrack && !idle }
+            .combineLatest(model.$isIdle, model.$volumeLevel)
+            .map { hasTrack, idle, volume in (hasTrack && !idle) || volume != nil }
             .removeDuplicates()
 
         model.$isExpanded
@@ -317,6 +359,57 @@ final class NotchPanelController {
         return NSScreen.preferred
     }
 
+    // MARK: Menu and volume
+
+    /// Right-click menu: the only way to quit an app with no Dock icon and
+    /// no menu bar, plus the two settings that otherwise live elsewhere.
+    private func showMenu(for event: NSEvent) {
+        guard let view = panel?.contentView else { return }
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+
+        if NSScreen.screens.count > 1 {
+            menu.addItem(ClosureMenuItem("Přepnout na další displej") { [weak self] in
+                self?.moveToNextScreen()
+            })
+        }
+        let login = ClosureMenuItem("Spouštět po přihlášení") {
+            LoginItem.set(!LoginItem.isEnabled)
+        }
+        login.state = LoginItem.isEnabled ? .on : .off
+        menu.addItem(login)
+        menu.addItem(.separator())
+        menu.addItem(ClosureMenuItem("Ukončit Resonata") { NSApp.terminate(nil) })
+
+        NSMenu.popUpContextMenu(menu, with: event, for: view)
+    }
+
+    private func scrollVolume(_ event: NSEvent) {
+        // A trackpad keeps sending "momentum" events after the fingers lift.
+        // Following them sends the volume coasting on for a second after you
+        // stopped, so only the fingers' own movement counts.
+        guard event.momentumPhase.isEmpty else { return }
+        let delta = SystemVolume.scrollDelta(deltaY: Double(event.scrollingDeltaY),
+                                             precise: event.hasPreciseScrollingDeltas,
+                                             inverted: event.isDirectionInvertedFromDevice)
+        guard delta != 0, let level = SystemVolume.change(by: Float(delta)) else { return }
+
+        // Published on the next pass, never from inside the event dispatch —
+        // see `setExpanded`.
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.model.volumeLevel = level
+                self.volumeHide?.cancel()
+                let hide = DispatchWorkItem { [weak self] in
+                    MainActor.assumeIsolated { self?.model.volumeLevel = nil }
+                }
+                self.volumeHide = hide
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2, execute: hide)
+            }
+        }
+    }
+
     /// Moves the notch to the next display in the list, wrapping around.
     func moveToNextScreen() {
         let screens = NSScreen.screens
@@ -375,14 +468,38 @@ final class NotchPanelController {
                           tag, dt, self.model.isExpanded ? 1 : 0,
                           self.model.showsCollapsedContent ? 1 : 0, self.model.isIdle ? 1 : 0,
                           NSStringFromRect(panel.frame), NSStringFromSize(self.model.notchSize))
-                    guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
-                    view.cacheDisplay(in: view.bounds, to: rep)
-                    if let png = rep.representation(using: .png, properties: [:]) {
-                        let url = URL(fileURLWithPath: dir).appendingPathComponent(String(format: "snap-%@-%.2fs.png", tag, delay))
-                        try? png.write(to: url)
-                    }
+                    _ = view
+                    let url = URL(fileURLWithPath: dir)
+                        .appendingPathComponent(String(format: "snap-%@-%.2fs.png", tag, delay))
+                    Task { await self.captureWindow(to: url) }
                 }
             }
+        }
+    }
+
+    /// Debug: the panel as the window server composites it. `cacheDisplay`
+    /// only re-draws views, so it misses Core Animation layers — the bars and
+    /// the beat flash. ScreenCaptureKit sees them; the app already holds the
+    /// Screen Recording permission for its audio.
+    func captureWindow(to url: URL) async {
+        guard let panel else { return }
+        do {
+            let content = try await SCShareableContent.excludingDesktopWindows(
+                false, onScreenWindowsOnly: true)
+            guard let window = content.windows.first(where: {
+                $0.windowID == CGWindowID(panel.windowNumber)
+            }) else { return }
+            let config = SCStreamConfiguration()
+            config.width = Int(panel.frame.width * panel.backingScaleFactor)
+            config.height = Int(panel.frame.height * panel.backingScaleFactor)
+            config.showsCursor = false
+            let image = try await SCScreenshotManager.captureImage(
+                contentFilter: SCContentFilter(desktopIndependentWindow: window),
+                configuration: config)
+            try NSBitmapImageRep(cgImage: image)
+                .representation(using: .png, properties: [:])?.write(to: url)
+        } catch {
+            NSLog("snap: capture failed: \(error)")
         }
     }
 

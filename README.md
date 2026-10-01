@@ -46,9 +46,37 @@ keychain; `build.sh` uses it when present.
 | `Lyrics.swift` | Synced lyrics from LRCLIB, LRC parsing, on-disk cache |
 | `MediaRemote.swift` | System-wide now-playing via the vendored adapter; transport and seek for any player; AppleScript fallback |
 | `Vendor/mediaremote-adapter/` | BSD-3 sources of the adapter, built into the bundle by `build.sh` |
-| `NotchView.swift` | Collapsed and expanded SwiftUI states with a spring between them; spectrum bars; beat pulse; lyrics row |
+| `NotchView.swift` | Collapsed and expanded SwiftUI states with a spring between them; spectrum bars and beat flash on Core Animation layers; lyrics row; volume meter |
+| `Volume.swift` | Output volume via Core Audio, and the scroll-to-volume mapping |
 | `ResonataApp.swift` | Wires it together, sets `.accessory` activation policy |
 | `setup-signing.sh` | One-time: creates the "Resonata Dev" signing identity |
+
+## Cost
+
+Measured on an M4 with `RESONATA_DEBUG_FORCE_LIVE=1` (animate as if playing)
+and `RESONATA_DEBUG_FAKE_BEATS=1` (a beat every 0.5 s):
+
+| | before | after |
+|---|---|---|
+| nothing playing | 0.7% | 0.0% |
+| playing | 4.5% | 1.2% |
+| playing, 120 BPM | 8.7% | 1.6% |
+
+Two changes did it. The bars and the beat flash used to be SwiftUI animations,
+which re-ran the view graph and re-rasterised on every frame; they are now
+`CALayer`s moved by a display link and a `CABasicAnimation` that runs in the
+render server. And audio capture now runs only while something is playing:
+ScreenCaptureKit keeps `coreaudiod` streaming the mix to the app even in
+silence, which cost 1.5–7% of a core in *coreaudiod* — invisible in the app's
+own numbers.
+
+## Menu and volume
+
+Right-click (or control-click) the notch: switch display, open at login,
+quit. Scroll over it to change the output volume — up is louder whatever the
+natural-scrolling setting, turning it up unmutes, and the level shows in the
+notch for a moment. Volume goes through Core Audio directly, so no permission
+is needed.
 
 ## Starts at login
 
@@ -90,10 +118,10 @@ Beat detection is energy-based: the unsmoothed energy in bands 2–8
 (~58–215 Hz, the kick and bass) is compared to its own running average over
 the last ~0.8 s. A frame that clears the average by 32% and by an absolute
 margin, with at least 160 ms since the last beat, is a beat. Each one bumps a
-counter the view keys a 3% scale pulse and a colour-wash bloom off.
+counter that flashes a brighter copy of the colour wash.
 
 The bands are deliberately *not* `@Published`. They change 50 times a second;
-the views pull the newest frame inside their own `TimelineView` tick instead,
+the bars pull the newest frame inside their own display-link tick instead,
 so the display decides how often it redraws.
 
 To see the numbers: `RESONATA_DEBUG_BANDS=1 ./Resonata.app/Contents/MacOS/Resonata`

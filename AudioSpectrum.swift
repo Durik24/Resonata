@@ -416,6 +416,7 @@ final class SystemAudioSpectrum: NSObject, ObservableObject, AudioSpectrumSource
     /// Capture should be running — cleared only by `stop()`. A stream that
     /// dies while this is set gets restarted.
     @MainActor private var wantsRunning = false
+    @MainActor private var isStarting = false
     @MainActor private var retryDelay: TimeInterval = 2
 
     init(bandCount: Int) {
@@ -428,9 +429,14 @@ final class SystemAudioSpectrum: NSObject, ObservableObject, AudioSpectrumSource
         }
     }
 
+    /// Idempotent: playback starting twice must not open two streams.
     func start() {
         Task { @MainActor in
             wantsRunning = true
+            guard stream == nil, !isStarting else { return }
+            // Claimed here, on the main actor, before the first suspension —
+            // a second `start()` in the meantime then sees it and stops.
+            isStarting = true
             await startCapture()
         }
     }
@@ -447,6 +453,8 @@ final class SystemAudioSpectrum: NSObject, ObservableObject, AudioSpectrumSource
     }
 
     private func startCapture() async {
+        // Callers claim `isStarting` before calling; this releases it.
+        defer { Task { @MainActor in self.isStarting = false } }
         do {
             let content = try await SCShareableContent.excludingDesktopWindows(
                 false, onScreenWindowsOnly: false
@@ -480,10 +488,14 @@ final class SystemAudioSpectrum: NSObject, ObservableObject, AudioSpectrumSource
             let stream = SCStream(filter: filter, configuration: config, delegate: self)
             try stream.addStreamOutput(self, type: .audio, sampleHandlerQueue: audioQueue)
             try await stream.startCapture()
-            await MainActor.run {
+            let keep = await MainActor.run { () -> Bool in
+                // `stop()` may have come in while this was starting up.
+                guard self.wantsRunning else { return false }
                 self.stream = stream
                 self.retryDelay = 2
+                return true
             }
+            if !keep { try? await stream.stopCapture() }
         } catch {
             NSLog("Resonata: audio capture failed to start: \(error)")
             // A refused permission won't change by asking again; anything
@@ -506,7 +518,8 @@ final class SystemAudioSpectrum: NSObject, ObservableObject, AudioSpectrumSource
         retryDelay = min(retryDelay * 2, 30)
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(delay))
-            guard wantsRunning, stream == nil else { return }
+            guard wantsRunning, stream == nil, !isStarting else { return }
+            isStarting = true
             await startCapture()
         }
     }

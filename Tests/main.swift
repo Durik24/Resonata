@@ -246,6 +246,29 @@ MainActor.assumeIsolated {
     check(source.track == nil, "MediaRemote: empty payload means nothing is playing")
 }
 
+// MARK: - Volume
+
+// Up is louder whatever the natural-scrolling setting: the device direction is
+// what counts, not the direction the content would scroll.
+check(SystemVolume.scrollDelta(deltaY: -10, precise: true, inverted: true) > 0,
+      "volume: fingers up on a trackpad (natural scrolling) turns it up")
+check(SystemVolume.scrollDelta(deltaY: 10, precise: true, inverted: false) > 0,
+      "volume: fingers up on a trackpad (classic scrolling) turns it up")
+check(SystemVolume.scrollDelta(deltaY: 1, precise: false, inverted: false) > 0,
+      "volume: wheel rolled away turns it up")
+check(SystemVolume.scrollDelta(deltaY: -1, precise: false, inverted: false) < 0,
+      "volume: wheel rolled back turns it down")
+check(approx(SystemVolume.scrollDelta(deltaY: 1, precise: false, inverted: false), 1.0 / 16),
+      "volume: one wheel notch is a volume-key step")
+check(approx(SystemVolume.scrollDelta(deltaY: 25, precise: true, inverted: false), 0.1),
+      "volume: a calm two-finger swipe is about 10%")
+check(approx(SystemVolume.scrollDelta(deltaY: 400, precise: true, inverted: false), 0.125),
+      "volume: a flung swipe is capped per event")
+// Read-only: never changes the volume of the machine running the tests.
+let level = SystemVolume.level
+check(level == nil || (0...1).contains(level!), "volume: the current level reads as 0...1",
+      "\(String(describing: level))")
+
 // MARK: - Last: a lyrics line that used to crash the parser
 
 // The stamp's end was taken as a UTF-16 offset and walked as a count of

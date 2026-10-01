@@ -68,7 +68,16 @@ final class NotchModel: ObservableObject {
     /// The collapsed pill carries artwork and waveform only while playback is
     /// live. Idle, it shrinks back to the bare cutout — but `track` is still
     /// there, so a click brings up the last song and its play button.
-    var showsCollapsedContent: Bool { track != nil && !isIdle }
+    var showsCollapsedContent: Bool { (track != nil && !isIdle) || volumeLevel != nil }
+
+    /// Set for a moment after the volume is scrolled, so the notch can show
+    /// the new level. Nil the rest of the time.
+    @Published var volumeLevel: Float?
+
+    /// `RESONATA_DEBUG_FORCE_LIVE=1`: animate the pill as if music were
+    /// playing, so the cost of playback can be measured on a silent machine.
+    static let debugForceLive =
+        ProcessInfo.processInfo.environment["RESONATA_DEBUG_FORCE_LIVE"] == "1"
 }
 
 struct NotchView: View {
@@ -87,11 +96,6 @@ struct NotchView: View {
 
     /// Accent pulled from the album art, used for the background wash.
     @State private var accent: Color?
-
-    /// 1 the instant a beat lands, easing back to 0. Everything that reacts
-    /// to the beat — the scale of the whole notch, the bloom of the colour
-    /// wash — reads this one value, so they move together.
-    @State private var beatPulse: CGFloat = 0
 
     static let expandedWidth: CGFloat = 470
     /// Tall enough to seat the content below the cutout without cramping it.
@@ -215,12 +219,16 @@ struct NotchView: View {
                         // pass for the bezel, and a gradient that bottoms out
                         // anywhere above black would give the illusion away.
                         shape.fill(accentWash)
+                        // The beat: the same wash, brighter, flashing and
+                        // fading on each kick. Core Animation runs the fade,
+                        // so a beat costs this app nothing per frame.
+                        BeatBloom(shape: shape,
+                                  color: colourable ? accent : nil,
+                                  expanded: model.isExpanded,
+                                  beat: model.beat)
                     })
                 }
             ))
-            // The beat. Scaled from the top edge, so the pill grows down and
-            // outward from the bezel rather than lifting off it.
-            .scaleEffect(1 + beatPulse * NotchMetrics.beatPulseScale, anchor: .top)
             // Size animations live *here*, on the shape, and never at the
             // root: the root frame fills the window, whose height jumps
             // 32 → 280 on open, and animating that frame centred the whole
@@ -248,37 +256,26 @@ struct NotchView: View {
             model.artwork = i
         }
         .animation(.easeInOut(duration: 0.5), value: accent)
-        .onChange(of: model.beat) { _, _ in
-            // Snap to full without animating, then ease back down. Animating
-            // the rise as well would blur the attack — the whole point of a
-            // beat is that it arrives all at once.
-            var snap = Transaction()
-            snap.disablesAnimations = true
-            withTransaction(snap) { beatPulse = 1 }
-            withAnimation(.easeOut(duration: 0.32)) { beatPulse = 0 }
-        }
     }
+
+    /// Whether the panel may carry colour at all. Nothing playing means no
+    /// colour: a tinted pill sitting on the bezel with the music stopped reads
+    /// as a smudge on the screen rather than as part of the hardware.
+    private var colourable: Bool { model.isExpanded || model.showsCollapsedContent }
 
     /// Colour bleeding out of the top-left, fading to clear before the opposite
     /// corner. Stronger when expanded, where there's room for it to read as
     /// deliberate rather than as a smudge.
     private var accentWash: LinearGradient {
-        // Nothing playing means no colour at all. A tinted pill sitting on the
-        // bezel with the music stopped reads as a smudge on the screen rather
-        // than as part of the hardware — the whole illusion depends on the
-        // idle shape being indistinguishable from black.
-        let colourable = model.isExpanded || model.showsCollapsedContent
         let tint = colourable ? (accent ?? .clear) : .clear
-        // Brightens on the beat and settles back with it.
-        let bloom = 1 + Double(beatPulse) * NotchMetrics.beatWashBloom
         return LinearGradient(
             stops: [
                 // The collapsed wash is deliberately faint. Any tint at all
                 // lifts the pill off true black, and on the bezel that's the
                 // difference between "part of the hardware" and "a dark shape
                 // on the screen". The expanded panel can afford the colour.
-                .init(color: tint.opacity((model.isExpanded ? 0.55 : 0.38) * bloom), location: 0),
-                .init(color: tint.opacity((model.isExpanded ? 0.16 : 0.18) * bloom), location: 0.45),
+                .init(color: tint.opacity(model.isExpanded ? 0.55 : 0.38), location: 0),
+                .init(color: tint.opacity(model.isExpanded ? 0.16 : 0.18), location: 0.45),
                 // The collapsed pill keeps a trace of colour into the far
                 // corner; the expanded panel runs out to clear, as it did
                 // before. Falling to nothing is what makes a wash read as a
@@ -370,11 +367,17 @@ struct NotchView: View {
         let playing = model.track?.isPlaying == true
         // Runs the clock for audio the metadata side can't see — a YouTube tab
         // has no `track`, but it still moves the bars.
-        let live = playing || model.hasAudioSignal
-        return SpectrumBars(source: model.spectrum,
-                            barCount: 3,
-                            isAnimating: live,
-                            tint: .white.opacity(live ? 0.85 : 0.35))
+        let live = playing || model.hasAudioSignal || NotchModel.debugForceLive
+        return Group {
+            if let level = model.volumeLevel {
+                VolumeMeter(level: level, compact: true)
+            } else {
+                SpectrumBars(source: model.spectrum,
+                             barCount: 3,
+                             isAnimating: live,
+                             tint: .white.opacity(live ? 0.85 : 0.35))
+            }
+        }
             // Same width as the artwork opposite it, not the width the bars
             // happen to need. Both sit against their own edge of the pill, so
             // unequal widths put them at unequal distances from the cutout —
@@ -440,7 +443,12 @@ struct NotchView: View {
                         send(.playPause)
                     }
                     button("forward.fill") { send(.next) }
+                    if let level = model.volumeLevel {
+                        VolumeMeter(level: level, compact: false)
+                            .transition(.opacity)
+                    }
                 }
+                .animation(Self.fade, value: model.volumeLevel == nil)
                 .padding(.top, 4)
             }
             .foregroundStyle(.white)
@@ -790,82 +798,140 @@ private struct TransportButtonStyle: ButtonStyle {
 /// playing.
 ///
 /// Falls back to a synthetic bounce when there is no spectrum to draw — capture
-/// permission not granted, or nothing playing yet — so the pill still reads as
-/// alive rather than broken. That fallback is what this whole widget used to be.
-struct SpectrumBars: View {
-
-    /// Where the heights come from.
-    ///
-    /// Read inside the draw call rather than observed. The analyser produces a
-    /// frame every ~21ms; routing that through `@Published` would rebuild this
-    /// view 50 times a second, and the whole reason the bars are drawn into a
-    /// `Canvas` is to keep redraws from propagating that far.
+/// permission not granted, or capture not started yet — so the pill still
+/// reads as alive rather than broken.
+///
+/// A thin SwiftUI wrapper around `SpectrumBarsView`. The bars used to be a
+/// `TimelineView` redrawing a `Canvas` thirty times a second, and that alone
+/// was 4.5% CPU for three bars: every tick re-ran SwiftUI's view graph and
+/// re-rasterised the canvas on the CPU. Now SwiftUI only hears about changes
+/// of *configuration*; the animation itself never goes through it.
+struct SpectrumBars: NSViewRepresentable {
     var source: AudioSpectrumSource?
-
-    /// How many bars to draw. The analyser produces more bands than the
-    /// collapsed pill has room for, so they are averaged down to fit.
     var barCount: Int = 3
-
-    /// Paused playback shows the bars at rest rather than removing them, so the
-    /// collapsed row keeps its shape.
     var isAnimating: Bool = true
-
-    /// Canvas draws with an explicit colour — `foregroundStyle` from outside
-    /// doesn't reach into it.
     var tint: Color = .white
-
     var barWidth: CGFloat = 4
     var spacing: CGFloat = 3
 
-    /// Drawn into a `Canvas` rather than built from `Capsule` views.
-    ///
-    /// The view-based version re-ran SwiftUI layout for the *entire* notch on
-    /// every tick — a profile showed `StackLayout.sizeChildren` and
-    /// `_ZStackLayout.sizeThatFits` firing 30x a second and costing ~9% CPU at
-    /// rest. A Canvas has a fixed size, so its redraws never propagate outward.
-    /// That mattered at three bars; at thirty-two it is the only workable way.
-    var body: some View {
-        // 30fps rather than 60: the analyser only produces a frame every ~21ms,
-        // so a faster clock would redraw the same numbers twice.
-        TimelineView(.animation(minimumInterval: 1 / 30, paused: !isAnimating)) { context in
-            Canvas(opaque: false, rendersAsynchronously: false) { ctx, size in
-                let levels = levels(at: context.date.timeIntervalSinceReferenceDate)
-                guard !levels.isEmpty else { return }
+    func makeNSView(context: Context) -> SpectrumBarsView { SpectrumBarsView() }
 
-                let total = barWidth * CGFloat(levels.count)
-                    + spacing * CGFloat(levels.count - 1)
-                var x = (size.width - total) / 2
+    func updateNSView(_ view: SpectrumBarsView, context: Context) {
+        view.source = source
+        view.configure(barCount: barCount, tint: NSColor(tint),
+                       barWidth: barWidth, spacing: spacing)
+        view.isAnimating = isAnimating
+    }
+}
 
-                for level in levels {
-                    // Never let a bar vanish: a quiet passage should read as
-                    // quiet, not as a rendering failure.
-                    let factor = isAnimating ? max(level, 0.16) : 0.35
-                    let height = size.height * factor
-                    let rect = CGRect(x: x, y: (size.height - height) / 2,
-                                      width: barWidth, height: height)
-                    ctx.fill(
-                        Path(roundedRect: rect, cornerRadius: barWidth / 2),
-                        with: .color(tint)
-                    )
-                    x += barWidth + spacing
-                }
+/// One `CALayer` per bar, moved by a display link.
+///
+/// Each tick only sets a few layer frames, which the GPU composites — nothing
+/// is redrawn. The link runs only while animating and only while on screen.
+final class SpectrumBarsView: NSView {
+
+    var source: AudioSpectrumSource?
+
+    var isAnimating = false {
+        didSet {
+            guard isAnimating != oldValue else { return }
+            updateLink()
+            renderFrame()
+        }
+    }
+
+    private var bars: [CALayer] = []
+    private var barWidth: CGFloat = 4
+    private var spacing: CGFloat = 3
+    private var link: CADisplayLink?
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        layer = CALayer()
+        wantsLayer = true
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    /// Purely decorative: clicks go to whatever is underneath.
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    func configure(barCount: Int, tint: NSColor, barWidth: CGFloat, spacing: CGFloat) {
+        self.barWidth = barWidth
+        self.spacing = spacing
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        if bars.count != barCount {
+            bars.forEach { $0.removeFromSuperlayer() }
+            bars = (0..<barCount).map { _ in
+                let bar = CALayer()
+                layer?.addSublayer(bar)
+                return bar
             }
         }
-    }
-
-    /// The heights to draw, 0...1, low frequency first.
-    private func levels(at time: TimeInterval) -> [CGFloat] {
-        let bands = source?.bands ?? []
-        guard !bands.isEmpty else {
-            return (0..<barCount).map { synthetic(at: time, bar: $0) }
+        for bar in bars {
+            bar.backgroundColor = tint.cgColor
+            bar.cornerRadius = barWidth / 2
         }
-        return downsample(bands, to: barCount)
+        CATransaction.commit()
+        renderFrame()
     }
 
-    /// Averages the analyser's bands down to the number of bars there is room
-    /// for, keeping the low-to-high ordering.
-    private func downsample(_ bands: [Float], to count: Int) -> [CGFloat] {
+    override func layout() {
+        super.layout()
+        renderFrame()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        updateLink()
+    }
+
+    private func updateLink() {
+        let wanted = isAnimating && window != nil
+        if wanted, link == nil {
+            let link = displayLink(target: self, selector: #selector(tick(_:)))
+            // The analyser has a new frame every ~21 ms; 30 Hz is all of them
+            // a display at rest needs.
+            link.preferredFrameRateRange = CAFrameRateRange(minimum: 20, maximum: 30, preferred: 30)
+            link.add(to: .main, forMode: .common)
+            self.link = link
+        } else if !wanted, let link {
+            link.invalidate()
+            self.link = nil
+        }
+    }
+
+    @objc private func tick(_ link: CADisplayLink) { renderFrame() }
+
+    private func renderFrame() {
+        guard !bars.isEmpty else { return }
+        let levels = isAnimating
+            ? Self.levels(from: source?.bands ?? [], count: bars.count, at: CACurrentMediaTime())
+            : Array(repeating: 0.35, count: bars.count)
+        let size = bounds.size
+        let total = barWidth * CGFloat(bars.count) + spacing * CGFloat(bars.count - 1)
+        var x = (size.width - total) / 2
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        for (bar, level) in zip(bars, levels) {
+            // Never let a bar vanish: a quiet passage should read as quiet,
+            // not as a rendering failure.
+            let height = size.height * (isAnimating ? max(level, 0.16) : level)
+            bar.frame = CGRect(x: x, y: (size.height - height) / 2, width: barWidth, height: height)
+            x += barWidth + spacing
+        }
+        CATransaction.commit()
+    }
+
+    /// The heights to draw, 0...1, low frequency first: the analyser's bands
+    /// averaged down to `count`, or the synthetic bounce when there are none.
+    static func levels(from bands: [Float], count: Int, at time: TimeInterval) -> [CGFloat] {
         guard count > 0 else { return [] }
+        guard !bands.isEmpty else {
+            return (0..<count).map { synthetic(at: time, bar: $0) }
+        }
         guard bands.count > count else { return bands.map { CGFloat($0) } }
 
         let per = Double(bands.count) / Double(count)
@@ -877,20 +943,130 @@ struct SpectrumBars: View {
         }
     }
 
-    /// The old fake waveform, kept as the no-signal fallback.
-    ///
-    /// Driven by the clock rather than by animating a `phase` value. The
-    /// obvious version — `withAnimation(.repeatForever) { phase = .pi * 2 }`
-    /// with the height computed as `abs(sin(phase))` — cannot work: SwiftUI
-    /// doesn't re-evaluate `sin` at each step, it interpolates the *resulting*
-    /// scale between its start and end values. `abs(sin(0))` and `abs(sin(2pi))`
-    /// are both 0, so it animates from a value to the identical value and
-    /// nothing moves, forever.
-    private func synthetic(at time: TimeInterval, bar: Int) -> CGFloat {
-        // Offsetting each bar's phase is what makes it read as a waveform
-        // rather than bars pulsing in unison.
+    /// The old fake waveform, kept as the no-signal fallback. Offsetting each
+    /// bar's phase is what makes it read as a waveform rather than bars
+    /// pulsing in unison.
+    private static func synthetic(at time: TimeInterval, bar: Int) -> CGFloat {
         let phase = time * 3.2 + Double(bar) * 0.9
         return 0.35 + 0.65 * abs(sin(phase))
+    }
+}
+
+/// The beat flash: the accent wash, brighter, fading out over a third of a
+/// second on every beat.
+///
+/// Done in Core Animation because the SwiftUI version — animating the wash's
+/// opacity — re-rendered the whole notch for a third of every beat, which at
+/// 120 BPM doubled the app's CPU (4.5% → 8.7%). A `CABasicAnimation` runs in
+/// the render server: once added, the app does no work at all until the next
+/// beat.
+struct BeatBloom: NSViewRepresentable {
+    var shape: NotchShape
+    var color: Color?
+    var expanded: Bool
+    var beat: Int
+
+    func makeNSView(context: Context) -> BeatBloomView { BeatBloomView() }
+
+    func updateNSView(_ view: BeatBloomView, context: Context) {
+        view.update(shape: shape, color: color.map { NSColor($0) }, expanded: expanded)
+        view.pulse(beat)
+    }
+}
+
+final class BeatBloomView: NSView {
+    private let gradient = CAGradientLayer()
+    private let mask = CAShapeLayer()
+    private var shape = NotchShape()
+    private var lastBeat: Int?
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        layer = CALayer()
+        wantsLayer = true
+        gradient.opacity = 0
+        gradient.mask = mask
+        // Unit space with the origin at the bottom left: top-leading to
+        // bottom-trailing, the same diagonal as the SwiftUI wash beneath.
+        gradient.startPoint = CGPoint(x: 0, y: 1)
+        gradient.endPoint = CGPoint(x: 1, y: 0)
+        gradient.locations = [0, 0.45, 1]
+        layer?.addSublayer(gradient)
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    func update(shape: NotchShape, color: NSColor?, expanded: Bool) {
+        self.shape = shape
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        if let color {
+            // The SwiftUI wash's stops, scaled by the bloom strength: drawn on
+            // top of it at full opacity, this is the wash at its brightest.
+            let bloom = CGFloat(NotchMetrics.beatWashBloom)
+            let stops: [CGFloat] = expanded ? [0.55, 0.16, 0] : [0.38, 0.18, 0.06]
+            gradient.colors = stops.map { color.withAlphaComponent($0 * bloom).cgColor }
+            gradient.isHidden = false
+        } else {
+            gradient.isHidden = true
+        }
+        CATransaction.commit()
+        layoutLayers()
+    }
+
+    /// Flashes once per new beat number. The first value seen is only
+    /// recorded: appearing on screen is not a beat.
+    func pulse(_ beat: Int) {
+        defer { lastBeat = beat }
+        guard let lastBeat, beat != lastBeat, !gradient.isHidden else { return }
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = 1
+        fade.toValue = 0
+        fade.duration = 0.32
+        fade.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        gradient.add(fade, forKey: "beat")
+    }
+
+    override func layout() {
+        super.layout()
+        layoutLayers()
+    }
+
+    /// Clipped to the notch silhouette by its own mask rather than trusting
+    /// SwiftUI's clip to reach into a platform view. The shape's path is in
+    /// SwiftUI's top-left space; the layer's origin is bottom-left.
+    private func layoutLayers() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        gradient.frame = bounds
+        mask.frame = bounds
+        var flip = CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: 0, ty: bounds.height)
+        mask.path = shape.path(in: bounds).cgPath.copy(using: &flip)
+        CATransaction.commit()
+    }
+}
+
+/// The volume level, shown for a moment after scrolling on the notch.
+struct VolumeMeter: View {
+    var level: Float
+    /// Sized for the collapsed pill's wing rather than the expanded panel.
+    var compact: Bool
+
+    var body: some View {
+        HStack(spacing: compact ? 3 : 6) {
+            Image(systemName: level <= 0 ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                .font(.system(size: compact ? 8 : 11, weight: .medium))
+                .frame(width: compact ? 10 : 18)
+            ZStack(alignment: .leading) {
+                Capsule().fill(.white.opacity(0.22))
+                Capsule().fill(.white)
+                    .frame(width: max(compact ? 2 : 3, (compact ? 16 : 64) * CGFloat(level)))
+            }
+            .frame(width: compact ? 16 : 64, height: compact ? 3 : 4)
+        }
+        .foregroundStyle(.white.opacity(0.85))
     }
 }
 

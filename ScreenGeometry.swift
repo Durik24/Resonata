@@ -63,15 +63,6 @@ enum NotchMetrics {
     /// padding, so it moves the wave without touching the artwork opposite it.
     static let waveformNudge: CGFloat = 0
 
-    /// How much the notch grows on a beat, as a fraction of its size.
-    ///
-    /// Off. It was 0.03, and on the collapsed pill that was a six-point breath;
-    /// on the expanded panel the same fraction is a fourteen-point jolt two or
-    /// three times a second, which reads as the panel flapping open and shut
-    /// rather than as the music. The colour bloom below carries the beat on
-    /// its own. Set to ~0.02 to try the breath again on the pill.
-    static let beatPulseScale: CGFloat = 0
-
     /// How much brighter the artwork colour wash gets on a beat, as a
     /// multiplier on its opacity. 1.0 would double it.
     static let beatWashBloom: Double = 0.5

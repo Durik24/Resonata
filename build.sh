@@ -12,7 +12,7 @@ mkdir -p "$APP/Contents/MacOS"
 swiftc -O -target "$(uname -m)-apple-macos14.0" \
     -o "$APP/Contents/MacOS/Resonata" \
     AudioSpectrum.swift Lyrics.swift MediaRemote.swift NotchPanel.swift NotchShape.swift \
-    ResonataApp.swift NotchView.swift NowPlaying.swift ScreenGeometry.swift
+    ResonataApp.swift NotchView.swift NowPlaying.swift ScreenGeometry.swift Volume.swift
 
 # MediaRemote adapter (Vendor/mediaremote-adapter): a small Objective-C
 # framework that /usr/bin/perl loads to read now-playing for every player.
