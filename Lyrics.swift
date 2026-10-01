@@ -169,10 +169,11 @@ final class LyricsStore: ObservableObject {
             let line = String(rawLine)
             let range = NSRange(line.startIndex..., in: line)
             let matches = stamp.matches(in: line, range: range)
-            guard let last = matches.last else { continue }
-
-            let textStart = line.index(line.startIndex, offsetBy: last.range.upperBound)
-            let text = line[textStart...].trimmingCharacters(in: .whitespaces)
+            // `NSRange` counts UTF-16 units; walking that many *characters*
+            // overran the string — a crash — whenever anything wider than one
+            // unit, an emoji say, came before the stamp. Convert, don't count.
+            guard let last = matches.last, let stamp = Range(last.range, in: line) else { continue }
+            let text = line[stamp.upperBound...].trimmingCharacters(in: .whitespaces)
 
             for match in matches {
                 guard let mr = Range(match.range(at: 1), in: line),

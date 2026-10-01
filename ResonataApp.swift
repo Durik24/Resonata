@@ -41,6 +41,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// a foreground role and the same click renders in 84ms.
     private var activity: NSObjectProtocol?
 
+    /// SIGTERM — `pkill`, `./build.sh run`, logging out — normally kills a
+    /// Cocoa app on the spot, without `applicationWillTerminate`. That left the
+    /// MediaRemote helper running with no parent. Turned into an ordinary quit.
+    private var termination: DispatchSourceSignal?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // No Dock icon, no menu bar entry — it lives in the notch.
         NSApp.setActivationPolicy(.accessory)
@@ -49,6 +54,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             options: [.userInitiated, .latencyCritical],
             reason: "Resonata draws in response to clicks and to live audio"
         )
+
+        signal(SIGTERM, SIG_IGN)
+        let sigterm = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+        sigterm.setEventHandler { NSApp.terminate(nil) }
+        sigterm.resume()
+        termination = sigterm
 
         controller.show()
         startNowPlaying()

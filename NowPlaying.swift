@@ -250,7 +250,22 @@ final class AppleScriptNowPlaying: ObservableObject, NowPlayingSource {
             let key = "\(t.title)\u{1F}\(t.album)\u{1F}\(t.artist)"
             if key != artworkKey {
                 artworkKey = key
-                artworkURL = Self.extractMusicArtwork()
+                artworkURL = nil
+                // On the AppleScript queue, not here: this runs on the main
+                // thread, `NSAppleScript` blocks, and it isn't thread-safe —
+                // every other script already runs on `scriptQueue`.
+                Self.scriptQueue.async { [weak self] in
+                    let url = Self.extractMusicArtwork()
+                    DispatchQueue.main.async {
+                        MainActor.assumeIsolated {
+                            guard let self, self.artworkKey == key, var current = self.track
+                            else { return }
+                            self.artworkURL = url
+                            current.artworkURL = url
+                            self.track = current
+                        }
+                    }
+                }
             }
             t.artworkURL = artworkURL
             track = t
@@ -393,7 +408,7 @@ final class AppleScriptNowPlaying: ObservableObject, NowPlayingSource {
     /// German system a duration arrives as `"124,615"`. `Double(_:)` is
     /// POSIX-only and returns nil for that, which zeroed the scrubber on every
     /// machine that doesn't use a decimal point.
-    private nonisolated static func number(_ string: String) -> Double {
+    nonisolated static func number(_ string: String) -> Double {
         Double(string)
             ?? Double(string.replacingOccurrences(of: ",", with: "."))
             ?? 0

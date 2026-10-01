@@ -210,6 +210,17 @@ u fakeWidth.
 
 
 ────────────────────────────────────────────────────────────────
+TESTY
+────────────────────────────────────────────────────────────────
+
+    ./test.sh
+
+Ověří logiku bez spouštění aplikace: posuvník, texty písní, FFT
+spektrum, detekci dob a čtení z MediaRemote. Na konci vypíše
+"N passed, 0 failed". Když něco selže, vypíše FAIL a co přesně.
+
+
+────────────────────────────────────────────────────────────────
 VYPNUTÍ A ODINSTALACE
 ────────────────────────────────────────────────────────────────
 

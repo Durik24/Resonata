@@ -105,11 +105,17 @@ final class SpectrumAnalyzer {
     private static let beatMinimumRise: Float = 0.07
     /// ...and no two beats can land closer than this. 160 ms is 375 BPM, well
     /// past anything musical; it exists to stop one kick's decay counting twice.
-    private static let beatRefractory: CFAbsoluteTime = 0.16
+    ///
+    /// Measured in *samples*, not wall-clock time. ScreenCaptureKit can hand
+    /// over several queued buffers at once, and timed by the clock on the wall
+    /// those arrive "simultaneously" — every beat in the burst after the first
+    /// was thrown away. The audio's own clock doesn't care when it was delivered.
+    private static let beatRefractory: TimeInterval = 0.16
 
     private let log2n: vDSP_Length
     private let fftSetup: FFTSetup
-    private let bandRanges: [Range<Int>]
+    /// Internal for `Tests/`, which checks the spacing.
+    let bandRanges: [Range<Int>]
 
     /// The most recent `fftSize` samples, oldest first.
     private var ring: [Float]
@@ -131,11 +137,16 @@ final class SpectrumAnalyzer {
     private var energyHistory: [Float]
     private var energyIndex = 0
     private var energyFilled = 0
-    private var lastBeatAt: CFAbsoluteTime = 0
+
+    private let sampleRate: Double
+    /// Samples seen since start — the audio clock beats are timed on.
+    private var samplesSeen = 0
+    private var lastBeatSample = Int.min / 2
 
     init?(bandCount: Int, sampleRate: Double) {
         let n = Self.fftSize
         self.bandCount = bandCount
+        self.sampleRate = sampleRate
         self.log2n = vDSP_Length(log2(Double(n)))
 
         guard let setup = vDSP_create_fftsetup(log2n, FFTRadix(kFFTRadix2)) else { return nil }
@@ -226,6 +237,7 @@ final class SpectrumAnalyzer {
             }
         }
         filled = min(filled + count, n)
+        samplesSeen += count
     }
 
     private func analyse() -> [Float] {
@@ -318,13 +330,13 @@ final class SpectrumAnalyzer {
         // Needs most of a beat cycle of history before it can say anything.
         guard energyFilled >= Self.beatHistory / 2 else { return false }
 
-        let now = CFAbsoluteTimeGetCurrent()
-        guard now - lastBeatAt > Self.beatRefractory,
+        let refractory = Int(Self.beatRefractory * sampleRate)
+        guard samplesSeen - lastBeatSample > refractory,
               energy > average * Self.beatRatio,
               energy - average > Self.beatMinimumRise
         else { return false }
 
-        lastBeatAt = now
+        lastBeatSample = samplesSeen
         return true
     }
 }
@@ -401,6 +413,11 @@ final class SystemAudioSpectrum: NSObject, ObservableObject, AudioSpectrumSource
 
     @MainActor private var stream: SCStream?
 
+    /// Capture should be running — cleared only by `stop()`. A stream that
+    /// dies while this is set gets restarted.
+    @MainActor private var wantsRunning = false
+    @MainActor private var retryDelay: TimeInterval = 2
+
     init(bandCount: Int) {
         self.analyzer = SpectrumAnalyzer(
             bandCount: bandCount, sampleRate: Self.sampleRate
@@ -412,11 +429,15 @@ final class SystemAudioSpectrum: NSObject, ObservableObject, AudioSpectrumSource
     }
 
     func start() {
-        Task { await startCapture() }
+        Task { @MainActor in
+            wantsRunning = true
+            await startCapture()
+        }
     }
 
     func stop() {
         Task { @MainActor in
+            wantsRunning = false
             guard let stream else { return }
             self.stream = nil
             try? await stream.stopCapture()
@@ -459,12 +480,34 @@ final class SystemAudioSpectrum: NSObject, ObservableObject, AudioSpectrumSource
             let stream = SCStream(filter: filter, configuration: config, delegate: self)
             try stream.addStreamOutput(self, type: .audio, sampleHandlerQueue: audioQueue)
             try await stream.startCapture()
-            await MainActor.run { self.stream = stream }
+            await MainActor.run {
+                self.stream = stream
+                self.retryDelay = 2
+            }
         } catch {
-            // Overwhelmingly the permission: Screen Recording has to be granted
-            // before ScreenCaptureKit will hand over audio, and an ad-hoc signed
-            // build loses that grant every time it is rebuilt.
             NSLog("Resonata: audio capture failed to start: \(error)")
+            // A refused permission won't change by asking again; anything
+            // else — no display yet, a display mid-reconfiguration — might.
+            if (error as? SCStreamError)?.code != .userDeclined {
+                await scheduleRestart()
+            }
+        }
+    }
+
+    /// Tries again after a pause that doubles each time, up to half a minute.
+    ///
+    /// The stream is attached to a display (ScreenCaptureKit has no
+    /// audio-only mode). Unplug the monitor it picked and the stream stops
+    /// with an error — before this, the bars then fell back to the fake
+    /// animation until the app was relaunched.
+    @MainActor private func scheduleRestart() {
+        guard wantsRunning else { return }
+        let delay = retryDelay
+        retryDelay = min(retryDelay * 2, 30)
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(delay))
+            guard wantsRunning, stream == nil else { return }
+            await startCapture()
         }
     }
 
@@ -563,6 +606,10 @@ final class SystemAudioSpectrum: NSObject, ObservableObject, AudioSpectrumSource
     func stream(_ stream: SCStream, didStopWithError error: Error) {
         NSLog("Resonata: audio capture stopped: \(error)")
         latest.withLock { $0 = [] }
-        Task { @MainActor in self.hasSignal = false }
+        Task { @MainActor in
+            self.hasSignal = false
+            self.stream = nil
+            self.scheduleRestart()
+        }
     }
 }

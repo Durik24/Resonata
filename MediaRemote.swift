@@ -33,7 +33,9 @@ final class MediaRemoteNowPlaying: ObservableObject, NowPlayingSource {
     private var buffer = Data()
     private var state: [String: Any] = [:]
     private var pausedSince: Date?
-    private var artworkKey: String?
+    /// The base64 artwork currently on disk, and where. Keyed on the artwork
+    /// *data*, not the song: see `apply`.
+    private var artworkSource: String?
     private var artworkURL: URL?
     private var startupTimer: Timer?
     private var idleTimer: Timer?
@@ -63,9 +65,15 @@ final class MediaRemoteNowPlaying: ObservableObject, NowPlayingSource {
             return
         }
 
+        Self.reapOrphans(of: script)
+        Self.removeStaleArtwork()
+
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/perl")
-        process.arguments = [script.path, framework.path, "stream"]
+        // `--micros`: the plain stream stamps updates to the whole second,
+        // which put the interpolated playhead — and the lyrics — up to a
+        // second early. Measured: 06:53:56 printed for 06:53:56.964.
+        process.arguments = [script.path, framework.path, "stream", "--micros"]
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice
@@ -122,9 +130,36 @@ final class MediaRemoteNowPlaying: ObservableObject, NowPlayingSource {
         if Self.active === self { Self.active = nil }
     }
 
+    /// Ends helpers left behind by an earlier run.
+    ///
+    /// A force-quit or crash skips `stop()`, and the helper carries on with
+    /// launchd as its parent, streaming to nobody. Only processes adopted by
+    /// launchd (parent 1) that are running *this* script are touched.
+    private static func reapOrphans(of script: URL) {
+        let pkill = Process()
+        pkill.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
+        pkill.arguments = ["-P", "1", "-f", NSRegularExpression.escapedPattern(for: script.path)]
+        pkill.standardOutput = FileHandle.nullDevice
+        pkill.standardError = FileHandle.nullDevice
+        try? pkill.run()
+        pkill.waitUntilExit()
+    }
+
+    /// Artwork files from earlier runs. Each run deletes its own as songs
+    /// change, but the last one of a run outlives it.
+    private static func removeStaleArtwork() {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []
+        for name in names where name.hasPrefix("resonata-mr-") {
+            try? FileManager.default.removeItem(at: dir.appendingPathComponent(name))
+        }
+    }
+
     // MARK: Stream
 
-    private func ingest(_ data: Data) {
+    /// Internal rather than private so `Tests/` can feed it recorded stream
+    /// output; nothing else in the app calls it.
+    func ingest(_ data: Data) {
         buffer.append(data)
         while let newline = buffer.firstIndex(of: 0x0A) {
             let line = buffer[buffer.startIndex..<newline]
@@ -157,7 +192,7 @@ final class MediaRemoteNowPlaying: ObservableObject, NowPlayingSource {
     }
 
     private func apply() {
-        var track = Self.track(from: state, previous: self.track)
+        var track = Self.track(from: state)
 
         // Same idle rule as the AppleScript source: a paused track stays for
         // a while, so the pill doesn't vanish the moment you pause to talk.
@@ -185,21 +220,32 @@ final class MediaRemoteNowPlaying: ObservableObject, NowPlayingSource {
             isIdle = false
         }
 
-        // Artwork arrives as base64 in the payload. Write it once per song
-        // and hand the views a file URL, like the Music path already does.
-        if var t = track {
-            let key = "\(t.title)\u{1F}\(t.album)\u{1F}\(t.artist)"
-            if let base64 = state["artworkData"] as? String, key != artworkKey,
-               let bytes = Data(base64Encoded: base64) {
+        // Artwork arrives as base64 in the payload; write it to a file the
+        // views can load.
+        //
+        // Keyed on the artwork *data*, not on the song. A track change arrives
+        // as diffs — the new title first, the new artwork in a later one — so
+        // keying on the song wrote the *previous* cover under the new title
+        // and then, seeing the song already had artwork, ignored the real one.
+        if let base64 = state["artworkData"] as? String {
+            if base64 != artworkSource, let bytes = Data(base64Encoded: base64) {
                 let ext = (state["artworkMimeType"] as? String)?.contains("png") == true ? "png" : "jpg"
                 let url = URL(fileURLWithPath: NSTemporaryDirectory())
                     .appendingPathComponent("resonata-mr-\(UUID().uuidString.prefix(8)).\(ext)")
                 if (try? bytes.write(to: url)) != nil {
-                    artworkKey = key
+                    // One file at a time; these used to pile up per song.
+                    if let old = artworkURL { try? FileManager.default.removeItem(at: old) }
+                    artworkSource = base64
                     artworkURL = url
                 }
             }
-            if key == artworkKey { t.artworkURL = artworkURL }
+        } else if let old = artworkURL {
+            try? FileManager.default.removeItem(at: old)
+            artworkSource = nil
+            artworkURL = nil
+        }
+        if var t = track {
+            t.artworkURL = artworkURL
             track = t
         }
 
@@ -218,21 +264,36 @@ final class MediaRemoteNowPlaying: ObservableObject, NowPlayingSource {
 
     private static let iso = ISO8601DateFormatter()
 
-    private static func track(from state: [String: Any], previous: Track?) -> Track? {
+    private static func track(from state: [String: Any]) -> Track? {
         guard let title = state["title"] as? String, !title.isEmpty else { return nil }
         let bundle = (state["bundleIdentifier"] as? String) ?? ""
-        let sampledAt = (state["timestamp"] as? String).flatMap(iso.date(from:)) ?? Date()
         return Track(
             title: title,
             artist: (state["artist"] as? String) ?? "",
             album: (state["album"] as? String) ?? "",
-            duration: (state["duration"] as? Double) ?? 0,
-            sampledPosition: (state["elapsedTime"] as? Double) ?? 0,
-            sampledAt: sampledAt,
+            duration: seconds(state, micros: "durationMicros", plain: "duration") ?? 0,
+            sampledPosition: seconds(state, micros: "elapsedTimeMicros", plain: "elapsedTime") ?? 0,
+            sampledAt: sampledAt(state),
             isPlaying: (state["playing"] as? Bool) ?? false,
-            artworkURL: previous?.artworkURL,
+            artworkURL: nil,
             source: Self.appName(for: bundle) ?? bundle
         )
+    }
+
+    /// A duration, preferring the microsecond field `--micros` provides and
+    /// falling back to the plain one in seconds.
+    private static func seconds(_ state: [String: Any], micros: String, plain: String) -> Double? {
+        if let us = (state[micros] as? NSNumber)?.doubleValue { return us / 1_000_000 }
+        return (state[plain] as? NSNumber)?.doubleValue
+    }
+
+    /// When the elapsed time was valid. Microsecond epoch when available; the
+    /// ISO string is whole seconds only.
+    private static func sampledAt(_ state: [String: Any]) -> Date {
+        if let us = (state["timestampEpochMicros"] as? NSNumber)?.doubleValue {
+            return Date(timeIntervalSince1970: us / 1_000_000)
+        }
+        return (state["timestamp"] as? String).flatMap(iso.date(from:)) ?? Date()
     }
 
     /// "Spotify", "Safari", "VLC" — for display, and so the AppleScript path

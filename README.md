@@ -50,6 +50,20 @@ keychain; `build.sh` uses it when present.
 | `ResonataApp.swift` | Wires it together, sets `.accessory` activation policy |
 | `setup-signing.sh` | One-time: creates the "Resonata Dev" signing identity |
 
+## Tests
+
+```
+./test.sh
+```
+
+Builds `Tests/main.swift` against the logic files with plain `swiftc` (no
+Xcode project, no XCTest) and runs it: the interpolated playhead, the LRC
+parser and line lookup, the FFT's band layout and tone placement, the beat
+detector on a synthetic 120 BPM kick, and the MediaRemote stream parser fed
+recorded `stream --micros` output — including a track change where the new
+artwork arrives in a later diff than the new title. Exits non-zero on any
+failure.
+
 ## How the spectrum works
 
 `SpectrumAnalyzer` in `AudioSpectrum.swift`, every ~21 ms:
