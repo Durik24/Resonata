@@ -417,6 +417,12 @@ final class SystemAudioSpectrum: NSObject, ObservableObject, AudioSpectrumSource
     /// dies while this is set gets restarted.
     @MainActor private var wantsRunning = false
     @MainActor private var isStarting = false
+
+    /// Whether this launch has already let macOS show its Screen Recording
+    /// dialog. Capture starts with every play; without permission, every
+    /// start asked ScreenCaptureKit and macOS put the dialog up again —
+    /// each time music started. Now it can appear once per launch at most.
+    @MainActor private var askedForPermission = false
     @MainActor private var retryDelay: TimeInterval = 2
 
     init(bandCount: Int) {
@@ -434,6 +440,12 @@ final class SystemAudioSpectrum: NSObject, ObservableObject, AudioSpectrumSource
         Task { @MainActor in
             wantsRunning = true
             guard stream == nil, !isStarting else { return }
+            // `CGPreflightScreenCaptureAccess` only reads the answer; it never
+            // shows anything. Without permission, try — and so prompt — once.
+            if !CGPreflightScreenCaptureAccess() {
+                guard !askedForPermission else { return }
+                askedForPermission = true
+            }
             // Claimed here, on the main actor, before the first suspension —
             // a second `start()` in the meantime then sees it and stops.
             isStarting = true
@@ -518,7 +530,9 @@ final class SystemAudioSpectrum: NSObject, ObservableObject, AudioSpectrumSource
         retryDelay = min(retryDelay * 2, 30)
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(delay))
-            guard wantsRunning, stream == nil, !isStarting else { return }
+            // A retry without permission would only bring the dialog back.
+            guard wantsRunning, stream == nil, !isStarting,
+                  CGPreflightScreenCaptureAccess() else { return }
             isStarting = true
             await startCapture()
         }
