@@ -128,18 +128,37 @@ extension NSScreen {
         )
         let targets = safeAreaInsets.top > 0 ? [whole, belowNotch] : [whole]
 
-        // A window that fills the area below the notch is *also* exactly what
-        // a maximised window on an ordinary desktop looks like, because the
-        // menu bar is the notch's height. The difference is the menu bar
-        // itself: a true full-screen Space hides it, and `visibleFrame` then
-        // reaches the top of the display. Without this, every desktop with a
-        // maximised window lost the pill.
-        let menuBarHidden = visibleFrame.maxY >= frame.maxY - 1
-        guard menuBarHidden else { return false }
-
         guard let windows = CGWindowListCopyWindowInfo(
             [.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID
         ) as? [[String: Any]] else { return false }
+
+        // A window that fills the area below the notch is *also* exactly what
+        // a maximised window on an ordinary desktop looks like, because the
+        // menu bar is the notch's height. What tells them apart is the menu
+        // bar's status items — Control Center, Wi-Fi, the clock: on a desktop
+        // they're on screen; in a full-screen Space they aren't, not even when
+        // the pointer at the top edge slides the app's own menu bar down.
+        //
+        // This replaced checking `visibleFrame` for a hidden menu bar, which
+        // never reports one on a notched display: measured in a real
+        // full-screen Space it still stopped 39pt short of the top, so the
+        // notch stayed up over every full-screen app.
+        //
+        // Window *names* would be more explicit (the Dock puts up a
+        // "Fullscreen Backdrop"), but reading other apps' window names needs
+        // Screen Recording, which the app no longer asks for. Layers and
+        // bounds don't.
+        let statusLevel = Int(CGWindowLevelForKey(.statusWindow))
+        let statusItemsShown = windows.contains { window in
+            guard (window[kCGWindowLayer as String] as? Int) == statusLevel,
+                  let raw = window[kCGWindowBounds as String] as? [String: Any],
+                  let bounds = CGRect(dictionaryRepresentation: raw as CFDictionary)
+            else { return false }
+            // In this display's menu bar strip, not some other display's.
+            return abs(bounds.minY - whole.minY) < 2 && bounds.height < 60
+                && bounds.midX >= whole.minX && bounds.midX <= whole.maxX
+        }
+        guard !statusItemsShown else { return false }
 
         return windows.contains { window in
             // Layer 0 is ordinary app windows. Our own panel sits far above it,
