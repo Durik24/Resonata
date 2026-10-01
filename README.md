@@ -89,7 +89,13 @@ Right-click → Nastavení… opens a settings window: open at login, a global
 shortcut to open the notch (⇧⌘Space by default; Carbon hot keys, so no
 Accessibility permission), how long after a pause the notch shrinks,
 animation speed, lyrics on/off, and the wave's colour (album, white, or your
-own). Apple Music tracks get a heart button (`favorited` over AppleScript);
+own). Animation choices: how the panel opens (zoom, a bouncing spring, a smooth
+glide, a snap, or "pour" — content revealed top-down like a curtain), what
+the closed notch shows (bars, a mini wave, pulsing dots, or a ring round the
+cover that ripples on each beat), how the cover changes with the song (fade,
+flip, slide), a push-in for the title and artist, and an optional flash of
+the new cover's colour. The ripple and the flash are Core Animation, so they
+cost the app nothing between events. Apple Music tracks get a heart button (`favorited` over AppleScript);
 Spotify has no way to like a song from the Mac short of its web API.
 
 ## Menu and volume

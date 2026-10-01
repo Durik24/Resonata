@@ -33,6 +33,10 @@ struct SettingsView: View {
     @AppStorage(Preferences.Key.customWaveColour) private var customHex = "#FFFFFF"
     @AppStorage(Preferences.Key.showLyrics) private var showLyrics = true
     @AppStorage(Preferences.Key.hotKey) private var hotKey = HotKeyChoice.shiftCommandSpace.rawValue
+    @AppStorage(Preferences.Key.openStyle) private var openStyle = OpenStyle.zoom.rawValue
+    @AppStorage(Preferences.Key.pillStyle) private var pillStyle = PillStyle.bars.rawValue
+    @AppStorage(Preferences.Key.trackChange) private var trackChange = TrackChange.fade.rawValue
+    @AppStorage(Preferences.Key.trackFlash) private var trackFlash = true
 
     @State private var openAtLogin = LoginItem.isEnabled
     @State private var hotKeyTaken = false
@@ -62,10 +66,23 @@ struct SettingsView: View {
                 Picker("Zmenšit notch po pauze za", selection: $idleTimeout) {
                     ForEach(Preferences.idleChoices, id: \.self) { Text("\(Int($0)) s").tag($0) }
                 }
-                Picker("Animace", selection: $speed) {
+                Toggle("Zobrazovat texty písní", isOn: $showLyrics)
+            }
+
+            Section("Animace") {
+                Picker("Otevírání a zavírání", selection: $openStyle) {
+                    ForEach(OpenStyle.allCases) { Text($0.title).tag($0.rawValue) }
+                }
+                Picker("Rychlost", selection: $speed) {
                     ForEach(AnimationSpeed.allCases) { Text($0.title).tag($0.rawValue) }
                 }
-                Toggle("Zobrazovat texty písní", isOn: $showLyrics)
+                Picker("Zavřený notch ukazuje", selection: $pillStyle) {
+                    ForEach(PillStyle.allCases) { Text($0.title).tag($0.rawValue) }
+                }
+                Picker("Obal při změně skladby", selection: $trackChange) {
+                    ForEach(TrackChange.allCases) { Text($0.title).tag($0.rawValue) }
+                }
+                Toggle("Záblesk barvy při změně skladby", isOn: $trackFlash)
             }
 
             Section {

@@ -514,8 +514,29 @@ final class NotchPanelController {
             try NSBitmapImageRep(cgImage: image)
                 .representation(using: .png, properties: [:])?.write(to: url)
         } catch {
-            NSLog("snap: capture failed: \(error)")
+            // Without Screen Recording — which the app no longer needs for
+            // audio — draw the layer tree ourselves. Core Animation-driven
+            // effects (the beat ripple, the colour flash) don't show this
+            // way, but layout, the bars, the wave and the content all do.
+            renderLayers(to: url)
         }
+    }
+
+    private func renderLayers(to url: URL) {
+        guard let panel, let layer = panel.contentView?.layer else { return }
+        let scale = panel.backingScaleFactor
+        let size = panel.frame.size
+        guard let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: Int(size.width * scale), pixelsHigh: Int(size.height * scale),
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
+              let context = NSGraphicsContext(bitmapImageRep: rep)?.cgContext else { return }
+        context.scaleBy(x: scale, y: scale)
+        // CALayer.render draws flipped relative to a bitmap context.
+        context.translateBy(x: 0, y: size.height)
+        context.scaleBy(x: 1, y: -1)
+        layer.render(in: context)
+        try? rep.representation(using: .png, properties: [:])?.write(to: url)
     }
 
     /// Where the expanded panel is drawn, in window coordinates: top-centre

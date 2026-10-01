@@ -380,6 +380,15 @@ MainActor.assumeIsolated {
     }
 }
 
+// MARK: - Animation styles
+
+check(OpenStyle.allCases.filter { !$0.scalesContent } == [.pour], "open styles: only Pour reveals instead of zooming")
+check(Set(OpenStyle.allCases.map(\.title)).count == OpenStyle.allCases.count, "open styles: distinct names")
+check(PillStyle(rawValue: UserDefaults.standard.string(forKey: Preferences.Key.pillStyle) ?? "") == .bars,
+      "pill style: bars by default")
+check(TrackChange(rawValue: UserDefaults.standard.string(forKey: Preferences.Key.trackChange) ?? "") == .fade,
+      "track change: fade by default")
+
 // MARK: - Last: a lyrics line that used to crash the parser
 
 // The stamp's end was taken as a UTF-16 offset and walked as a count of
