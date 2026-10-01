@@ -1,30 +1,25 @@
 import AppKit
 import SwiftUI
 
-/// Bars whose heights are the actual frequency content of what the machine is
-/// playing.
+/// The collapsed pill's bars: moving while something plays, at rest when not.
+/// The motion is made up — see `Motion` — because Resonata doesn't listen to
+/// the computer's sound.
 ///
-/// Falls back to a synthetic bounce when there is no spectrum to draw — capture
-/// permission not granted, or capture not started yet — so the pill still
-/// reads as alive rather than broken.
-///
-/// A thin SwiftUI wrapper around `SpectrumBarsView`. The bars used to be a
+/// A thin SwiftUI wrapper around `MusicBarsView`. The bars used to be a
 /// `TimelineView` redrawing a `Canvas` thirty times a second, and that alone
 /// was 4.5% CPU for three bars: every tick re-ran SwiftUI's view graph and
 /// re-rasterised the canvas on the CPU. Now SwiftUI only hears about changes
 /// of *configuration*; the animation itself never goes through it.
-struct SpectrumBars: NSViewRepresentable {
-    var source: AudioSpectrumSource?
+struct MusicBars: NSViewRepresentable {
     var barCount: Int = 3
     var isAnimating: Bool = true
     var tint: Color = .white
     var barWidth: CGFloat = 4
     var spacing: CGFloat = 3
 
-    func makeNSView(context: Context) -> SpectrumBarsView { SpectrumBarsView() }
+    func makeNSView(context: Context) -> MusicBarsView { MusicBarsView() }
 
-    func updateNSView(_ view: SpectrumBarsView, context: Context) {
-        view.source = source
+    func updateNSView(_ view: MusicBarsView, context: Context) {
         view.configure(barCount: barCount, tint: NSColor(tint),
                        barWidth: barWidth, spacing: spacing)
         view.isAnimating = isAnimating
@@ -35,9 +30,7 @@ struct SpectrumBars: NSViewRepresentable {
 ///
 /// Each tick only sets a few layer frames, which the GPU composites — nothing
 /// is redrawn. The link runs only while animating and only while on screen.
-final class SpectrumBarsView: NSView {
-
-    var source: AudioSpectrumSource?
+final class MusicBarsView: NSView {
 
     var isAnimating = false {
         didSet {
@@ -98,8 +91,7 @@ final class SpectrumBarsView: NSView {
         let wanted = isAnimating && window != nil
         if wanted, link == nil {
             let link = displayLink(target: self, selector: #selector(tick(_:)))
-            // The analyser has a new frame every ~21 ms; 30 Hz is all of them
-            // a display at rest needs.
+            // Slow, smooth motion: 30 Hz is plenty.
             link.preferredFrameRateRange = CAFrameRateRange(minimum: 20, maximum: 30, preferred: 30)
             link.add(to: .main, forMode: .common)
             self.link = link
@@ -114,7 +106,7 @@ final class SpectrumBarsView: NSView {
     private func renderFrame() {
         guard !bars.isEmpty else { return }
         let levels = isAnimating
-            ? Self.levels(from: source?.bands ?? [], count: bars.count, at: CACurrentMediaTime())
+            ? Self.levels(count: bars.count, at: CACurrentMediaTime())
             : Array(repeating: 0.35, count: bars.count)
         let size = bounds.size
         let total = barWidth * CGFloat(bars.count) + spacing * CGFloat(bars.count - 1)
@@ -123,8 +115,7 @@ final class SpectrumBarsView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         for (bar, level) in zip(bars, levels) {
-            // Never let a bar vanish: a quiet passage should read as quiet,
-            // not as a rendering failure.
+            // Never let a bar vanish to nothing.
             let height = size.height * (isAnimating ? max(level, 0.16) : level)
             bar.frame = CGRect(x: x, y: (size.height - height) / 2, width: barWidth, height: height)
             x += barWidth + spacing
@@ -132,29 +123,9 @@ final class SpectrumBarsView: NSView {
         CATransaction.commit()
     }
 
-    /// The heights to draw, 0...1, low frequency first: the analyser's bands
-    /// averaged down to `count`, or the synthetic bounce when there are none.
-    static func levels(from bands: [Float], count: Int, at time: TimeInterval) -> [CGFloat] {
-        guard count > 0 else { return [] }
-        guard !bands.isEmpty else {
-            return (0..<count).map { synthetic(at: time, bar: $0) }
-        }
-        guard bands.count > count else { return bands.map { CGFloat($0) } }
-
-        let per = Double(bands.count) / Double(count)
-        return (0..<count).map { i in
-            let lo = Int(Double(i) * per)
-            let hi = min(max(lo + 1, Int(Double(i + 1) * per)), bands.count)
-            let slice = bands[lo..<hi]
-            return CGFloat(slice.reduce(0, +) / Float(slice.count))
-        }
-    }
-
-    /// The old fake waveform, kept as the no-signal fallback. Offsetting each
-    /// bar's phase is what makes it read as a waveform rather than bars
-    /// pulsing in unison.
-    private static func synthetic(at time: TimeInterval, bar: Int) -> CGFloat {
-        let phase = time * 3.2 + Double(bar) * 0.9
-        return 0.35 + 0.65 * abs(sin(phase))
+    /// The heights to draw, 0...1. Bars sit further apart in `Motion`'s
+    /// phase than the wave's points, so three of them don't move as one.
+    static func levels(count: Int, at time: TimeInterval) -> [CGFloat] {
+        (0..<count).map { CGFloat(0.2 + 0.8 * Motion.level($0 * 3, at: time)) }
     }
 }

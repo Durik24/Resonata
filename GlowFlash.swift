@@ -1,33 +1,34 @@
 import AppKit
 import SwiftUI
 
-/// The beat flash: the accent wash, brighter, fading out over a third of a
-/// second on every beat.
+/// The flash: the accent wash, brighter, fading out over a third of a
+/// second as each new line of lyrics begins (`LyricPulse`).
 ///
 /// Done in Core Animation because the SwiftUI version — animating the wash's
-/// opacity — re-rendered the whole notch for a third of every beat, which at
-/// 120 BPM doubled the app's CPU (4.5% → 8.7%). A `CABasicAnimation` runs in
-/// the render server: once added, the app does no work at all until the next
-/// beat.
-struct BeatBloom: NSViewRepresentable {
+/// opacity — re-rendered the whole notch for the length of every flash, which
+/// at a flash twice a second doubled the app's CPU (4.5% → 8.7%). A
+/// `CABasicAnimation` runs in the render server: once added, the app does no
+/// work at all until the next one.
+struct GlowFlash: NSViewRepresentable {
     var shape: NotchShape
     var color: Color?
     var expanded: Bool
-    var beat: Int
+    /// Counts up once per new lyric line; each change is one flash.
+    var pulse: Int
 
-    func makeNSView(context: Context) -> BeatBloomView { BeatBloomView() }
+    func makeNSView(context: Context) -> GlowFlashView { GlowFlashView() }
 
-    func updateNSView(_ view: BeatBloomView, context: Context) {
+    func updateNSView(_ view: GlowFlashView, context: Context) {
         view.update(shape: shape, color: color.map { NSColor($0) }, expanded: expanded)
-        view.pulse(beat)
+        view.pulse(pulse)
     }
 }
 
-final class BeatBloomView: NSView {
+final class GlowFlashView: NSView {
     private let gradient = CAGradientLayer()
     private let mask = CAShapeLayer()
     private var shape = NotchShape()
-    private var lastBeat: Int?
+    private var lastPulse: Int?
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -54,7 +55,7 @@ final class BeatBloomView: NSView {
         if let color {
             // The SwiftUI wash's stops, scaled by the bloom strength: drawn on
             // top of it at full opacity, this is the wash at its brightest.
-            let bloom = CGFloat(NotchMetrics.beatWashBloom)
+            let bloom = CGFloat(NotchMetrics.flashBloom)
             let stops: [CGFloat] = expanded ? [0.55, 0.16, 0] : [0.38, 0.18, 0.06]
             gradient.colors = stops.map { color.withAlphaComponent($0 * bloom).cgColor }
             gradient.isHidden = false
@@ -65,17 +66,17 @@ final class BeatBloomView: NSView {
         layoutLayers()
     }
 
-    /// Flashes once per new beat number. The first value seen is only
-    /// recorded: appearing on screen is not a beat.
-    func pulse(_ beat: Int) {
-        defer { lastBeat = beat }
-        guard let lastBeat, beat != lastBeat, !gradient.isHidden else { return }
+    /// Flashes once per new pulse number. The first value seen is only
+    /// recorded: appearing on screen is not a new line.
+    func pulse(_ count: Int) {
+        defer { lastPulse = count }
+        guard let lastPulse, count != lastPulse, !gradient.isHidden else { return }
         let fade = CABasicAnimation(keyPath: "opacity")
         fade.fromValue = 1
         fade.toValue = 0
         fade.duration = 0.32
         fade.timingFunction = CAMediaTimingFunction(name: .easeOut)
-        gradient.add(fade, forKey: "beat")
+        gradient.add(fade, forKey: "pulse")
     }
 
     override func layout() {

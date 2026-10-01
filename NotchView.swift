@@ -115,14 +115,12 @@ struct NotchView: View {
     var body: some View {
         VStack(spacing: 0) {
             ZStack {
-                // The spectrum as a soft wave along the bottom edge, in the
-                // album's colour. It has the bottom strip to itself — the
-                // content stops above it (see `expanded`) — so it never runs
-                // through the lyrics.
+                // A soft wave along the bottom edge, in the album's colour.
+                // It has the bottom strip to itself — the content stops above
+                // it (see `expanded`) — so it never runs through the lyrics.
                 if model.isExpanded {
-                    SpectrumWave(source: spectrumSource,
-                                 color: waveColour,
-                                 isAnimating: isLive)
+                    MusicWave(color: waveColour,
+                              isAnimating: isLive)
                         .frame(height: Self.waveHeight)
                         .frame(maxWidth: .infinity, maxHeight: .infinity,
                                alignment: .bottom)
@@ -150,13 +148,13 @@ struct NotchView: View {
                         // pass for the bezel, and a gradient that bottoms out
                         // anywhere above black would give the illusion away.
                         shape.fill(accentWash)
-                        // The beat: the same wash, brighter, flashing and
-                        // fading on each kick. Core Animation runs the fade,
-                        // so a beat costs this app nothing per frame.
-                        BeatBloom(shape: shape,
+                        // The same wash, brighter, flashing and fading as
+                        // each new lyric line begins. Core Animation runs the
+                        // fade, so a flash costs this app nothing per frame.
+                        GlowFlash(shape: shape,
                                   color: colourable ? accent : nil,
                                   expanded: model.isExpanded,
-                                  beat: model.beat)
+                                  pulse: model.pulse)
                     })
                 }
             ))
@@ -194,12 +192,6 @@ struct NotchView: View {
     /// as a smudge on the screen rather than as part of the hardware.
     private var colourable: Bool { model.isExpanded || model.showsCollapsedContent }
 
-    /// Nil while playing elsewhere: with no bands to draw, the bars and the
-    /// wave fall back to their fake motion.
-    private var spectrumSource: AudioSpectrumSource? {
-        model.playingElsewhere ? nil : model.spectrum
-    }
-
     /// The wave's colour, per the setting: the album's accent, white (nil),
     /// or the user's own.
     private var waveColour: Color? {
@@ -210,10 +202,9 @@ struct NotchView: View {
         }
     }
 
-    /// Something is audibly playing: the spectrum's clocks should run.
-    /// `hasAudioSignal` covers audio the metadata side can't see.
+    /// Something is playing: the bars and the wave move.
     private var isLive: Bool {
-        model.track?.isPlaying == true || model.hasAudioSignal || NotchModel.debugForceLive
+        model.track?.isPlaying == true || NotchModel.debugForceLive
     }
 
     /// Colour bleeding out of the top-left, fading to clear before the opposite
@@ -322,10 +313,9 @@ struct NotchView: View {
             if let level = model.volumeLevel {
                 VolumeMeter(level: level, compact: true)
             } else {
-                SpectrumBars(source: spectrumSource,
-                             barCount: 3,
-                             isAnimating: live,
-                             tint: .white.opacity(live ? 0.85 : 0.35))
+                MusicBars(barCount: 3,
+                          isAnimating: live,
+                          tint: .white.opacity(live ? 0.85 : 0.35))
             }
         }
             // Same width as the artwork opposite it, not the width the bars

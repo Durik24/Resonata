@@ -25,20 +25,9 @@ final class NotchModel: ObservableObject {
     /// Set by `NotchPanelController`. Moves the notch to the next display.
     var switchScreen: (() -> Void)?
 
-    /// Where the bars get their heights. Held rather than observed: the band
-    /// values change ~50 times a second and are pulled per frame by the views
-    /// that draw them, never pushed through Combine.
-    var spectrum: AudioSpectrumSource?
-
-    /// Whether the machine is making any sound at all, from any app.
-    ///
-    /// Separate from `track?.isPlaying`, and deliberately so: audio from a
-    /// browser has no metadata behind it, so this is true in cases where there
-    /// is no track to speak of. It decides whether the bars' clock runs.
-    @Published var hasAudioSignal = false
-
-    /// Mirrors `AudioSpectrumSource.beat`. Increments once per detected beat.
-    @Published var beat = 0
+    /// Counts up once as each new line of synced lyrics begins — see
+    /// `LyricPulse`. Each change flashes the colour wash.
+    @Published var pulse = 0
 
     /// The current track's artwork, decoded once per URL.
     ///
@@ -57,10 +46,6 @@ final class NotchModel: ObservableObject {
     /// them while a lookup is in flight — so the panel doesn't shrink and
     /// grow back on every track change.
     var showsLyricsRow: Bool { (lyrics != nil || lyricsPending) && Preferences.showLyrics }
-
-    /// Playing, but no sound reaching the Mac — the spectrum views show
-    /// their fake motion instead of sitting flat.
-    @Published var playingElsewhere = false
 
     /// Apple Music's heart for this track; nil hides it (any other player).
     @Published var isFavorite: Bool?

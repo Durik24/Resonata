@@ -1,6 +1,5 @@
 import AppKit
 import Combine
-import ScreenCaptureKit
 import SwiftUI
 
 /// A borderless, transparent, always-on-top panel.
@@ -119,7 +118,7 @@ final class NotchPanelController {
     /// shape inside a fixed window looks like Apple did it.
     static let canvasWidth: CGFloat = 640
     /// Room for the expanded panel at its tallest — with lyrics — plus the
-    /// beat pulse, which scales it a little past that.
+    /// a little room to spare.
     static let canvasHeight: CGFloat = 280
 
     private var panel: NotchPanel?
@@ -492,30 +491,31 @@ final class NotchPanelController {
         }
     }
 
-    /// Debug: the panel as the window server composites it. `cacheDisplay`
-    /// only re-draws views, so it misses Core Animation layers — the bars and
-    /// the beat flash. ScreenCaptureKit sees them; the app already holds the
-    /// Screen Recording permission for its audio.
+    /// Debug: the panel's own layer tree rendered to a PNG — the SwiftUI
+    /// content and the Core Animation layers (bars, wave, flash) alike, which
+    /// `cacheDisplay` misses. Developer-only (`RESONATA_DEBUG_CLICK=1`), and
+    /// it draws this app's own window from the inside: no screen capture, no
+    /// permission, nothing outside the app.
     func captureWindow(to url: URL) async {
-        guard let panel else { return }
-        do {
-            let content = try await SCShareableContent.excludingDesktopWindows(
-                false, onScreenWindowsOnly: true)
-            guard let window = content.windows.first(where: {
-                $0.windowID == CGWindowID(panel.windowNumber)
-            }) else { return }
-            let config = SCStreamConfiguration()
-            config.width = Int(panel.frame.width * panel.backingScaleFactor)
-            config.height = Int(panel.frame.height * panel.backingScaleFactor)
-            config.showsCursor = false
-            let image = try await SCScreenshotManager.captureImage(
-                contentFilter: SCContentFilter(desktopIndependentWindow: window),
-                configuration: config)
-            try NSBitmapImageRep(cgImage: image)
-                .representation(using: .png, properties: [:])?.write(to: url)
-        } catch {
-            NSLog("snap: capture failed: \(error)")
+        guard let panel, let view = panel.contentView, let layer = view.layer,
+              let space = CGColorSpace(name: CGColorSpace.sRGB) else { return }
+        let scale = panel.backingScaleFactor
+        guard let context = CGContext(
+            data: nil, width: Int(view.bounds.width * scale),
+            height: Int(view.bounds.height * scale), bitsPerComponent: 8, bytesPerRow: 0,
+            space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return }
+        context.scaleBy(x: scale, y: scale)
+        // The hosting view counts from the top; a bitmap counts from the
+        // bottom. Without this the photo comes out upside down.
+        if view.isFlipped {
+            context.translateBy(x: 0, y: view.bounds.height)
+            context.scaleBy(x: 1, y: -1)
         }
+        layer.render(in: context)
+        guard let image = context.makeImage() else { return }
+        try? NSBitmapImageRep(cgImage: image)
+            .representation(using: .png, properties: [:])?.write(to: url)
     }
 
     /// Where the expanded panel is drawn, in window coordinates: top-centre

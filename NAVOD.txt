@@ -5,9 +5,12 @@ Přehrávač hudby v notchi MacBooku. Ukazuje, co hraje ve Spotify nebo
 Apple Music; po kliknutí se rozbalí na obal alba, název, posuvník
 a ovládání.
 
-Na rozdíl od jiných notch aplikací hudbu opravdu POSLOUCHÁ: sloupce
-v notchi jsou skutečné spektrum zvuku, který z Macu jde (FFT), a na
-každou dobu barva obalu krátce zjasní.
+Zvuk počítače NEPOSLOUCHÁ: žádný záznam zvuku ani obrazovky, žádné
+takové oprávnění. Co hraje, ví ze systémového "právě hraje" (to
+samé, co ukazuje Ovládací centrum). Sloupce a vlnka se hýbou klidným
+vymyšleným pohybem, když něco hraje, a stojí, když je pauza. Barva
+obalu krátce zjasní pokaždé, když začne nový řádek textu písně —
+takže notch drží rytmus skladby, aniž by ji poslouchal.
 
 Dělej kroky popořadě. Kroky 1 až 5 jsou povinné, zbytek je volitelný.
 
@@ -84,45 +87,38 @@ nevypadá to, že by aplikace běžela. To je v pořádku.
 
 
 ────────────────────────────────────────────────────────────────
-KROK 6 — Povol dvě oprávnění  ← BEZ TOHOTO TO NEBUDE FUNGOVAT
+KROK 6 — Povol automatizaci
 ────────────────────────────────────────────────────────────────
 
-a) AUTOMATIZACE — čtení, co hraje.
-   Chvíli po spuštění hudby vyskočí dialog "Resonata chce ovládat
-   Spotify". Klikni na OK.
+Je to jediné oprávnění, o které si Resonata může říct. Chvíli po
+spuštění hudby může vyskočit "Resonata chce ovládat Spotify" (nebo
+Hudbu) — klikni na OK. Používá ho záložní čtení toho, co hraje, a
+srdíčko u Apple Music.
 
-b) ZÁZNAM ZVUKU SYSTÉMU — poslech hudby pro spektrum.
-   Od macOS 14.2 aplikace poslouchá jen zvuk přehrávače, který
-   právě hraje (Core Audio tap), a záznam obrazovky už nepotřebuje.
-   macOS se jednou zeptá na "Záznam zvuku systému". Na starších
-   macOS se místo toho ptá na záznam obrazovky. Bez oprávnění
-   sloupce běží jen na náhradní falešné animaci.
-
-Když se dialogy neobjevily nebo jsi je zavřel:
+Když se dialog neobjevil nebo jsi ho zavřel:
 
   1. Nastavení systému
   2. Soukromí a zabezpečení
-  3. Automatizace  → zapni u Resonata Spotify (případně Hudba)
-  4. Záznam obrazovky a systémový zvuk → zapni Resonata
-     (po zapnutí je potřeba aplikaci vypnout a znovu spustit:
-      pkill -x Resonata && open Resonata.app)
+  3. Automatizace → zapni u Resonata Spotify (případně Hudba)
 
-Hotovo. V notchi se objeví obal alba a sloupce, které skáčou podle
-hudby.
+Záznam obrazovky ani zvuku Resonata nepotřebuje a nežádá. Pokud ho
+tam máš povolený ze starší verze, můžeš ho v "Záznam obrazovky a
+systémový zvuk" smazat (vybrat Resonata a tlačítko −).
+
+Hotovo. V notchi se objeví obal alba a sloupce.
 
 
 ────────────────────────────────────────────────────────────────
 KROK 7 — Vyzkoušej ovládání
 ────────────────────────────────────────────────────────────────
 
-  - Sloupce v notchi             skutečné spektrum: vlevo basy,
-                                 vpravo výšky
-  - Každá doba (kopák)           barva obalu na okamžik zjasní
+  - Sloupce v notchi             hýbou se, když něco hraje,
+                                 stojí při pauze (zvuk neposlouchají)
+  - Nový řádek textu             barva obalu na okamžik zjasní
   - Zvuk z prohlížeče            funguje jako každý jiný přehrávač:
                                  název, obal, tlačítka i posuvník
   - Klikni na notch              rozbalí se velký panel, dole
-                                 se vlní spektrum v barvě obalu
-                                 (vlevo basy, vpravo výšky)
+                                 se vlní vlnka v barvě obalu
   - Text písně                   když ho LRCLIB zná, panel se
                                  zvětší o tři řádky: aktuální
                                  jasně, sousední ztlumeně. Běží
@@ -138,10 +134,6 @@ KROK 7 — Vyzkoušej ovládání
   - Srdíčko                      u skladeb z Apple Music: přidat
                                  do oblíbených. Spotify to z Macu
                                  neumožňuje, proto tam není.
-  - Hudba hraje jinde            když Spotify hraje na telefonu
-    (Spotify Connect)            nebo reproduktoru, sloupce se
-                                 hýbou jen naoko, aby notch
-                                 nevypadal zamrzle
   - Scroll nad notchem           hlasitost: nahoru = hlasitěji
                                  (kolečko i trackpad). Zvýšení
                                  zruší ztlumení. V notchi se na
@@ -195,21 +187,10 @@ ScreenGeometry.swift, blok NotchMetrics:
     collapsedExtraHeight   posun spodní hrany (záporné = výš)
     collapsedInset         odsazení obalu a vlnky od krajů
     waveformNudge          posun vlnky do stran
-    beatWashBloom          o kolik zjasní barva obalu na dobu
+    flashBloom             o kolik zjasní barva obalu na novém
+                           řádku textu
 
-AudioSpectrum.swift, nahoře ve třídě SpectrumAnalyzer:
-
-    floorDb / ceilingDb    rozsah hlasitosti, který sloupce
-                           pokrývají (ticho → plná výška)
-    attack / release       jak rychle sloupce vyskočí / klesnou
-    beatRatio              citlivost detekce dob (nižší = víc dob)
-
-Když ladíš spektrum, pusť si čísla do terminálu:
-
-    RESONATA_DEBUG_BANDS=1 ./Resonata.app/Contents/MacOS/Resonata
-
-Dvakrát za sekundu vypíše sloupce jako grafík a tečku za každou
-zachycenou dobu.
+Motion.swift: jak se sloupce a vlnka hýbou (rychlost a rozkmit).
 
 NotchView.swift, nahoře ve struktuře NotchView:
 
@@ -251,8 +232,8 @@ TESTY
 
     ./test.sh
 
-Ověří logiku bez spouštění aplikace: posuvník, texty písní, FFT
-spektrum, detekci dob a čtení z MediaRemote. Na konci vypíše
+Ověří logiku bez spouštění aplikace: posuvník, texty písní, pohyb
+sloupců a vlnky, záblesk na řádcích textu a čtení z MediaRemote. Na konci vypíše
 "N passed, 0 failed". Když něco selže, vypíše FAIL a co přesně.
 
 
@@ -276,12 +257,8 @@ Notch je pořád prázdný, i když hudba hraje
     Zkontroluj Nastavení systému → Soukromí a zabezpečení →
     Automatizace.
 
-Sloupce se hýbou, ale ne podle hudby (pravidelně, jako metronom)
-  → Chybí Záznam obrazovky z Kroku 6. Běží náhradní falešná
-    animace. Zapni oprávnění a aplikaci restartuj.
-
 Tlačítka nedělají nic
-  → Taky Krok 6a. Ovládání jde přes stejné povolení jako čtení.
+  → Taky Krok 6. Ovládání jde přes stejné povolení jako čtení.
 
 Po novém sestavení se to zeptá na povolení znovu
   → Přeskočil jsi Krok 3. Bez certifikátu bere macOS každé
@@ -301,8 +278,8 @@ CO JE V KTERÉM SOUBORU
 ────────────────────────────────────────────────────────────────
 
 ResonataApp.swift      start aplikace, skrytí ikony z Docku
-AudioSpectrum.swift    poslech zvuku (ScreenCaptureKit), FFT,
-                       rozdělení do pásem, detekce dob
+Motion.swift           vymyšlený pohyb sloupců a vlnky
+LyricPulse.swift       záblesk barvy na začátku každého řádku textu
 Lyrics.swift           stažení textu z LRCLIB, parsování LRC, cache
 MediaRemote.swift      název/obal/ovládání pro libovolný přehrávač
 Vendor/                mediaremote-adapter (BSD-3), sestavuje build.sh
@@ -331,9 +308,10 @@ ZNÁMÁ OMEZENÍ
 - U černobílých obalů zůstane panel černý bez barevného nádechu.
   Je to záměr — vymýšlet barvu, která v obalu není, dopadá špatně.
 
-- Spotřeba procesoru (M4): když hraje hudba, kolem 1,2–1,6 %;
-  když nehraje nic, 0 %. Poslech zvuku se vypne 10 s po
-  zastavení hudby a zapne se, jakmile něco začne hrát — jinak
-  by macOS (coreaudiod) zvuk aplikaci posílal pořád a stálo by
-  to baterii. Proto sloupce reagují jen na přehrávače, které
-  systému hlásí, co hrají (Spotify, Hudba, prohlížeče, VLC…).
+- Spotřeba procesoru (M4): když hraje hudba, kolem 1,2 %; když
+  nehraje nic, 0 %.
+
+- Sloupce a vlnka nesledují skutečný zvuk — Resonata ho záměrně
+  neposlouchá. Jediný skutečný rytmus, který ukazuje, je záblesk
+  na začátku řádků textu (jen u písní, ke kterým LRCLIB zná
+  časovaný text).

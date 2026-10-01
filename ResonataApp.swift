@@ -23,15 +23,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var appleScript: AppleScriptNowPlaying?
     private var sourceCancellables = Set<AnyCancellable>()
 
-    /// One analysis feeds every view that draws bars. 32 bands is what the
-    /// expanded panel draws directly; the collapsed pill averages the same
-    /// numbers down to three, which is far cheaper than running the FFT twice.
-    private let spectrum: SpectrumCapture = {
-        // Core Audio taps from macOS 14.2: no Screen Recording permission.
-        if #available(macOS 14.2, *) { return ProcessTapSpectrum(bandCount: 32) }
-        return ScreenCaptureSpectrum(bandCount: 32)
-    }()
     private let lyrics = LyricsStore()
+
+    /// Flashes the notch as each new lyric line begins. Resonata doesn't
+    /// listen to the computer's sound, so the lyrics' timing is the music's
+    /// timing it shows.
+    private let lyricPulse = LyricPulse()
 
     private var cancellables = Set<AnyCancellable>()
 
@@ -51,13 +48,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// MediaRemote helper running with no parent. Turned into an ordinary quit.
     private var termination: DispatchSourceSignal?
 
-    /// Stops audio capture a while after playback stops — see `gateCapture`.
-    private var captureStop: DispatchWorkItem?
-
-    /// Set while something is playing but no sound reaches the Mac — see
-    /// `watchForSilence`.
-    private var silenceTimer: DispatchWorkItem?
-
     func applicationDidFinishLaunching(_ notification: Notification) {
         Preferences.registerDefaults()
 
@@ -66,7 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         activity = ProcessInfo.processInfo.beginActivity(
             options: [.userInitiated, .latencyCritical],
-            reason: "Resonata draws in response to clicks and to live audio"
+            reason: "Resonata draws in response to clicks and to playback"
         )
 
         signal(SIGTERM, SIG_IGN)
@@ -82,38 +72,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         HotKey.shared.action = { [weak self] in self?.controller.toggle() }
         HotKey.shared.apply(Preferences.hotKey)
 
-        // Held, not observed — the bars pull the latest frame when they draw.
-        model.spectrum = spectrum
-
-        // The tap listens to whichever app is playing, not the whole system.
+        // A flash as each lyric line begins, re-armed on every change to the
+        // track (play, pause, seek, new song) or to its lyrics.
+        lyricPulse.onPulse = { [weak self] in self?.model.pulse &+= 1 }
         model.$track
-            .map { $0?.bundleID }
-            .removeDuplicates()
-            .sink { [weak self] bundleID in self?.spectrum.retarget(bundleID: bundleID) }
-            .store(in: &cancellables)
-
-        // Capture follows playback rather than running from launch.
-        model.$track
-            .map { $0?.isPlaying == true || NotchModel.debugForceLive }
-            .removeDuplicates()
-            .sink { [weak self] playing in self?.gateCapture(playing: playing) }
-            .store(in: &cancellables)
-
-        // The one part of the spectrum that *is* worth publishing: whether to
-        // run the animation clock at all.
-        spectrum.$hasSignal
-            .sink { [weak self] signal in self?.model.hasAudioSignal = signal }
-            .store(in: &cancellables)
-
-        spectrum.$beat
-            .sink { [weak self] beat in self?.model.beat = beat }
-            .store(in: &cancellables)
-
-        // Playing, but no sound reaching the Mac: show motion anyway.
-        model.$track.map { $0?.isPlaying == true }
-            .combineLatest(spectrum.$hasSignal)
-            .removeDuplicates { $0 == $1 }
-            .sink { [weak self] playing, signal in self?.watchForSilence(playing: playing, signal: signal) }
+            .combineLatest(model.$lyrics)
+            .sink { [weak self] track, lines in self?.lyricPulse.update(track: track, lines: lines) }
             .store(in: &cancellables)
 
         // Apple Music's heart, read once per song.
@@ -125,11 +89,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .sink { [weak self] track in self?.loadFavorite(for: track) }
             .store(in: &cancellables)
 
-        // `RESONATA_DEBUG_FAKE_BEATS=1`: a beat twice a second (120 BPM), so
-        // the cost of the beat animation can be measured without music.
-        if ProcessInfo.processInfo.environment["RESONATA_DEBUG_FAKE_BEATS"] == "1" {
+        // `RESONATA_DEBUG_FAKE_PULSES=1`: a flash twice a second, so the cost
+        // of the flash can be measured without music.
+        if ProcessInfo.processInfo.environment["RESONATA_DEBUG_FAKE_PULSES"] == "1" {
             Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
-                MainActor.assumeIsolated { self?.model.beat &+= 1 }
+                MainActor.assumeIsolated { self?.model.pulse &+= 1 }
             }
         }
 
@@ -215,45 +179,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .store(in: &sourceCancellables)
     }
 
-    /// Audio capture runs only while something is playing.
-    ///
-    /// It isn't free in silence: ScreenCaptureKit keeps `coreaudiod` streaming
-    /// the system mix to us the whole time, measured at 1.5–7% of a core in
-    /// *coreaudiod* with nothing playing — none of which showed up as this
-    /// app's CPU. It stops ten seconds after playback does, the same delay
-    /// the pill uses to go idle, so pausing to talk doesn't bounce the stream;
-    /// pressing play starts it again in a fraction of a second.
-    ///
-    /// The cost: sound from something that doesn't report "now playing" to
-    /// the system no longer moves the bars. With MediaRemote that's rare.
-    private func gateCapture(playing: Bool) {
-        captureStop?.cancel()
-        captureStop = nil
-        if playing {
-            spectrum.start()
-        } else {
-            let stop = DispatchWorkItem { [weak self] in self?.spectrum.stop() }
-            captureStop = stop
-            DispatchQueue.main.asyncAfter(deadline: .now() + Preferences.idleTimeout, execute: stop)
-        }
-    }
-
-    /// Something is playing but no sound has reached the Mac for a couple of
-    /// seconds — Spotify playing on a phone or speaker, say. The bars and the
-    /// wave then show their gentle fake motion rather than sitting flat,
-    /// which looked frozen. Real sound switches them back at once.
-    private func watchForSilence(playing: Bool, signal: Bool) {
-        silenceTimer?.cancel()
-        silenceTimer = nil
-        guard playing, !signal else {
-            if model.playingElsewhere { model.playingElsewhere = false }
-            return
-        }
-        let mark = DispatchWorkItem { [weak self] in self?.model.playingElsewhere = true }
-        silenceTimer = mark
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5, execute: mark)
-    }
-
     private func loadFavorite(for track: Track?) {
         model.isFavorite = nil
         guard track?.bundleID == MusicFavorite.bundleID else { return }
@@ -279,6 +204,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         mediaRemote.stop()
         appleScript?.stop()
-        spectrum.stop()
+        lyricPulse.stop()
     }
 }

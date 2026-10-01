@@ -1,14 +1,16 @@
-# Resonata — the notch that hears the music
+# Resonata — a music notch for the MacBook
 
 A Dynamic-Island-style music player pinned over the MacBook notch. Collapsed, it
-shows the album art and a spectrum; click it and it expands to the title, a
-scrubber, transport controls, and the full spectrum. Click anywhere else to
-close it.
+shows the album art and moving bars; click it and it expands to the title, a
+scrubber, transport controls, synced lyrics and a wave in the album's colour.
+Click anywhere else to close it.
 
-The difference from every other notch app: **it listens.** The bars are a real
-FFT of the audio leaving the machine, not an animation, and the notch itself
-breathes on each beat. That also means it reacts to a YouTube tab or VLC —
-anything the Mac plays — even though only Spotify and Music supply a title.
+**It doesn't listen to your computer's sound.** No audio capture, no
+recording permission of any kind. It knows what's playing from macOS's own
+"now playing" information, the same thing Control Center shows. The bars and
+the wave move with a calm made-up motion while something plays and rest when
+it's paused. The colour flashes as each new line of the lyrics begins, so it
+stays in time with the song without hearing it.
 
 macOS 14+, Swift 6, no Xcode project needed. See `NAVOD.txt` for the
 step-by-step (Czech).
@@ -20,17 +22,11 @@ step-by-step (Czech).
 ./build.sh run
 ```
 
-Then grant two permissions when asked (System Settings → Privacy & Security
-if the dialogs don't appear):
-
-- **Automation** for Spotify / Music — reading what's playing and the buttons.
-- **Screen Recording** — the audio tap. ScreenCaptureKit is the only public,
-  supported way to capture system audio, and it lives under this permission
-  even though the video side is discarded at 2×2 pixels. Without it the bars
-  fall back to a synthetic bounce.
+The only permission it may ask for is **Automation** for Spotify / Music,
+used by the fallback that reads what's playing and by the Apple Music heart.
 
 Why the signing step matters: an ad-hoc signature is a hash of the binary, so
-every rebuild gave the app a new identity and macOS silently revoked both
+every rebuild gave the app a new identity and macOS silently revoked its
 permissions. `setup-signing.sh` makes a self-signed certificate in your login
 keychain; `build.sh` uses it when present.
 
@@ -42,7 +38,6 @@ keychain; `build.sh` uses it when present.
 | `NotchShape.swift` | The silhouette — concave top corners, rounded bottom, animatable radii |
 | `NotchPanel.swift` | Borderless `NSPanel` above the menu bar, repositions on display changes |
 | `NowPlaying.swift` | Reads Spotify/Music over AppleScript, driven by their change notifications; interpolates the playhead between syncs |
-| `AudioSpectrum.swift` | ScreenCaptureKit audio tap → Hann window → `vDSP_fft_zrip` → 32 log-spaced bands → beat detection |
 | `Lyrics.swift` | Synced lyrics from LRCLIB, LRC parsing, on-disk cache |
 | `MediaRemote.swift` | System-wide now-playing via the vendored adapter; transport and seek for any player; AppleScript fallback |
 | `Vendor/mediaremote-adapter/` | BSD-3 sources of the adapter, built into the bundle by `build.sh` |
@@ -50,9 +45,11 @@ keychain; `build.sh` uses it when present.
 | `NotchView.swift` | The notch itself: size, colour wash, collapsed pill, open/close |
 | `NotchView+Expanded.swift` | The open panel: artwork, title, scrubber, transport, lyrics row |
 | `NotchFrame.swift` | Animates the notch's size and shape as one unit, pinned to the top |
-| `SpectrumBars.swift` | The pill's bars, as Core Animation layers on a display link |
-| `SpectrumWave.swift` | The open panel's wave: shaping, Catmull-Rom curve, gradient fill |
-| `BeatBloom.swift` | The beat flash, a render-server animation masked to the notch |
+| `Motion.swift` | The made-up motion behind the bars and the wave |
+| `MusicBars.swift` | The pill's bars, as Core Animation layers on a display link |
+| `MusicWave.swift` | The open panel's wave: Catmull-Rom curve, gradient fill |
+| `LyricPulse.swift` | Fires as each lyric line begins: one timer, set for the next line |
+| `GlowFlash.swift` | The colour flash, a render-server animation masked to the notch |
 | `LyricsView.swift` | Three lines of synced lyrics |
 | `ArtworkAccent.swift` | Picks the accent colour out of the album art |
 | `Controls.swift` | Transport button press style and the volume meter |
@@ -62,35 +59,26 @@ keychain; `build.sh` uses it when present.
 
 ## Cost
 
-Measured on an M4 with `RESONATA_DEBUG_FORCE_LIVE=1` (animate as if playing)
-and `RESONATA_DEBUG_FAKE_BEATS=1` (a beat every 0.5 s):
+About 1.2% CPU on an M4 while something plays (the bars' display link), and
+nothing at rest: the display links stop when playback does, and the lyric
+flash is a single timer set for the next line rather than a poll.
 
-| | before | after |
-|---|---|---|
-| nothing playing | 0.7% | 0.0% |
-| playing | 4.5% | 1.2% |
-| playing, 120 BPM | 8.7% | 1.6% |
-
-Two changes did it. The bars and the beat flash used to be SwiftUI animations,
-which re-ran the view graph and re-rasterised on every frame; they are now
+The bars and the flash used to be SwiftUI animations, which re-ran the view
+graph and re-rasterised every frame (4.5%, 8.7% with flashes). They are
 `CALayer`s moved by a display link and a `CABasicAnimation` that runs in the
-render server. And audio capture now runs only while something is playing:
-ScreenCaptureKit keeps `coreaudiod` streaming the mix to the app even in
-silence, which cost 1.5–7% of a core in *coreaudiod* — invisible in the app's
-own numbers.
+render server.
 
-## Listening without Screen Recording
+Measure with `RESONATA_DEBUG_FORCE_LIVE=1` (animate as if playing) and
+`RESONATA_DEBUG_FAKE_PULSES=1` (a flash every 0.5 s).
 
-On macOS 14.2 and later the spectrum comes from a Core Audio process tap
-(`ProcessTap.swift`), not ScreenCaptureKit. It needs only the "System Audio
-Recording" permission, is aimed at the playing app's own processes (so
-notification sounds and calls don't move the bars), isn't attached to a
-display, and sits before the output volume and mute. A tap idles at no cost
-while its app is silent. Older macOS keeps the ScreenCaptureKit backend.
+## No listening
 
-When something is playing but no sound reaches the Mac for 2.5 s — Spotify
-playing on a phone, say — the bars and the wave show their fake motion
-instead of sitting flat.
+Resonata used to draw a real spectrum: it captured the playing app's sound
+(ScreenCaptureKit, then a Core Audio process tap), ran an FFT over it and
+detected beats. All of that is gone, by choice: no capture code, no
+ScreenCaptureKit, Accelerate or AVFoundation linked, and no audio-capture
+usage string in the Info.plist, so macOS never asks. It's in the git history
+(`git log -- AudioSpectrum.swift ProcessTap.swift`) if it's ever wanted back.
 
 ## Settings, shortcut, heart
 
@@ -124,39 +112,11 @@ respected. The registration survives `./build.sh` rebuilds (checked).
 
 Builds `Tests/main.swift` against the logic files with plain `swiftc` (no
 Xcode project, no XCTest) and runs it: the interpolated playhead, the LRC
-parser and line lookup, the FFT's band layout and tone placement, the beat
-detector on a synthetic 120 BPM kick, and the MediaRemote stream parser fed
+parser and line lookup, the made-up motion and the wave's curve, when the
+lyric flash fires, and the MediaRemote stream parser fed
 recorded `stream --micros` output — including a track change where the new
 artwork arrives in a later diff than the new title. Exits non-zero on any
 failure.
-
-## How the spectrum works
-
-`SpectrumAnalyzer` in `AudioSpectrum.swift`, every ~21 ms:
-
-1. The newest 2048 samples (43 ms at 48 kHz) are Hann-windowed — without it a
-   steady note smears across every bin and all the bars move together.
-2. `vDSP_fft_zrip` from Accelerate does the real-to-complex FFT in place.
-3. 1024 bins are collapsed into 32 bands spaced **logarithmically** from 40 Hz
-   to 16 kHz. Linear spacing is the classic mistake: half of a linear spectrum
-   is above 12 kHz where music has almost nothing, so the right-hand bars never
-   move. We hear pitch in octaves; the bands have to be spaced the same way.
-4. Peak per band → dB → mapped from −68…−12 dB onto 0…1.
-5. Attack/release smoothing (rise fast, fall slow) so a transient hits its
-   full height at once and then decays, instead of flickering.
-
-Beat detection is energy-based: the unsmoothed energy in bands 2–8
-(~58–215 Hz, the kick and bass) is compared to its own running average over
-the last ~0.8 s. A frame that clears the average by 32% and by an absolute
-margin, with at least 160 ms since the last beat, is a beat. Each one bumps a
-counter that flashes a brighter copy of the colour wash.
-
-The bands are deliberately *not* `@Published`. They change 50 times a second;
-the bars pull the newest frame inside their own display-link tick instead,
-so the display decides how often it redraws.
-
-To see the numbers: `RESONATA_DEBUG_BANDS=1 ./Resonata.app/Contents/MacOS/Resonata`
-prints a sparkline twice a second with a dot per beat.
 
 ## The one hard problem: getting now-playing data
 
@@ -242,12 +202,11 @@ as before. Verified on macOS 26.5.
 
 - Live progress bar interpolated between syncs — `Track.position(at:)`
 - Click-and-drag scrubbing
-- Real audio-reactive visualizer, with beat detection
+- Synced lyric flash in place of beat detection (the audio visualiser was
+  removed on purpose — no listening)
 - Synced lyrics: LRCLIB `/get` with an exact match, falling back to `/search`
   on title and artist; the expanded panel grows a three-line row when a song
   has them. Cached under `~/Library/Caches/com.local.resonata/lyrics/`.
 
 ## Next steps
 
-- Core Audio process taps (macOS 14.4+) instead of ScreenCaptureKit: tap only
-  the player's audio, under the lighter audio-recording permission

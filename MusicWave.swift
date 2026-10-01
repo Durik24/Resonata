@@ -1,30 +1,27 @@
 import AppKit
 import SwiftUI
 
-/// The spectrum as a smooth filled wave, bass on the left, treble on the
-/// right, in the album's colour.
+/// A smooth filled wave along the bottom of the open panel, in the album's
+/// colour: moving while something plays, a calm line when not. The motion is
+/// made up — see `Motion` — because Resonata doesn't listen to the sound.
 ///
-/// Same approach as `SpectrumBars`: SwiftUI only hears about configuration;
+/// Same approach as `MusicBars`: SwiftUI only hears about configuration;
 /// a display link reshapes two Core Animation layers — a gradient fill masked
 /// by the curve, and a brighter line along its top.
-struct SpectrumWave: NSViewRepresentable {
-    var source: AudioSpectrumSource?
+struct MusicWave: NSViewRepresentable {
     /// The album's accent colour; white when the cover has none.
     var color: Color?
     var isAnimating: Bool
 
-    func makeNSView(context: Context) -> SpectrumWaveView { SpectrumWaveView() }
+    func makeNSView(context: Context) -> MusicWaveView { MusicWaveView() }
 
-    func updateNSView(_ view: SpectrumWaveView, context: Context) {
-        view.source = source
+    func updateNSView(_ view: MusicWaveView, context: Context) {
         view.setColor(color.map { NSColor($0) })
         view.isAnimating = isAnimating
     }
 }
 
-final class SpectrumWaveView: NSView {
-
-    var source: AudioSpectrumSource?
+final class MusicWaveView: NSView {
 
     var isAnimating = false {
         didSet {
@@ -110,8 +107,7 @@ final class SpectrumWaveView: NSView {
     @objc private func tick(_ link: CADisplayLink) { renderFrame() }
 
     private func renderFrame() {
-        let target = Self.levels(from: source?.bands ?? [], animating: isAnimating,
-                                 at: CACurrentMediaTime())
+        let target = Self.levels(animating: isAnimating, at: CACurrentMediaTime())
         if shown.count != target.count { shown = target }
         for i in shown.indices { shown[i] += (target[i] - shown[i]) * 0.35 }
 
@@ -123,44 +119,12 @@ final class SpectrumWaveView: NSView {
         CATransaction.commit()
     }
 
-    /// Wave heights, 0...1.
-    ///
-    /// The raw bands make a poor wave, for two reasons the first version of
-    /// this showed. A loud mix puts every band between about 0.6 and 0.8, so
-    /// the shape is a near-flat line; and music has far less energy up top,
-    /// so the right third lay dead on the baseline. Three steps fix that:
-    ///
-    /// 1. Tilt the treble up — about 12 dB across the range, the usual
-    ///    "pink" correction visualisers make so a balanced mix looks level.
-    /// 2. Raise to a power, which pulls the quieter bands down further than
-    ///    the loud ones, so peaks stand out from their neighbours.
-    /// 3. Scale the frame so its peak sits near the top. Quiet passages get
-    ///    less of a lift (the gain is capped), so loudness still shows.
-    ///
-    /// Then tapered to nothing at both ends, so the wave rises out of the
-    /// baseline instead of starting and ending in mid-air.
-    static func levels(from bands: [Float], animating: Bool, at time: TimeInterval) -> [CGFloat] {
-        let count = bands.isEmpty ? 24 : bands.count
-        let raw: [Double]
-        if !animating {
-            raw = Array(repeating: 0.06, count: count)            // at rest: a calm line
-        } else if bands.isEmpty {
-            raw = (0..<count).map { i in                           // no signal: a slow swell
-                let x = Double(i)
-                let travel: Double = sin(time * 1.6 - x * 0.42)
-                let breathe: Double = sin(time * 0.55 + x * 0.17)
-                return 0.45 + 0.35 * travel * breathe
-            }
-        } else {
-            let span = Double(max(count - 1, 1))
-            let shaped = bands.enumerated().map { i, band -> Double in
-                let tilted = min(Double(max(band, 0)) + 0.22 * Double(i) / span, 1)
-                return pow(tilted, 1.8)
-            }
-            let gain = 0.92 / max(shaped.max() ?? 0, 0.35)
-            raw = shaped.map { $0 * gain }
-        }
-        return raw.enumerated().map { i, level in
+    /// Wave heights, 0...1: `Motion` across 24 points while playing, a calm
+    /// low line at rest, tapered to nothing at both ends so the wave rises out
+    /// of the baseline instead of starting and ending in mid-air.
+    static func levels(animating: Bool, at time: TimeInterval, count: Int = 24) -> [CGFloat] {
+        (0..<count).map { i in
+            let level = animating ? 0.15 + 0.75 * Motion.level(i, at: time) : 0.06
             let edge = sin(.pi * (Double(i) + 0.5) / Double(count))
             return CGFloat(min(max(level, 0), 1) * pow(edge, 0.6))
         }

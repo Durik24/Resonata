@@ -58,12 +58,10 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <key>LSMinimumSystemVersion</key>    <string>14.0</string>
     <!-- No Dock icon, no app switcher entry — it lives in the notch. -->
     <key>LSUIElement</key>               <true/>
-    <!-- Required, or the AppleScript calls to Spotify/Music are killed on sight. -->
     <!-- Never App Nap: a napped agent draws a click's result seconds late. -->
     <key>NSAppSleepDisabled</key>          <true/>
-    <!-- Asked when the audio tap first starts: "System Audio Recording Only". -->
-    <key>NSAudioCaptureUsageDescription</key>
-    <string>Resonata listens to the music you play to draw its spectrum. Nothing is recorded or stored.</string>
+    <!-- No audio-capture key: Resonata never listens to the computer's sound. -->
+    <!-- Required, or the AppleScript calls to Spotify/Music are killed on sight. -->
     <key>NSAppleEventsUsageDescription</key>
     <string>Resonata reads what you are currently playing.</string>
 </dict>
