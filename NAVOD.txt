@@ -148,15 +148,21 @@ je pořád vidět a dá se znovu pustit.
 
 
 ────────────────────────────────────────────────────────────────
-KROK 8 (volitelně) — Spouštění po přihlášení
+KROK 8 — Spouštění po přihlášení (automaticky)
 ────────────────────────────────────────────────────────────────
 
-Aplikace se sama po restartu nespustí. Když to chceš:
+Při prvním spuštění se aplikace sama přidá mezi položky přihlášení,
+takže po restartu Macu naskočí sama. macOS to oznámí upozorněním
+"Byla přidána položka přihlášení".
+
+Když to nechceš:
 
   1. Nastavení systému
   2. Obecné
   3. Položky přihlášení
-  4. Tlačítkem + přidej Resonata.app ze složky s projektem
+  4. U Resonata vypni přepínač
+
+Aplikace tvoje rozhodnutí respektuje a znovu se nepřidá.
 
 
 ────────────────────────────────────────────────────────────────
@@ -225,7 +231,7 @@ VYPNUTÍ A ODINSTALACE
 ────────────────────────────────────────────────────────────────
 
 Ukončit:      pkill -x Resonata
-Odinstalovat: smaž složku a případně odeber položku přihlášení
+Odinstalovat: smaž složku a odeber položku přihlášení
               z Kroku 8. Certifikát "Resonata Dev" jde smazat
               v Klíčence. Nikam jinam se nic neukládá.
 

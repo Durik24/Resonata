@@ -24,7 +24,17 @@ final class MediaRemoteNowPlaying: ObservableObject, NowPlayingSource {
     /// coordinator waits on this to decide whether to fall back to
     /// AppleScript.
     @Published private(set) var status: Status = .starting
-    enum Status { case starting, streaming, failed }
+    enum Status {
+        case starting
+        case streaming
+        /// Running, but nothing has come out yet. Right after login
+        /// `mediaremoted` can be slow to answer; the coordinator covers with
+        /// AppleScript meanwhile, and this still turns into `.streaming` the
+        /// moment the first payload arrives.
+        case silent
+        /// The helper is gone. Final.
+        case failed
+    }
 
     /// The instance transport commands go through, when one is streaming.
     private(set) static weak var active: MediaRemoteNowPlaying?
@@ -106,16 +116,16 @@ final class MediaRemoteNowPlaying: ObservableObject, NowPlayingSource {
         }
         self.process = process
 
-        // MediaRemote answering at all is not guaranteed on a given macOS.
-        // If nothing arrives in a few seconds — not even an empty payload,
-        // which the stream sends when no player is active — give up and let
-        // the coordinator fall back to AppleScript.
+        // The stream prints an empty payload when nothing is playing, so
+        // silence means MediaRemote hasn't answered — not that nothing plays.
+        // After a few seconds of it, let AppleScript cover, but keep the
+        // helper running: at login it's usually just slow. Killing it here
+        // used to strand the app on AppleScript until the next launch.
         startupTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, self.status == .starting else { return }
-                NSLog("Resonata: MediaRemote adapter produced nothing; falling back")
-                self.stop()
-                self.status = .failed
+                NSLog("Resonata: MediaRemote silent so far; covering with AppleScript")
+                self.status = .silent
             }
         }
     }
@@ -174,7 +184,7 @@ final class MediaRemoteNowPlaying: ObservableObject, NowPlayingSource {
               let payload = object["payload"] as? [String: Any]
         else { return }
 
-        if status == .starting {
+        if status == .starting || status == .silent {
             status = .streaming
             startupTimer?.invalidate()
             Self.active = self

@@ -1,4 +1,5 @@
 import Combine
+import ServiceManagement
 import SwiftUI
 
 @main
@@ -61,6 +62,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         sigterm.resume()
         termination = sigterm
 
+        openAtLoginOnce()
         controller.show()
         startNowPlaying()
 
@@ -98,10 +100,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         mediaRemote.start()
         mediaRemote.$status
             .sink { [weak self] status in
+                guard let self else { return }
                 switch status {
-                case .streaming: NSLog("Resonata: now-playing via MediaRemote")
-                case .failed: self?.useAppleScript()
-                case .starting: break
+                case .streaming:
+                    NSLog("Resonata: now-playing via MediaRemote")
+                    // MediaRemote came good after AppleScript stepped in.
+                    if let fallback = self.appleScript {
+                        fallback.stop()
+                        self.appleScript = nil
+                        self.bind(self.mediaRemote)
+                    }
+                case .silent, .failed:
+                    self.useAppleScript()
+                case .starting:
+                    break
                 }
             }
             .store(in: &cancellables)
@@ -148,6 +160,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         idlePublisher
             .sink { [weak self] idle in self?.model.isIdle = idle }
             .store(in: &sourceCancellables)
+    }
+
+    /// Adds Resonata to System Settings › General › Login Items, once.
+    ///
+    /// It has no Dock icon and no window, so after a restart nothing hinted
+    /// that it hadn't started — the notch was just a notch. Registered only
+    /// on the first launch that succeeds: switching it off in System
+    /// Settings is a choice, and re-registering on every launch would undo it.
+    private func openAtLoginOnce() {
+        let key = "registeredLoginItem"
+        let status = SMAppService.mainApp.status
+        NSLog("Resonata: login item status %ld", status.rawValue)
+        // `.notFound` is the system losing track of the bundle — a rebuild
+        // can do that — not the user saying no, so it's safe to re-register.
+        guard !UserDefaults.standard.bool(forKey: key) || status == .notFound else { return }
+        do {
+            try SMAppService.mainApp.register()
+            UserDefaults.standard.set(true, forKey: key)
+            NSLog("Resonata: added to login items (status %ld)",
+                  SMAppService.mainApp.status.rawValue)
+        } catch {
+            NSLog("Resonata: could not add to login items: \(error)")
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {

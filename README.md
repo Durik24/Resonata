@@ -50,6 +50,13 @@ keychain; `build.sh` uses it when present.
 | `ResonataApp.swift` | Wires it together, sets `.accessory` activation policy |
 | `setup-signing.sh` | One-time: creates the "Resonata Dev" signing identity |
 
+## Starts at login
+
+The first launch registers Resonata with `SMAppService.mainApp`, so it opens
+again after a restart; macOS shows a "Login item added" notice. It registers
+once only: switching it off in System Settings › General › Login Items is
+respected. The registration survives `./build.sh` rebuilds (checked).
+
 ## Tests
 
 ```
