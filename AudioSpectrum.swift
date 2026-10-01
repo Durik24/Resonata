@@ -31,6 +31,14 @@ protocol AudioSpectrumSource: AnyObject {
 
     func start()
     func stop()
+
+    /// The app whose sound should be analysed, by bundle ID — nil for
+    /// everything. Backends that can't tell apps apart ignore it.
+    func retarget(bundleID: String?)
+}
+
+extension AudioSpectrumSource {
+    func retarget(bundleID: String?) {}
 }
 
 // MARK: - The DSP
@@ -341,266 +349,144 @@ final class SpectrumAnalyzer {
     }
 }
 
-// MARK: - ScreenCaptureKit backend
+// MARK: - Shared capture core
 
-/// Taps the machine's audio output and keeps the newest analysed frame ready
-/// for whoever draws next.
+/// Everything a capture backend has in common: the analyser, the newest
+/// frame, and the coarse signal and beat events. A backend only delivers
+/// buffers to `ingest`, always on `audioQueue`.
 ///
 /// `@unchecked Sendable` is a claim about specific things, not a shrug:
-/// `analyzer`, `mono`, `signalState` and `signalChangedAt` are only ever touched
-/// on `audioQueue`; `latest` is behind a lock; `stream` and `hasSignal` are only
-/// ever touched on the main actor.
-final class SystemAudioSpectrum: NSObject, ObservableObject, AudioSpectrumSource,
-                                 SCStreamOutput, SCStreamDelegate, @unchecked Sendable {
-
-    /// Asked of ScreenCaptureKit explicitly so the analyser's bin-to-frequency
-    /// mapping can be built up front rather than guessed from the first buffer.
-    private static let sampleRate: Double = 48_000
+/// `analyzer`, `mono`, the signal tracking and the debug counters are only
+/// touched on `audioQueue`; `latest` is behind a lock; the published values
+/// are only written on the main actor.
+class SpectrumCapture: NSObject, ObservableObject, AudioSpectrumSource, @unchecked Sendable {
 
     /// The newest analysed frame.
     ///
     /// Deliberately *not* `@Published`. The analyser produces a frame roughly
     /// every 20 ms, and pushing each one through Combine would re-render the
     /// notch at that rate whether or not anything was on screen to see it. The
-    /// view already has a clock of its own, so it pulls the latest frame when
-    /// it is ready to draw one and drops the rest — the display is the thing
-    /// that should decide how often it redraws.
+    /// views have clocks of their own and pull the latest frame when they draw.
     private let latest = OSAllocatedUnfairLock<[Float]>(initialState: [])
 
     var bands: [Float] { latest.withLock { $0 } }
 
     /// Published, unlike `bands`, because it changes a handful of times a
-    /// minute rather than fifty times a second — and because the view needs it
-    /// to decide whether to start its clock at all, which is a decision that
-    /// has to reach SwiftUI rather than be polled from inside a draw call.
-    /// Only ever written from the main actor — see `updateSignal`.
+    /// minute — and because it decides whether a view's clock runs at all.
     @Published private(set) var hasSignal = false
 
-    /// See `AudioSpectrumSource.beat`. Only ever written from the main actor.
-    /// Published, like `hasSignal`, because a few events a second is a rate
-    /// SwiftUI can take — and because the pulse it drives *is* an animation,
-    /// which has to go through SwiftUI state to exist at all.
+    /// See `AudioSpectrumSource.beat`.
     @Published private(set) var beat = 0
 
     /// Anything above this counts as audible. Set above the noise the analyser
     /// reports for true digital silence, and below a quiet passage.
     private static let signalThreshold: Float = 0.06
 
-    /// Signal tracking, audio queue only.
     private var signalState = false
     private var signalChangedAt: CFAbsoluteTime = 0
 
     /// Run with `RESONATA_DEBUG_BANDS=1` to print the spectrum to stdout twice
-    /// a second:
-    ///
-    ///     RESONATA_DEBUG_BANDS=1 ./Resonata.app/Contents/MacOS/Resonata
-    ///
-    /// Tuning `floorDb` and `ceilingDb` by eye, on bars thirty points tall
-    /// behind a hardware cutout, is guesswork. This makes the numbers visible.
+    /// a second. Tuning the dB window by eye, on bars thirty points tall
+    /// behind a hardware cutout, is guesswork; this makes the numbers visible.
     private static let debugBands =
         ProcessInfo.processInfo.environment["RESONATA_DEBUG_BANDS"] == "1"
     private var lastBandPrint: CFAbsoluteTime = 0
     private var beatsSincePrint = 0
 
-    private let analyzer: SpectrumAnalyzer?
-    private let audioQueue = DispatchQueue(
-        label: "com.local.resonata.audio", qos: .userInitiated
-    )
+    let bandCount: Int
+    private var analyzer: SpectrumAnalyzer?
+    private var analyzerRate: Double = 0
+
+    let audioQueue = DispatchQueue(label: "com.local.resonata.audio", qos: .userInitiated)
 
     /// Scratch space for the channel mix, grown once and reused. Allocating a
     /// buffer inside an audio callback is the classic way to make one late.
     private var mono: [Float] = []
 
-    @MainActor private var stream: SCStream?
-
-    /// Capture should be running — cleared only by `stop()`. A stream that
-    /// dies while this is set gets restarted.
-    @MainActor private var wantsRunning = false
-    @MainActor private var isStarting = false
-
-    /// Whether this launch has already let macOS show its Screen Recording
-    /// dialog. Capture starts with every play; without permission, every
-    /// start asked ScreenCaptureKit and macOS put the dialog up again —
-    /// each time music started. Now it can appear once per launch at most.
-    @MainActor private var askedForPermission = false
-    @MainActor private var retryDelay: TimeInterval = 2
-
     init(bandCount: Int) {
-        self.analyzer = SpectrumAnalyzer(
-            bandCount: bandCount, sampleRate: Self.sampleRate
-        )
+        self.bandCount = bandCount
         super.init()
+    }
+
+    func start() { fatalError("subclass") }
+    func stop() { fatalError("subclass") }
+    func retarget(bundleID: String?) {}
+
+    /// Builds the analyser for `sampleRate`, keeping the existing one when the
+    /// rate hasn't changed. Audio queue only — or before audio flows.
+    func prepareAnalyzer(sampleRate: Double) {
+        guard analyzer == nil || analyzerRate != sampleRate else { return }
+        analyzer = SpectrumAnalyzer(bandCount: bandCount, sampleRate: sampleRate)
+        analyzerRate = sampleRate
         if analyzer == nil {
             NSLog("Resonata: could not create the FFT setup; spectrum disabled")
         }
     }
 
-    /// Idempotent: playback starting twice must not open two streams.
-    func start() {
-        Task { @MainActor in
-            wantsRunning = true
-            guard stream == nil, !isStarting else { return }
-            // `CGPreflightScreenCaptureAccess` only reads the answer; it never
-            // shows anything. Without permission, try — and so prompt — once.
-            if !CGPreflightScreenCaptureAccess() {
-                guard !askedForPermission else { return }
-                askedForPermission = true
-            }
-            // Claimed here, on the main actor, before the first suspension —
-            // a second `start()` in the meantime then sees it and stops.
-            isStarting = true
-            await startCapture()
-        }
-    }
-
-    func stop() {
-        Task { @MainActor in
-            wantsRunning = false
-            guard let stream else { return }
-            self.stream = nil
-            try? await stream.stopCapture()
-            latest.withLock { $0 = [] }
-            hasSignal = false
-        }
-    }
-
-    private func startCapture() async {
-        // Callers claim `isStarting` before calling; this releases it.
-        defer { Task { @MainActor in self.isStarting = false } }
-        do {
-            let content = try await SCShareableContent.excludingDesktopWindows(
-                false, onScreenWindowsOnly: false
-            )
-            guard let display = content.displays.first else {
-                NSLog("Resonata: no display available to attach an audio tap to")
-                return
-            }
-
-            let filter = SCContentFilter(
-                display: display, excludingApplications: [], exceptingWindows: []
-            )
-
-            let config = SCStreamConfiguration()
-            config.capturesAudio = true
-            // Otherwise the app would analyse its own output if it ever made
-            // any, which is a feedback loop waiting to happen.
-            config.excludesCurrentProcessAudio = true
-            config.sampleRate = Int(Self.sampleRate)
-            config.channelCount = 2
-
-            // ScreenCaptureKit has no audio-only mode — a stream is always
-            // attached to a display. Shrinking the video to 2x2 at one frame a
-            // second makes the half we don't want essentially free, rather than
-            // paying for a full-resolution screen capture to get at the audio.
-            config.width = 2
-            config.height = 2
-            config.minimumFrameInterval = CMTime(value: 1, timescale: 1)
-            config.queueDepth = 3
-
-            let stream = SCStream(filter: filter, configuration: config, delegate: self)
-            try stream.addStreamOutput(self, type: .audio, sampleHandlerQueue: audioQueue)
-            try await stream.startCapture()
-            let keep = await MainActor.run { () -> Bool in
-                // `stop()` may have come in while this was starting up.
-                guard self.wantsRunning else { return false }
-                self.stream = stream
-                self.retryDelay = 2
-                return true
-            }
-            if !keep { try? await stream.stopCapture() }
-        } catch {
-            NSLog("Resonata: audio capture failed to start: \(error)")
-            // A refused permission won't change by asking again; anything
-            // else — no display yet, a display mid-reconfiguration — might.
-            if (error as? SCStreamError)?.code != .userDeclined {
-                await scheduleRestart()
-            }
-        }
-    }
-
-    /// Tries again after a pause that doubles each time, up to half a minute.
+    /// Mixes one buffer of Float32 audio to mono and analyses it.
     ///
-    /// The stream is attached to a display (ScreenCaptureKit has no
-    /// audio-only mode). Unplug the monitor it picked and the stream stops
-    /// with an error — before this, the bars then fell back to the fake
-    /// animation until the app was relaunched.
-    @MainActor private func scheduleRestart() {
-        guard wantsRunning else { return }
-        let delay = retryDelay
-        retryDelay = min(retryDelay * 2, 30)
-        Task { @MainActor in
-            try? await Task.sleep(for: .seconds(delay))
-            // A retry without permission would only bring the dialog back.
-            guard wantsRunning, stream == nil, !isStarting,
-                  CGPreflightScreenCaptureAccess() else { return }
-            isStarting = true
-            await startCapture()
-        }
-    }
+    /// Handles both layouts: one buffer per channel (what ScreenCaptureKit
+    /// sends), or one buffer with the channels interleaved (what a tap may).
+    func ingest(_ list: UnsafeMutableAudioBufferListPointer, interleaved: Bool, channelsPerFrame: Int) {
+        guard let analyzer, let first = list.first, let firstData = first.mData else { return }
+        let channelsInFirst = interleaved ? max(channelsPerFrame, 1) : 1
+        let frames = Int(first.mDataByteSize) / (MemoryLayout<Float>.size * channelsInFirst)
+        guard frames > 0 else { return }
+        if mono.count < frames { mono = [Float](repeating: 0, count: frames) }
 
-    // MARK: SCStreamOutput
-
-    func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer,
-                of outputType: SCStreamOutputType) {
-        guard outputType == .audio, sampleBuffer.isValid, sampleBuffer.numSamples > 0,
-              let analyzer else { return }
-
-        try? sampleBuffer.withAudioBufferList { list, _ in
-            guard let first = list.first, first.mData != nil else { return }
-            let frames = Int(first.mDataByteSize) / MemoryLayout<Float>.size
-            guard frames > 0 else { return }
-
-            if mono.count < frames {
-                mono = [Float](repeating: 0, count: frames)
-            }
-
-            // ScreenCaptureKit hands over deinterleaved Float32: one buffer per
-            // channel. Averaging them to mono is enough for a spectrum, and it
-            // halves the work.
-            let frame: SpectrumFrame? = mono.withUnsafeMutableBufferPointer { out in
-                guard let base = out.baseAddress else { return nil }
-                vDSP_vclr(base, 1, vDSP_Length(frames))
-
-                var channels: Float = 0
+        let frame: SpectrumFrame? = mono.withUnsafeMutableBufferPointer { out in
+            guard let base = out.baseAddress else { return nil }
+            let n = vDSP_Length(frames)
+            vDSP_vclr(base, 1, n)
+            var channels: Float = 0
+            if interleaved {
+                let source = firstData.assumingMemoryBound(to: Float.self)
+                for channel in 0..<channelsInFirst {
+                    vDSP_vadd(base, 1, source + channel, vDSP_Stride(channelsInFirst), base, 1, n)
+                }
+                channels = Float(channelsInFirst)
+            } else {
                 for buffer in list {
                     guard let data = buffer.mData else { continue }
-                    let source = data.assumingMemoryBound(to: Float.self)
-                    vDSP_vadd(base, 1, source, 1, base, 1, vDSP_Length(frames))
+                    vDSP_vadd(base, 1, data.assumingMemoryBound(to: Float.self), 1, base, 1, n)
                     channels += 1
                 }
-                guard channels > 0 else { return nil }
-                if channels > 1 {
-                    var scale = 1 / channels
-                    vDSP_vsmul(base, 1, &scale, base, 1, vDSP_Length(frames))
-                }
-                return analyzer.process(base, count: frames)
             }
-
-            if let frame {
-                latest.withLock { $0 = frame.bands }
-                updateSignal(from: frame.bands)
-                if frame.beat {
-                    Task { @MainActor in self.beat &+= 1 }
-                }
-                if Self.debugBands { printBands(frame) }
+            guard channels > 0 else { return nil }
+            if channels > 1 {
+                var scale = 1 / channels
+                vDSP_vsmul(base, 1, &scale, base, 1, n)
             }
+            return analyzer.process(base, count: frames)
         }
+        if let frame { publish(frame) }
+    }
+
+    /// Empties the frame and drops the signal, for when capture stops.
+    func clear() {
+        latest.withLock { $0 = [] }
+        Task { @MainActor in self.hasSignal = false }
+    }
+
+    private func publish(_ frame: SpectrumFrame) {
+        latest.withLock { $0 = frame.bands }
+        updateSignal(from: frame.bands)
+        if frame.beat { Task { @MainActor in self.beat &+= 1 } }
+        if Self.debugBands { printBands(frame) }
     }
 
     /// Raises `hasSignal` quickly and lowers it slowly.
     ///
     /// Asymmetric on purpose. Music is full of gaps — the space between two
     /// beats is genuinely silent — and a symmetric threshold would switch this
-    /// off and on several times a second, which is worse than never having it.
-    /// Coming back is instant; going away takes a second of real quiet.
+    /// off and on several times a second. Coming back is instant; going away
+    /// takes a second of real quiet.
     private func updateSignal(from bands: [Float]) {
         let loud = bands.contains { $0 > Self.signalThreshold }
         guard loud != signalState else { return }
-
         let now = CFAbsoluteTimeGetCurrent()
         let settle: CFAbsoluteTime = loud ? 0.05 : 1.0
         guard now - signalChangedAt > settle else { return }
-
         signalState = loud
         signalChangedAt = now
         Task { @MainActor in self.hasSignal = loud }
@@ -610,31 +496,136 @@ final class SystemAudioSpectrum: NSObject, ObservableObject, AudioSpectrumSource
     /// dot per beat detected since the last line.
     private func printBands(_ frame: SpectrumFrame) {
         if frame.beat { beatsSincePrint += 1 }
-        let bands = frame.bands
         let now = CFAbsoluteTimeGetCurrent()
         guard now - lastBandPrint > 0.5 else { return }
         lastBandPrint = now
         let beats = String(repeating: "●", count: beatsSincePrint)
         beatsSincePrint = 0
-
         let blocks = Array(" ▁▂▃▄▅▆▇█")
-        let sparkline = String(bands.map { level -> Character in
-            let index = Int((min(max(level, 0), 1) * Float(blocks.count - 1)).rounded())
-            return blocks[index]
+        let sparkline = String(frame.bands.map { level -> Character in
+            blocks[Int((min(max(level, 0), 1) * Float(blocks.count - 1)).rounded())]
         })
-        let peak = bands.max() ?? 0
-        let mean = bands.reduce(0, +) / Float(max(bands.count, 1))
+        let peak = frame.bands.max() ?? 0
+        let mean = frame.bands.reduce(0, +) / Float(max(frame.bands.count, 1))
         print(String(format: "[%@]  peak %.3f  mean %.3f  %@", sparkline, peak, mean, beats))
         fflush(stdout)
     }
+}
 
-    // MARK: SCStreamDelegate
+// MARK: - ScreenCaptureKit backend (macOS before 14.2)
+
+/// Captures the system mix through ScreenCaptureKit.
+///
+/// Kept only for macOS versions without Core Audio taps (`ProcessTap.swift`).
+/// It needs the Screen Recording permission, and a stream is always attached
+/// to a display — ScreenCaptureKit has no audio-only mode.
+final class ScreenCaptureSpectrum: SpectrumCapture, SCStreamOutput, SCStreamDelegate, @unchecked Sendable {
+
+    private static let sampleRate: Double = 48_000
+
+    @MainActor private var stream: SCStream?
+    /// Capture should be running — cleared only by `stop()`. A stream that
+    /// dies while this is set gets restarted.
+    @MainActor private var wantsRunning = false
+    @MainActor private var isStarting = false
+    /// Whether this launch has already let macOS show its Screen Recording
+    /// dialog. Without permission, every start would bring it back.
+    @MainActor private var askedForPermission = false
+    @MainActor private var retryDelay: TimeInterval = 2
+
+    override init(bandCount: Int) {
+        super.init(bandCount: bandCount)
+        prepareAnalyzer(sampleRate: Self.sampleRate)
+    }
+
+    /// Idempotent: playback starting twice must not open two streams.
+    override func start() {
+        Task { @MainActor in
+            wantsRunning = true
+            guard stream == nil, !isStarting else { return }
+            if !CGPreflightScreenCaptureAccess() {
+                guard !askedForPermission else { return }
+                askedForPermission = true
+            }
+            isStarting = true
+            await startCapture()
+        }
+    }
+
+    override func stop() {
+        Task { @MainActor in
+            wantsRunning = false
+            guard let stream else { return }
+            self.stream = nil
+            try? await stream.stopCapture()
+            clear()
+        }
+    }
+
+    private func startCapture() async {
+        defer { Task { @MainActor in self.isStarting = false } }
+        do {
+            let content = try await SCShareableContent.excludingDesktopWindows(
+                false, onScreenWindowsOnly: false)
+            guard let display = content.displays.first else { return }
+            let filter = SCContentFilter(display: display, excludingApplications: [], exceptingWindows: [])
+            let config = SCStreamConfiguration()
+            config.capturesAudio = true
+            config.excludesCurrentProcessAudio = true
+            config.sampleRate = Int(Self.sampleRate)
+            config.channelCount = 2
+            // The video half is unwanted; 2x2 at one frame a second makes it
+            // essentially free.
+            config.width = 2
+            config.height = 2
+            config.minimumFrameInterval = CMTime(value: 1, timescale: 1)
+            config.queueDepth = 3
+
+            let stream = SCStream(filter: filter, configuration: config, delegate: self)
+            try stream.addStreamOutput(self, type: .audio, sampleHandlerQueue: audioQueue)
+            try await stream.startCapture()
+            let keep = await MainActor.run { () -> Bool in
+                guard self.wantsRunning else { return false }
+                self.stream = stream
+                self.retryDelay = 2
+                return true
+            }
+            if !keep { try? await stream.stopCapture() }
+        } catch {
+            NSLog("Resonata: audio capture failed to start: \(error)")
+            if (error as? SCStreamError)?.code != .userDeclined {
+                await scheduleRestart()
+            }
+        }
+    }
+
+    /// Retries after a pause that doubles each time, up to half a minute —
+    /// for a display unplugged mid-capture, say.
+    @MainActor private func scheduleRestart() {
+        guard wantsRunning else { return }
+        let delay = retryDelay
+        retryDelay = min(retryDelay * 2, 30)
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(delay))
+            guard wantsRunning, stream == nil, !isStarting,
+                  CGPreflightScreenCaptureAccess() else { return }
+            isStarting = true
+            await startCapture()
+        }
+    }
+
+    func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer,
+                of outputType: SCStreamOutputType) {
+        guard outputType == .audio, sampleBuffer.isValid, sampleBuffer.numSamples > 0 else { return }
+        try? sampleBuffer.withAudioBufferList { list, _ in
+            ingest(list, interleaved: false, channelsPerFrame: 2)
+        }
+    }
 
     func stream(_ stream: SCStream, didStopWithError error: Error) {
         NSLog("Resonata: audio capture stopped: \(error)")
-        latest.withLock { $0 = [] }
+        clear()
         Task { @MainActor in
-            self.hasSignal = false
             self.stream = nil
             self.scheduleRestart()
         }

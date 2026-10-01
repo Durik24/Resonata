@@ -286,7 +286,8 @@ final class MediaRemoteNowPlaying: ObservableObject, NowPlayingSource {
             sampledAt: sampledAt(state),
             isPlaying: (state["playing"] as? Bool) ?? false,
             artworkURL: nil,
-            source: Self.appName(for: bundle) ?? bundle
+            source: Self.appName(for: bundle) ?? bundle,
+            bundleID: bundle.isEmpty ? nil : bundle
         )
     }
 

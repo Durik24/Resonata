@@ -12,7 +12,7 @@ mkdir -p "$APP/Contents/MacOS"
 swiftc -O -target "$(uname -m)-apple-macos14.0" \
     -o "$APP/Contents/MacOS/Resonata" \
     AudioSpectrum.swift LoginItem.swift Lyrics.swift MediaRemote.swift NotchPanel.swift NotchShape.swift \
-    ResonataApp.swift NotchView.swift NowPlaying.swift ScreenGeometry.swift Volume.swift
+    ProcessTap.swift ResonataApp.swift NotchView.swift NowPlaying.swift ScreenGeometry.swift Volume.swift
 
 # MediaRemote adapter (Vendor/mediaremote-adapter): a small Objective-C
 # framework that /usr/bin/perl loads to read now-playing for every player.
@@ -60,6 +60,9 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <!-- Required, or the AppleScript calls to Spotify/Music are killed on sight. -->
     <!-- Never App Nap: a napped agent draws a click's result seconds late. -->
     <key>NSAppSleepDisabled</key>          <true/>
+    <!-- Asked when the audio tap first starts: "System Audio Recording Only". -->
+    <key>NSAudioCaptureUsageDescription</key>
+    <string>Resonata listens to the music you play to draw its spectrum. Nothing is recorded or stored.</string>
     <key>NSAppleEventsUsageDescription</key>
     <string>Resonata reads what you are currently playing.</string>
 </dict>

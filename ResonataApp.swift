@@ -26,7 +26,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// One analysis feeds every view that draws bars. 32 bands is what the
     /// expanded panel draws directly; the collapsed pill averages the same
     /// numbers down to three, which is far cheaper than running the FFT twice.
-    private let spectrum = SystemAudioSpectrum(bandCount: 32)
+    private let spectrum: SpectrumCapture = {
+        // Core Audio taps from macOS 14.2: no Screen Recording permission.
+        if #available(macOS 14.2, *) { return ProcessTapSpectrum(bandCount: 32) }
+        return ScreenCaptureSpectrum(bandCount: 32)
+    }()
     private let lyrics = LyricsStore()
 
     private var cancellables = Set<AnyCancellable>()
@@ -71,6 +75,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Held, not observed — the bars pull the latest frame when they draw.
         model.spectrum = spectrum
+
+        // The tap listens to whichever app is playing, not the whole system.
+        model.$track
+            .map { $0?.bundleID }
+            .removeDuplicates()
+            .sink { [weak self] bundleID in self?.spectrum.retarget(bundleID: bundleID) }
+            .store(in: &cancellables)
 
         // Capture follows playback rather than running from launch.
         model.$track

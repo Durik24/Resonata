@@ -17,6 +17,8 @@ struct Track: Equatable {
     var isPlaying: Bool
     var artworkURL: URL?
     var source: String   // "Spotify" / "Music"
+    /// The playing app's bundle ID, when known — what the audio tap aims at.
+    var bundleID: String? = nil
 }
 
 extension Track {
@@ -394,7 +396,8 @@ final class AppleScriptNowPlaying: ObservableObject, NowPlayingSource {
             sampledAt: Date(),
             isPlaying: parts[0] == "playing",
             artworkURL: parts.count > 6 ? URL(string: parts[6]) : nil,
-            source: app
+            source: app,
+            bundleID: app == "Spotify" ? "com.spotify.client" : "com.apple.Music"
         )
     }
 
