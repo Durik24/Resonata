@@ -109,16 +109,6 @@ struct NotchView: View {
     @AppStorage(Preferences.Key.waveColour) private var waveColourSetting = WaveColour.album.rawValue
     @AppStorage(Preferences.Key.customWaveColour) private var customWaveHex = "#FFFFFF"
     @AppStorage(Preferences.Key.showLyrics) private var showLyricsSetting = true
-    @AppStorage(Preferences.Key.openStyle) private var openStyleSetting = OpenStyle.zoom.rawValue
-    @AppStorage(Preferences.Key.pillStyle) private var pillStyleSetting = PillStyle.bars.rawValue
-    @AppStorage(Preferences.Key.trackChange) private var trackChangeSetting = TrackChange.fade.rawValue
-    @AppStorage(Preferences.Key.trackFlash) private var trackFlashSetting = true
-
-    /// Bumped when a new song's colour arrives, to flash it once.
-    @State private var colourFlash = 0
-    /// The song the last colour belonged to, so the first song after launch
-    /// doesn't count as a change.
-    @State private var lastColouredSong: String?
 
     static let expandedWidth: CGFloat = 470
     /// Tall enough to seat the content below the cutout without cramping it.
@@ -151,12 +141,7 @@ struct NotchView: View {
     /// widening for a track, narrowing when it stops, the lyrics row arriving
     /// — settles on this one spring. Unhurried on purpose: long enough to be
     /// watched, damped enough to land without a wobble.
-    private var settle: Animation {
-        openStyle.animation(speed: AnimationSpeed(rawValue: speedSetting) ?? .normal)
-    }
-    private var openStyle: OpenStyle { OpenStyle(rawValue: openStyleSetting) ?? .zoom }
-    private var pillStyle: PillStyle { PillStyle(rawValue: pillStyleSetting) ?? .bars }
-    private var trackChange: TrackChange { TrackChange(rawValue: trackChangeSetting) ?? .fade }
+    private var settle: Animation { (AnimationSpeed(rawValue: speedSetting) ?? .normal).spring }
 
     /// Fades for content swapping in place: artwork, titles, glyphs.
     private var fade: Animation { (AnimationSpeed(rawValue: speedSetting) ?? .normal).fade }
@@ -255,8 +240,7 @@ struct NotchView: View {
                         BeatBloom(shape: shape,
                                   color: colourable ? accent : nil,
                                   expanded: model.isExpanded,
-                                  beat: model.beat,
-                                  flash: colourFlash)
+                                  beat: model.beat)
                     })
                 }
             ))
@@ -285,13 +269,6 @@ struct NotchView: View {
             let (c, i) = await (colour, image)
             accent = c
             model.artwork = i
-            // A new song's colour: flash it once, when the setting is on and
-            // this isn't simply the first song since launch.
-            let song = model.track.map { "\($0.title)\u{1F}\($0.artist)" }
-            if trackFlashSetting, c != nil, let lastColouredSong, song != lastColouredSong {
-                colourFlash &+= 1
-            }
-            if song != nil { lastColouredSong = song }
         }
         .animation(.easeInOut(duration: 0.5), value: accent)
     }
@@ -360,19 +337,12 @@ struct NotchView: View {
             // `AnimatedFrame` runs layout every frame, so the reader sees the
             // interpolated size.
             GeometryReader { geo in
-                if openStyle.scalesContent {
-                    expanded
-                        .frame(width: geo.size.width, alignment: .top)
-                        .scaleEffect(
-                            max(0.05, min(1, geo.size.height / model.expandedHeight)),
-                            anchor: .top
-                        )
-                } else {
-                    // "Pour": laid out at full size and uncovered top-down by
-                    // the growing box, like a curtain dropping out of the notch.
-                    expanded
-                        .frame(width: geo.size.width, height: model.expandedHeight, alignment: .top)
-                }
+                expanded
+                    .frame(width: geo.size.width, alignment: .top)
+                    .scaleEffect(
+                        max(0.05, min(1, geo.size.height / model.expandedHeight)),
+                        anchor: .top
+                    )
             }
             .transition(Self.crossfade)
         } else {
@@ -389,7 +359,7 @@ struct NotchView: View {
                 // Nothing can go in it — there are no pixels there — so the
                 // title has nowhere to live on the laptop screen.
                 HStack(spacing: 0) {
-                    pillArtwork
+                    artwork(size: notchSize.height - 8)
                     Spacer(minLength: notchSize.width - 20)
                     waveform
                 }
@@ -398,7 +368,7 @@ struct NotchView: View {
                 // the title goes where the cutout would have been. Same shape,
                 // same positions either side — just with the middle used.
                 HStack(spacing: 0) {
-                    pillArtwork
+                    artwork(size: notchSize.height - 8)
                     Spacer(minLength: 8)
                     Text(model.track?.title ?? "")
                         .font(.system(size: 11, weight: .medium))
@@ -420,18 +390,6 @@ struct NotchView: View {
         .animation(fade, value: model.showsCollapsedContent)
     }
 
-    /// The cover in the closed pill, with the beat ring round it in that style.
-    private var pillArtwork: some View {
-        artwork(size: notchSize.height - 8)
-            .overlay {
-                if pillStyle == .ring {
-                    BeatRing(beat: model.beat, color: accent,
-                             cornerRadius: (notchSize.height - 8) * 0.09)
-                        .allowsHitTesting(false)
-                }
-            }
-    }
-
     /// Usable width inside the collapsed pill, once the padding and the inset
     /// are taken out.
     private var collapsedContentWidth: CGFloat {
@@ -448,21 +406,10 @@ struct NotchView: View {
             if let level = model.volumeLevel {
                 VolumeMeter(level: level, compact: true)
             } else {
-                switch pillStyle {
-                case .bars:
-                    SpectrumBars(source: spectrumSource, barCount: 3, isAnimating: live,
-                                 tint: .white.opacity(live ? 0.85 : 0.35))
-                case .dots:
-                    SpectrumBars(source: spectrumSource, barCount: 3, isAnimating: live,
-                                 tint: .white.opacity(live ? 0.9 : 0.35), style: .dots)
-                case .wave:
-                    SpectrumWave(source: spectrumSource, color: nil, isAnimating: live)
-                case .ring:
-                    // The ring is round the cover; this side keeps one dot
-                    // breathing with the level, so the pill stays balanced.
-                    SpectrumBars(source: spectrumSource, barCount: 1, isAnimating: live,
-                                 tint: .white.opacity(live ? 0.9 : 0.35), style: .dots)
-                }
+                SpectrumBars(source: spectrumSource,
+                             barCount: 3,
+                             isAnimating: live,
+                             tint: .white.opacity(live ? 0.85 : 0.35))
             }
         }
             // Same width as the artwork opposite it, not the width the bars
@@ -508,30 +455,17 @@ struct NotchView: View {
             artwork(size: 92)
 
             VStack(alignment: .leading, spacing: 3) {
-                // Each new title and artist pushes in from the right. Kept in
-                // a clipped ZStack so the old and new lines overlap during the
-                // push instead of stacking up and shoving the rest down.
-                ZStack(alignment: .leading) {
-                    Text(model.track?.title ?? "Nothing playing")
-                        .font(.system(size: 15, weight: .semibold))
-                        .lineLimit(1)
-                        .id(model.track?.title)
-                        .transition(.push(from: .trailing))
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .clipped()
-                .animation(fade, value: model.track?.title)
-                ZStack(alignment: .leading) {
-                    Text(model.track?.artist ?? "")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.white.opacity(0.55))
-                        .lineLimit(1)
-                        .id(model.track?.artist)
-                        .transition(.push(from: .trailing))
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .clipped()
-                .animation(fade, value: model.track?.artist)
+                Text(model.track?.title ?? "Nothing playing")
+                    .font(.system(size: 15, weight: .semibold))
+                    .lineLimit(1)
+                    .contentTransition(.opacity)
+                    .animation(fade, value: model.track?.title)
+                Text(model.track?.artist ?? "")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.white.opacity(0.55))
+                    .lineLimit(1)
+                    .contentTransition(.opacity)
+                    .animation(fade, value: model.track?.artist)
 
                 progress
                     .padding(.top, 10)
@@ -717,14 +651,11 @@ struct NotchView: View {
     }
 
     private func artwork(size: CGFloat) -> some View {
-        ZStack {
+        Group {
             if let image = model.artwork {
-                // Keyed on the image itself, not its URL: the URL changes the
-                // moment a song does, but the picture lands a beat later, and a
-                // flip keyed on the URL would turn over to the *old* cover.
                 Image(nsImage: image).resizable().scaledToFill()
-                    .id(ObjectIdentifier(image))
-                    .transition(coverTransition)
+                    .transition(.opacity)
+                    .id(model.track?.artworkURL)
             } else if model.track?.artworkURL != nil {
                 // Loading. Same shape as the art so nothing shifts when it lands.
                 Color.white.opacity(0.1)
@@ -738,8 +669,7 @@ struct NotchView: View {
             }
         }
         .animation(fade, value: model.artwork == nil)
-        .animation(trackChange == .fade ? fade : settle,
-                   value: model.artwork.map(ObjectIdentifier.init))
+        .animation(fade, value: model.track?.artworkURL)
         .frame(width: size, height: size)
         // Spotify's album art is barely rounded — roughly a 0.07 ratio. The
         // 0.22 this started with reads as a squircle app icon, not a record.
@@ -750,14 +680,6 @@ struct NotchView: View {
                 .strokeBorder(.white.opacity(0.12), lineWidth: 0.5)
         }
         .shadow(color: .black.opacity(0.45), radius: 5, y: 2)
-    }
-
-    private var coverTransition: AnyTransition {
-        switch trackChange {
-        case .fade: .opacity
-        case .flip: .coverFlip
-        case .slide: .asymmetric(insertion: .move(edge: .trailing), removal: .move(edge: .leading))
-        }
     }
 
     private func button(_ symbol: String, action: @escaping () -> Void) -> some View {
@@ -934,13 +856,11 @@ struct SpectrumBars: NSViewRepresentable {
     var tint: Color = .white
     var barWidth: CGFloat = 4
     var spacing: CGFloat = 3
-    var style: SpectrumBarsView.Style = .bars
 
     func makeNSView(context: Context) -> SpectrumBarsView { SpectrumBarsView() }
 
     func updateNSView(_ view: SpectrumBarsView, context: Context) {
         view.source = source
-        view.style = style
         view.configure(barCount: barCount, tint: NSColor(tint),
                        barWidth: barWidth, spacing: spacing)
         view.isAnimating = isAnimating
@@ -953,11 +873,7 @@ struct SpectrumBars: NSViewRepresentable {
 /// is redrawn. The link runs only while animating and only while on screen.
 final class SpectrumBarsView: NSView {
 
-    /// Bars stretch with the level; dots swell and brighten with it.
-    enum Style { case bars, dots }
-
     var source: AudioSpectrumSource?
-    var style: Style = .bars
 
     var isAnimating = false {
         didSet {
@@ -1042,31 +958,12 @@ final class SpectrumBarsView: NSView {
 
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        if style == .dots {
-            // One slot per dot across the full width; each dot grows from
-            // 4pt to most of the height and brightens as it does.
-            let slot = size.width / CGFloat(bars.count)
-            // A lone dot (the ring style's partner) stays modest: at full
-            // height and full white it read as a blob, not a pulse.
-            let biggest = min(slot - 2, size.height * (bars.count == 1 ? 0.7 : 1))
-            for (i, (dot, level)) in zip(bars, levels).enumerated() {
-                let amount = isAnimating ? max(level, 0.1) : 0.2
-                let d = 4 + (biggest - 4) * amount
-                dot.frame = CGRect(x: slot * (CGFloat(i) + 0.5) - d / 2, y: (size.height - d) / 2,
-                                   width: d, height: d)
-                dot.cornerRadius = d / 2
-                dot.opacity = Float(0.45 + 0.55 * amount)
-            }
-        } else {
-            for (bar, level) in zip(bars, levels) {
-                // Never let a bar vanish: a quiet passage should read as quiet,
-                // not as a rendering failure.
-                let height = size.height * (isAnimating ? max(level, 0.16) : level)
-                bar.frame = CGRect(x: x, y: (size.height - height) / 2, width: barWidth, height: height)
-                bar.cornerRadius = barWidth / 2
-                bar.opacity = 1
-                x += barWidth + spacing
-            }
+        for (bar, level) in zip(bars, levels) {
+            // Never let a bar vanish: a quiet passage should read as quiet,
+            // not as a rendering failure.
+            let height = size.height * (isAnimating ? max(level, 0.16) : level)
+            bar.frame = CGRect(x: x, y: (size.height - height) / 2, width: barWidth, height: height)
+            x += barWidth + spacing
         }
         CATransaction.commit()
     }
@@ -1312,49 +1209,33 @@ struct BeatBloom: NSViewRepresentable {
     var color: Color?
     var expanded: Bool
     var beat: Int
-    /// Bumped once per new song's colour.
-    var flash: Int = 0
 
     func makeNSView(context: Context) -> BeatBloomView { BeatBloomView() }
 
     func updateNSView(_ view: BeatBloomView, context: Context) {
         view.update(shape: shape, color: color.map { NSColor($0) }, expanded: expanded)
         view.pulse(beat)
-        view.flash(flash)
     }
 }
 
 final class BeatBloomView: NSView {
     private let gradient = CAGradientLayer()
-    /// The song-change flash: the wash at twice the beat's strength.
-    private let flashGradient = CAGradientLayer()
-    /// Both gradients sit in here, so one mask clips them to the notch.
-    private let clip = CALayer()
     private let mask = CAShapeLayer()
     private var shape = NotchShape()
     private var lastBeat: Int?
-    private var lastFlash: Int?
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         layer = CALayer()
         wantsLayer = true
         gradient.opacity = 0
-        flashGradient.opacity = 0
-        clip.mask = mask
+        gradient.mask = mask
         // Unit space with the origin at the bottom left: top-leading to
         // bottom-trailing, the same diagonal as the SwiftUI wash beneath.
         gradient.startPoint = CGPoint(x: 0, y: 1)
         gradient.endPoint = CGPoint(x: 1, y: 0)
         gradient.locations = [0, 0.45, 1]
-        for extra in [flashGradient] {
-            extra.startPoint = gradient.startPoint
-            extra.endPoint = gradient.endPoint
-            extra.locations = gradient.locations
-        }
-        clip.addSublayer(gradient)
-        clip.addSublayer(flashGradient)
-        layer?.addSublayer(clip)
+        layer?.addSublayer(gradient)
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
@@ -1371,12 +1252,9 @@ final class BeatBloomView: NSView {
             let bloom = CGFloat(NotchMetrics.beatWashBloom)
             let stops: [CGFloat] = expanded ? [0.55, 0.16, 0] : [0.38, 0.18, 0.06]
             gradient.colors = stops.map { color.withAlphaComponent($0 * bloom).cgColor }
-            flashGradient.colors = stops.map { color.withAlphaComponent(min($0 * 1.6, 1)).cgColor }
             gradient.isHidden = false
-            flashGradient.isHidden = false
         } else {
             gradient.isHidden = true
-            flashGradient.isHidden = true
         }
         CATransaction.commit()
         layoutLayers()
@@ -1395,20 +1273,6 @@ final class BeatBloomView: NSView {
         gradient.add(fade, forKey: "beat")
     }
 
-    /// A new song's colour: up quickly, then a slow fade, so it reads as a
-    /// wash of the new colour rather than as one more beat.
-    func flash(_ count: Int) {
-        defer { lastFlash = count }
-        guard let lastFlash, count != lastFlash, !flashGradient.isHidden else { return }
-        let fade = CAKeyframeAnimation(keyPath: "opacity")
-        fade.values = [0, 1, 0]
-        fade.keyTimes = [0, 0.15, 1]
-        fade.duration = 1.1
-        fade.timingFunctions = [CAMediaTimingFunction(name: .easeOut),
-                                CAMediaTimingFunction(name: .easeIn)]
-        flashGradient.add(fade, forKey: "flash")
-    }
-
     override func layout() {
         super.layout()
         layoutLayers()
@@ -1420,107 +1284,11 @@ final class BeatBloomView: NSView {
     private func layoutLayers() {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        clip.frame = bounds
         gradient.frame = bounds
-        flashGradient.frame = bounds
         mask.frame = bounds
         var flip = CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: 0, ty: bounds.height)
         mask.path = shape.path(in: bounds).cgPath.copy(using: &flip)
         CATransaction.commit()
-    }
-}
-
-/// A ring round the cover that ripples outward on every beat.
-///
-/// Core Animation again: each beat adds one scale-and-fade animation that the
-/// render server plays, so the app does nothing between beats.
-struct BeatRing: NSViewRepresentable {
-    var beat: Int
-    var color: Color?
-    var cornerRadius: CGFloat
-
-    func makeNSView(context: Context) -> BeatRingView { BeatRingView() }
-
-    func updateNSView(_ view: BeatRingView, context: Context) {
-        view.update(color: color.map { NSColor($0) } ?? .white, cornerRadius: cornerRadius)
-        view.pulse(beat)
-    }
-}
-
-final class BeatRingView: NSView {
-    private let ring = CAShapeLayer()
-    private var cornerRadius: CGFloat = 3
-    private var lastBeat: Int?
-
-    override init(frame: NSRect) {
-        super.init(frame: frame)
-        layer = CALayer()
-        wantsLayer = true
-        ring.fillColor = nil
-        ring.lineWidth = 1.5
-        ring.opacity = 0
-        layer?.addSublayer(ring)
-    }
-
-    required init?(coder: NSCoder) { fatalError("not used") }
-
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
-
-    func update(color: NSColor, cornerRadius: CGFloat) {
-        self.cornerRadius = cornerRadius
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        ring.strokeColor = color.withAlphaComponent(0.9).cgColor
-        CATransaction.commit()
-        layoutRing()
-    }
-
-    override func layout() {
-        super.layout()
-        layoutRing()
-    }
-
-    private func layoutRing() {
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        ring.frame = bounds
-        ring.path = CGPath(roundedRect: bounds.insetBy(dx: 0.75, dy: 0.75),
-                           cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil)
-        CATransaction.commit()
-    }
-
-    func pulse(_ beat: Int) {
-        defer { lastBeat = beat }
-        guard let lastBeat, beat != lastBeat else { return }
-        let grow = CABasicAnimation(keyPath: "transform.scale")
-        grow.fromValue = 1
-        grow.toValue = 1.45
-        let fade = CABasicAnimation(keyPath: "opacity")
-        fade.fromValue = 0.9
-        fade.toValue = 0
-        let ripple = CAAnimationGroup()
-        ripple.animations = [grow, fade]
-        ripple.duration = 0.55
-        ripple.timingFunction = CAMediaTimingFunction(name: .easeOut)
-        ring.add(ripple, forKey: "ripple")
-    }
-}
-
-/// The cover turning over on its vertical axis: the old one away to the
-/// left, the new one in from the right.
-private struct CoverFlip: ViewModifier {
-    var angle: Double
-    func body(content: Content) -> some View {
-        content
-            .rotation3DEffect(.degrees(angle), axis: (x: 0, y: 1, z: 0), perspective: 0.5)
-            .opacity(abs(angle) < 89 ? 1 : 0)
-    }
-}
-
-extension AnyTransition {
-    static var coverFlip: AnyTransition {
-        .asymmetric(insertion: .modifier(active: CoverFlip(angle: -90), identity: CoverFlip(angle: 0)),
-                    removal: .modifier(active: CoverFlip(angle: 90), identity: CoverFlip(angle: 0)))
     }
 }
 

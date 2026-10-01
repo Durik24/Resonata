@@ -238,17 +238,8 @@ Pravé tlačítko na notch → Nastavení…
   Spouštět po přihlášení      zapnout / vypnout
   Otevřít notch zkratkou      Vypnuto, ⇧⌘ Mezerník, ⌃⌥⌘ N
   Zmenšit notch po pauze za   5 / 10 / 20 / 30 / 60 s
+  Animace                     Rychlé / Normální / Pomalé
   Zobrazovat texty písní      zapnout / vypnout
-
-  Animace:
-  Otevírání a zavírání        Přiblížení, Pružina (odraz),
-                              Plynulé, Cvaknutí, Vylití (opona)
-  Rychlost                    Rychlé / Normální / Pomalé
-  Zavřený notch ukazuje       Sloupce, Vlnka, Pulzující tečky,
-                              Kruh kolem obalu (vlní se na dobu)
-  Obal při změně skladby      Prolnutí, Otočení, Posun
-  Záblesk barvy               při nové skladbě krátce zazáří
-                              barva nového obalu
   Barva vlny                  podle obalu, bílá, nebo vlastní
 
 Všechno se projeví hned, bez restartu.

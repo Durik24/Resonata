@@ -13,10 +13,6 @@ enum Preferences {
         static let customWaveColour = "customWaveColour"
         static let showLyrics = "showLyrics"
         static let hotKey = "hotKey"
-        static let openStyle = "openStyle"
-        static let pillStyle = "pillStyle"
-        static let trackChange = "trackChange"
-        static let trackFlash = "trackFlash"
     }
 
     /// Call before anything reads a preference.
@@ -28,10 +24,6 @@ enum Preferences {
             Key.customWaveColour: "#FFFFFF",
             Key.showLyrics: true,
             Key.hotKey: HotKeyChoice.shiftCommandSpace.rawValue,
-            Key.openStyle: OpenStyle.zoom.rawValue,
-            Key.pillStyle: PillStyle.bars.rawValue,
-            Key.trackChange: TrackChange.fade.rawValue,
-            Key.trackFlash: true,
         ])
     }
 
@@ -123,81 +115,5 @@ extension Color {
         func byte(_ component: CGFloat) -> Int { Int((min(max(component, 0), 1) * 255).rounded()) }
         return String(format: "#%02X%02X%02X",
                       byte(color.redComponent), byte(color.greenComponent), byte(color.blueComponent))
-    }
-}
-
-/// How the panel opens and closes. The speed setting scales each of them.
-enum OpenStyle: String, CaseIterable, Identifiable {
-    /// The content grows with the box, out of the notch. The default.
-    case zoom
-    /// A spring with a visible overshoot: the panel lands and rebounds.
-    case bounce
-    /// An ease-out curve with no overshoot at all.
-    case smooth
-    /// Very fast and fully damped — there, not travelling.
-    case snap
-    /// The content stays put and the box reveals it, top down, like a
-    /// curtain falling out of the notch.
-    case pour
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .zoom: "Přiblížení"
-        case .bounce: "Pružina"
-        case .smooth: "Plynulé"
-        case .snap: "Cvaknutí"
-        case .pour: "Vylití"
-        }
-    }
-
-    /// Whether the content scales with the box (true) or is revealed by it.
-    var scalesContent: Bool { self != .pour }
-
-    func animation(speed: AnimationSpeed) -> Animation {
-        let k: Double = switch speed {
-        case .fast: 0.6
-        case .normal: 1
-        case .slow: 1.5
-        }
-        return switch self {
-        case .zoom: .spring(response: 0.45 * k, dampingFraction: 0.82)
-        case .bounce: .spring(response: 0.55 * k, dampingFraction: 0.58)
-        case .smooth: .timingCurve(0.22, 0.61, 0.36, 1, duration: 0.5 * k)
-        case .snap: .spring(response: 0.18 * k, dampingFraction: 1)
-        case .pour: .spring(response: 0.6 * k, dampingFraction: 0.78)
-        }
-    }
-}
-
-/// What the closed notch shows on the right of the cover.
-enum PillStyle: String, CaseIterable, Identifiable {
-    case bars, wave, dots, ring
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .bars: "Sloupce"
-        case .wave: "Vlnka"
-        case .dots: "Pulzující tečky"
-        case .ring: "Kruh kolem obalu"
-        }
-    }
-}
-
-/// How the cover changes when the song does.
-enum TrackChange: String, CaseIterable, Identifiable {
-    case fade, flip, slide
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .fade: "Prolnutí"
-        case .flip: "Otočení"
-        case .slide: "Posun"
-        }
     }
 }
