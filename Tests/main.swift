@@ -7,6 +7,7 @@
 
 import AppKit
 import Foundation
+import SwiftUI
 
 // Line-buffered, so results already printed survive a crash in a later test.
 setvbuf(stdout, nil, _IOLBF, 0)
@@ -347,6 +348,36 @@ func renderWaves(_ sets: [[Float]], colour: NSColor) -> URL {
 }
 if ProcessInfo.processInfo.environment["RESONATA_RENDER_WAVE"] == "1" {
     print("wave render: \(renderWaves([rock, loud], colour: NSColor(red: 0.85, green: 0.65, blue: 0.3, alpha: 1)).path)")
+}
+
+// MARK: - Next features
+
+if #available(macOS 14.2, *) {
+    check(ProcessTapSpectrum.belongs("com.spotify.client", to: "com.spotify.client"), "tap: the app's own process")
+    check(ProcessTapSpectrum.belongs("com.google.Chrome.helper", to: "com.google.Chrome"), "tap: a helper process")
+    check(ProcessTapSpectrum.belongs("com.apple.WebKit.GPU", to: "com.apple.Safari"), "tap: Safari's shared WebKit audio")
+    check(!ProcessTapSpectrum.belongs("com.spotify.clientX", to: "com.spotify.client"), "tap: a lookalike ID is someone else")
+    check(!ProcessTapSpectrum.belongs("com.apple.WebKit.GPU", to: "com.google.Chrome"), "tap: WebKit belongs only to Safari")
+}
+
+check(HotKeyChoice.off.combo == nil, "shortcut: off registers nothing")
+check(HotKeyChoice.shiftCommandSpace.combo?.keyCode == 49, "shortcut: ⇧⌘Space is the space key")
+check(Set(HotKeyChoice.allCases.compactMap { $0.combo.map { "\($0.keyCode)-\($0.modifiers)" } }).count == 2,
+      "shortcut: the choices are distinct")
+
+check(Color(hex: "#D9A64C")?.hex == "#D9A64C", "colour: hex round-trips")
+check(Color(hex: "nope") == nil, "colour: junk is rejected")
+
+Preferences.registerDefaults()
+check(Preferences.idleChoices.contains(Preferences.idleTimeout), "settings: idle default is a menu choice",
+      "\(Preferences.idleTimeout)")
+
+MainActor.assumeIsolated {
+    for source in [MusicFavorite.readSource, MusicFavorite.toggleSource] {
+        var error: NSDictionary?
+        let compiled = NSAppleScript(source: source)?.compileAndReturnError(&error) ?? false
+        check(compiled, "Music heart: script compiles against Music's dictionary", "\(String(describing: error))")
+    }
 }
 
 // MARK: - Last: a lyrics line that used to crash the parser

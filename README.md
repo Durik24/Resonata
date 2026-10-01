@@ -70,6 +70,28 @@ ScreenCaptureKit keeps `coreaudiod` streaming the mix to the app even in
 silence, which cost 1.5–7% of a core in *coreaudiod* — invisible in the app's
 own numbers.
 
+## Listening without Screen Recording
+
+On macOS 14.2 and later the spectrum comes from a Core Audio process tap
+(`ProcessTap.swift`), not ScreenCaptureKit. It needs only the "System Audio
+Recording" permission, is aimed at the playing app's own processes (so
+notification sounds and calls don't move the bars), isn't attached to a
+display, and sits before the output volume and mute. A tap idles at no cost
+while its app is silent. Older macOS keeps the ScreenCaptureKit backend.
+
+When something is playing but no sound reaches the Mac for 2.5 s — Spotify
+playing on a phone, say — the bars and the wave show their fake motion
+instead of sitting flat.
+
+## Settings, shortcut, heart
+
+Right-click → Nastavení… opens a settings window: open at login, a global
+shortcut to open the notch (⇧⌘Space by default; Carbon hot keys, so no
+Accessibility permission), how long after a pause the notch shrinks,
+animation speed, lyrics on/off, and the wave's colour (album, white, or your
+own). Apple Music tracks get a heart button (`favorited` over AppleScript);
+Spotify has no way to like a song from the Mac short of its web API.
+
 ## Menu and volume
 
 Right-click (or control-click) the notch: switch display, open at login,

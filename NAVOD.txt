@@ -91,11 +91,12 @@ a) AUTOMATIZACE — čtení, co hraje.
    Chvíli po spuštění hudby vyskočí dialog "Resonata chce ovládat
    Spotify". Klikni na OK.
 
-b) ZÁZNAM OBRAZOVKY — poslech zvuku.
-   Spektrum se čte přes ScreenCaptureKit, a ten je pod stejným
-   oprávněním jako záznam obrazovky, i když se z obrazovky nic
-   nečte (video se zahazuje v rozlišení 2x2). Bez něj sloupce běží
-   jen na náhradní falešné animaci.
+b) ZÁZNAM ZVUKU SYSTÉMU — poslech hudby pro spektrum.
+   Od macOS 14.2 aplikace poslouchá jen zvuk přehrávače, který
+   právě hraje (Core Audio tap), a záznam obrazovky už nepotřebuje.
+   macOS se jednou zeptá na "Záznam zvuku systému". Na starších
+   macOS se místo toho ptá na záznam obrazovky. Bez oprávnění
+   sloupce běží jen na náhradní falešné animaci.
 
 Když se dialogy neobjevily nebo jsi je zavřel:
 
@@ -129,9 +130,18 @@ KROK 7 — Vyzkoušej ovládání
                                  Stahuje se jednou, pak z cache
                                  (~/Library/Caches/com.local.resonata)
   - Klikni kamkoliv mimo panel   zase se sbalí
-  - Pravé tlačítko na notch      menu: přepnout displej,
-    (nebo ctrl+klik)             spouštět po přihlášení,
-                                 ukončit aplikaci
+  - Pravé tlačítko na notch      menu: nastavení, přepnout
+    (nebo ctrl+klik)             displej, spouštět po
+                                 přihlášení, ukončit aplikaci
+  - ⇧⌘ Mezerník                  otevře / zavře notch odkudkoliv
+                                 (zkratka jde změnit v nastavení)
+  - Srdíčko                      u skladeb z Apple Music: přidat
+                                 do oblíbených. Spotify to z Macu
+                                 neumožňuje, proto tam není.
+  - Hudba hraje jinde            když Spotify hraje na telefonu
+    (Spotify Connect)            nebo reproduktoru, sloupce se
+                                 hýbou jen naoko, aby notch
+                                 nevypadal zamrzle
   - Scroll nad notchem           hlasitost: nahoru = hlasitěji
                                  (kolečko i trackpad). Zvýšení
                                  zruší ztlumení. V notchi se na
@@ -217,6 +227,22 @@ Pilulka na monitoru bez výřezu je schválně užší než na notebooku.
 Nejde o chybu: monitor má nižší hustotu pixelů, takže stejný počet
 bodů na něm zabere fyzicky větší plochu. Přepočet je v komentáři
 u fakeWidth.
+
+
+────────────────────────────────────────────────────────────────
+NASTAVENÍ
+────────────────────────────────────────────────────────────────
+
+Pravé tlačítko na notch → Nastavení…
+
+  Spouštět po přihlášení      zapnout / vypnout
+  Otevřít notch zkratkou      Vypnuto, ⇧⌘ Mezerník, ⌃⌥⌘ N
+  Zmenšit notch po pauze za   5 / 10 / 20 / 30 / 60 s
+  Animace                     Rychlé / Normální / Pomalé
+  Zobrazovat texty písní      zapnout / vypnout
+  Barva vlny                  podle obalu, bílá, nebo vlastní
+
+Všechno se projeví hned, bez restartu.
 
 
 ────────────────────────────────────────────────────────────────

@@ -54,7 +54,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Stops audio capture a while after playback stops — see `gateCapture`.
     private var captureStop: DispatchWorkItem?
 
+    /// Set while something is playing but no sound reaches the Mac — see
+    /// `watchForSilence`.
+    private var silenceTimer: DispatchWorkItem?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        Preferences.registerDefaults()
+
         // No Dock icon, no menu bar entry — it lives in the notch.
         NSApp.setActivationPolicy(.accessory)
 
@@ -72,6 +78,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         openAtLoginOnce()
         controller.show()
         startNowPlaying()
+
+        HotKey.shared.action = { [weak self] in self?.controller.toggle() }
+        HotKey.shared.apply(Preferences.hotKey)
 
         // Held, not observed — the bars pull the latest frame when they draw.
         model.spectrum = spectrum
@@ -98,6 +107,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         spectrum.$beat
             .sink { [weak self] beat in self?.model.beat = beat }
+            .store(in: &cancellables)
+
+        // Playing, but no sound reaching the Mac: show motion anyway.
+        model.$track.map { $0?.isPlaying == true }
+            .combineLatest(spectrum.$hasSignal)
+            .removeDuplicates { $0 == $1 }
+            .sink { [weak self] playing, signal in self?.watchForSilence(playing: playing, signal: signal) }
+            .store(in: &cancellables)
+
+        // Apple Music's heart, read once per song.
+        model.$track
+            .removeDuplicates { a, b in
+                guard let a, let b else { return a == nil && b == nil }
+                return a.isSameTrack(as: b)
+            }
+            .sink { [weak self] track in self?.loadFavorite(for: track) }
             .store(in: &cancellables)
 
         // `RESONATA_DEBUG_FAKE_BEATS=1`: a beat twice a second (120 BPM), so
@@ -209,8 +234,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             let stop = DispatchWorkItem { [weak self] in self?.spectrum.stop() }
             captureStop = stop
-            DispatchQueue.main.asyncAfter(deadline: .now() + 10, execute: stop)
+            DispatchQueue.main.asyncAfter(deadline: .now() + Preferences.idleTimeout, execute: stop)
         }
+    }
+
+    /// Something is playing but no sound has reached the Mac for a couple of
+    /// seconds — Spotify playing on a phone or speaker, say. The bars and the
+    /// wave then show their gentle fake motion rather than sitting flat,
+    /// which looked frozen. Real sound switches them back at once.
+    private func watchForSilence(playing: Bool, signal: Bool) {
+        silenceTimer?.cancel()
+        silenceTimer = nil
+        guard playing, !signal else {
+            if model.playingElsewhere { model.playingElsewhere = false }
+            return
+        }
+        let mark = DispatchWorkItem { [weak self] in self?.model.playingElsewhere = true }
+        silenceTimer = mark
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5, execute: mark)
+    }
+
+    private func loadFavorite(for track: Track?) {
+        model.isFavorite = nil
+        guard track?.bundleID == MusicFavorite.bundleID else { return }
+        MusicFavorite.read { [weak self] value in self?.model.isFavorite = value }
     }
 
     /// Adds Resonata to System Settings › General › Login Items, once.
@@ -233,12 +280,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         mediaRemote.stop()
         appleScript?.stop()
         spectrum.stop()
-    }
-}
-
-struct SettingsView: View {
-    var body: some View {
-        Text("Resonata")
-            .padding(40)
     }
 }

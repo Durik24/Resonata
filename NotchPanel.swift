@@ -290,6 +290,15 @@ final class NotchPanelController {
             }
         }
 
+        // Debug: `com.local.resonata.settings` opens the settings window.
+        if NotchPanel.debugClick {
+            DistributedNotificationCenter.default().addObserver(
+                forName: Notification.Name("com.local.resonata.settings"), object: nil, queue: .main
+            ) { _ in
+                MainActor.assumeIsolated { SettingsWindowController.shared.show() }
+            }
+        }
+
         // Debug: `com.local.resonata.playpause` toggles playback in the
         // current track's player, so idle states can be reproduced from a
         // script.
@@ -373,6 +382,7 @@ final class NotchPanelController {
                 self?.moveToNextScreen()
             })
         }
+        menu.addItem(ClosureMenuItem("Nastavení…") { SettingsWindowController.shared.show() })
         let login = ClosureMenuItem("Spouštět po přihlášení") {
             LoginItem.set(!LoginItem.isEnabled)
         }
@@ -408,6 +418,11 @@ final class NotchPanelController {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.2, execute: hide)
             }
         }
+    }
+
+    /// Opens the panel if closed, closes it if open — the keyboard shortcut.
+    func toggle() {
+        setExpanded(!model.isExpanded)
     }
 
     /// Moves the notch to the next display in the list, wrapping around.

@@ -57,7 +57,14 @@ final class NotchModel: ObservableObject {
     /// Whether the panel shows a lyrics row: real lyrics, or the space for
     /// them while a lookup is in flight — so the panel doesn't shrink and
     /// grow back on every track change.
-    var showsLyricsRow: Bool { lyrics != nil || lyricsPending }
+    var showsLyricsRow: Bool { (lyrics != nil || lyricsPending) && Preferences.showLyrics }
+
+    /// Playing, but no sound reaching the Mac — the spectrum views show
+    /// their fake motion instead of sitting flat.
+    @Published var playingElsewhere = false
+
+    /// Apple Music's heart for this track; nil hides it (any other player).
+    @Published var isFavorite: Bool?
 
     /// The expanded panel grows a row when there are lyrics to show. Lives on
     /// the model so the panel controller and the view size from one number.
@@ -97,6 +104,12 @@ struct NotchView: View {
     /// Accent pulled from the album art, used for the background wash.
     @State private var accent: Color?
 
+    // Settings, read here so a change in the settings window re-renders.
+    @AppStorage(Preferences.Key.animationSpeed) private var speedSetting = AnimationSpeed.normal.rawValue
+    @AppStorage(Preferences.Key.waveColour) private var waveColourSetting = WaveColour.album.rawValue
+    @AppStorage(Preferences.Key.customWaveColour) private var customWaveHex = "#FFFFFF"
+    @AppStorage(Preferences.Key.showLyrics) private var showLyricsSetting = true
+
     static let expandedWidth: CGFloat = 470
     /// Tall enough to seat the content below the cutout without cramping it.
     /// The base height, without lyrics — see `NotchModel.expandedHeight`.
@@ -128,10 +141,10 @@ struct NotchView: View {
     /// widening for a track, narrowing when it stops, the lyrics row arriving
     /// — settles on this one spring. Unhurried on purpose: long enough to be
     /// watched, damped enough to land without a wobble.
-    private static let settle = Animation.spring(response: 0.45, dampingFraction: 0.82)
+    private var settle: Animation { (AnimationSpeed(rawValue: speedSetting) ?? .normal).spring }
 
     /// Fades for content swapping in place: artwork, titles, glyphs.
-    private static let fade = Animation.easeInOut(duration: 0.4)
+    private var fade: Animation { (AnimationSpeed(rawValue: speedSetting) ?? .normal).fade }
 
     /// The content swap is a crossfade, deliberately *not* a spring. A scale or
     /// slide transition here competes with the box stretching underneath it,
@@ -191,8 +204,8 @@ struct NotchView: View {
                 // content stops above it (see `expanded`) — so it never runs
                 // through the lyrics.
                 if model.isExpanded {
-                    SpectrumWave(source: model.spectrum,
-                                 color: accent,
+                    SpectrumWave(source: spectrumSource,
+                                 color: waveColour,
                                  isAnimating: isLive)
                         .frame(height: Self.waveHeight)
                         .frame(maxWidth: .infinity, maxHeight: .infinity,
@@ -236,9 +249,9 @@ struct NotchView: View {
             // 32 → 280 on open, and animating that frame centred the whole
             // panel mid-window and slid it up. Here, the shape grows out of
             // the notch and the frame around it simply snaps to fit.
-            .animation(Self.settle, value: model.isExpanded)
-            .animation(Self.settle, value: model.showsCollapsedContent)
-            .animation(Self.settle, value: model.showsLyricsRow)
+            .animation(settle, value: model.isExpanded)
+            .animation(settle, value: model.showsCollapsedContent)
+            .animation(settle, value: model.showsLyricsRow)
             // Opening and closing are both handled in AppKit — see
             // `NotchPanel.onMouseDown` and the global monitor in the
             // controller. Nothing here reacts to clicks; the buttons and the
@@ -264,6 +277,22 @@ struct NotchView: View {
     /// colour: a tinted pill sitting on the bezel with the music stopped reads
     /// as a smudge on the screen rather than as part of the hardware.
     private var colourable: Bool { model.isExpanded || model.showsCollapsedContent }
+
+    /// Nil while playing elsewhere: with no bands to draw, the bars and the
+    /// wave fall back to their fake motion.
+    private var spectrumSource: AudioSpectrumSource? {
+        model.playingElsewhere ? nil : model.spectrum
+    }
+
+    /// The wave's colour, per the setting: the album's accent, white (nil),
+    /// or the user's own.
+    private var waveColour: Color? {
+        switch WaveColour(rawValue: waveColourSetting) ?? .album {
+        case .album: accent
+        case .white: nil
+        case .custom: Color(hex: customWaveHex)
+        }
+    }
 
     /// Something is audibly playing: the spectrum's clocks should run.
     /// `hasAudioSignal` covers audio the metadata side can't see.
@@ -347,7 +376,7 @@ struct NotchView: View {
                         .lineLimit(1)
                         .truncationMode(.tail)
                         .contentTransition(.opacity)
-                        .animation(Self.fade, value: model.track?.title)
+                        .animation(fade, value: model.track?.title)
                     Spacer(minLength: 8)
                     waveform
                 }
@@ -358,7 +387,7 @@ struct NotchView: View {
         // from the edges; the pill itself keeps its size.
         .frame(width: collapsedContentWidth)
         .opacity(model.showsCollapsedContent ? 1 : 0)
-        .animation(Self.fade, value: model.showsCollapsedContent)
+        .animation(fade, value: model.showsCollapsedContent)
     }
 
     /// Usable width inside the collapsed pill, once the padding and the inset
@@ -377,7 +406,7 @@ struct NotchView: View {
             if let level = model.volumeLevel {
                 VolumeMeter(level: level, compact: true)
             } else {
-                SpectrumBars(source: model.spectrum,
+                SpectrumBars(source: spectrumSource,
                              barCount: 3,
                              isAnimating: live,
                              tint: .white.opacity(live ? 0.85 : 0.35))
@@ -409,7 +438,7 @@ struct NotchView: View {
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .animation(Self.settle, value: model.showsLyricsRow)
+        .animation(settle, value: model.showsLyricsRow)
         // Clear the hardware cutout. The expanded panel is centred and wider
         // than the notch, but its top strip runs *behind* the notch, where
         // there is no screen at all. Anything drawn there — the title, in
@@ -430,13 +459,13 @@ struct NotchView: View {
                     .font(.system(size: 15, weight: .semibold))
                     .lineLimit(1)
                     .contentTransition(.opacity)
-                    .animation(Self.fade, value: model.track?.title)
+                    .animation(fade, value: model.track?.title)
                 Text(model.track?.artist ?? "")
                     .font(.system(size: 12))
                     .foregroundStyle(.white.opacity(0.55))
                     .lineLimit(1)
                     .contentTransition(.opacity)
-                    .animation(Self.fade, value: model.track?.artist)
+                    .animation(fade, value: model.track?.artist)
 
                 progress
                     .padding(.top, 10)
@@ -449,12 +478,20 @@ struct NotchView: View {
                         send(.playPause)
                     }
                     button("forward.fill") { send(.next) }
+                    if let favorite = model.isFavorite {
+                        button(favorite ? "heart.fill" : "heart") {
+                            MusicFavorite.toggle { value in
+                                if let value { model.isFavorite = value }
+                            }
+                        }
+                        .help(favorite ? "Odebrat z oblíbených" : "Přidat do oblíbených")
+                    }
                     if let level = model.volumeLevel {
                         VolumeMeter(level: level, compact: false)
                             .transition(.opacity)
                     }
                 }
-                .animation(Self.fade, value: model.volumeLevel == nil)
+                .animation(fade, value: model.volumeLevel == nil)
                 .padding(.top, 4)
             }
             .foregroundStyle(.white)
@@ -631,8 +668,8 @@ struct NotchView: View {
                 }
             }
         }
-        .animation(Self.fade, value: model.artwork == nil)
-        .animation(Self.fade, value: model.track?.artworkURL)
+        .animation(fade, value: model.artwork == nil)
+        .animation(fade, value: model.track?.artworkURL)
         .frame(width: size, height: size)
         // Spotify's album art is barely rounded — roughly a 0.07 ratio. The
         // 0.22 this started with reads as a squircle app icon, not a record.
@@ -652,7 +689,7 @@ struct NotchView: View {
                 .foregroundStyle(.white)
                 // play ⇄ pause morphs rather than snapping.
                 .contentTransition(.symbolEffect(.replace))
-                .animation(Self.fade, value: symbol)
+                .animation(fade, value: symbol)
                 // A 15pt glyph is a tiny target; pad the hit area out to
                 // something you can actually hit without aiming.
                 .frame(width: 30, height: 26)

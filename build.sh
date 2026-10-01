@@ -11,7 +11,8 @@ mkdir -p "$APP/Contents/MacOS"
 
 swiftc -O -target "$(uname -m)-apple-macos14.0" \
     -o "$APP/Contents/MacOS/Resonata" \
-    AudioSpectrum.swift LoginItem.swift Lyrics.swift MediaRemote.swift NotchPanel.swift NotchShape.swift \
+    AudioSpectrum.swift HotKey.swift LoginItem.swift Lyrics.swift MediaRemote.swift MusicFavorite.swift \
+    NotchPanel.swift NotchShape.swift Preferences.swift SettingsWindow.swift \
     ProcessTap.swift ResonataApp.swift NotchView.swift NowPlaying.swift ScreenGeometry.swift Volume.swift
 
 # MediaRemote adapter (Vendor/mediaremote-adapter): a small Objective-C
