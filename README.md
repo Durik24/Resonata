@@ -46,7 +46,16 @@ keychain; `build.sh` uses it when present.
 | `Lyrics.swift` | Synced lyrics from LRCLIB, LRC parsing, on-disk cache |
 | `MediaRemote.swift` | System-wide now-playing via the vendored adapter; transport and seek for any player; AppleScript fallback |
 | `Vendor/mediaremote-adapter/` | BSD-3 sources of the adapter, built into the bundle by `build.sh` |
-| `NotchView.swift` | Collapsed and expanded SwiftUI states with a spring between them; spectrum bars and beat flash on Core Animation layers; lyrics row; volume meter |
+| `NotchModel.swift` | Everything the views show: track, state, lyrics, volume level |
+| `NotchView.swift` | The notch itself: size, colour wash, collapsed pill, open/close |
+| `NotchView+Expanded.swift` | The open panel: artwork, title, scrubber, transport, lyrics row |
+| `NotchFrame.swift` | Animates the notch's size and shape as one unit, pinned to the top |
+| `SpectrumBars.swift` | The pill's bars, as Core Animation layers on a display link |
+| `SpectrumWave.swift` | The open panel's wave: shaping, Catmull-Rom curve, gradient fill |
+| `BeatBloom.swift` | The beat flash, a render-server animation masked to the notch |
+| `LyricsView.swift` | Three lines of synced lyrics |
+| `ArtworkAccent.swift` | Picks the accent colour out of the album art |
+| `Controls.swift` | Transport button press style and the volume meter |
 | `Volume.swift` | Output volume via Core Audio, and the scroll-to-volume mapping |
 | `ResonataApp.swift` | Wires it together, sets `.accessory` activation policy |
 | `setup-signing.sh` | One-time: creates the "Resonata Dev" signing identity |
