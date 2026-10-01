@@ -6,6 +6,9 @@ set -euo pipefail
 cd "$(dirname "$0")"
 OUT="$(mktemp -d)"
 trap 'rm -rf "$OUT"' EXIT
+# Every app source except the one with `@main`, so the tests can reach the
+# views' static helpers too.
+SOURCES=$(ls *.swift | grep -v '^ResonataApp.swift$')
 swiftc -O -target "$(uname -m)-apple-macos14.0" -o "$OUT/resonata-tests" \
-    AudioSpectrum.swift Lyrics.swift MediaRemote.swift NowPlaying.swift Volume.swift Tests/*.swift
+    $SOURCES Tests/*.swift
 "$OUT/resonata-tests"

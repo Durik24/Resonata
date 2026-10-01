@@ -120,7 +120,8 @@ KROK 7 — Vyzkoušej ovládání
   - Zvuk z prohlížeče            funguje jako každý jiný přehrávač:
                                  název, obal, tlačítka i posuvník
   - Klikni na notch              rozbalí se velký panel, dole
-                                 běží celé 32sloupcové spektrum
+                                 se vlní spektrum v barvě obalu
+                                 (vlevo basy, vpravo výšky)
   - Text písně                   když ho LRCLIB zná, panel se
                                  zvětší o tři řádky: aktuální
                                  jasně, sousední ztlumeně. Běží

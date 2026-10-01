@@ -269,6 +269,86 @@ let level = SystemVolume.level
 check(level == nil || (0...1).contains(level!), "volume: the current level reads as 0...1",
       "\(String(describing: level))")
 
+// MARK: - Wave
+
+/// Bands as recorded from real music earlier (RESONATA_DEBUG_BANDS sparklines).
+func bands(_ sparkline: String) -> [Float] {
+    let blocks = Array(" ▁▂▃▄▅▆▇█")
+    return sparkline.map { Float(blocks.firstIndex(of: $0) ?? 0) / 8 }
+}
+let rock = bands("▃▄▄▄▄▆▇▆▆▇▆▆▆▆▄▄▅▄▂▂▂▂▃▂▂▂▁▁▁▁  ")
+let loud = bands("▄▅▅▅▆▇▆▄▆▆▅▅▆▆▄▃▄▄▃▃▂▂▂▂▂▂▂▁▁▁▁ ")
+
+let waveLevels = SpectrumWaveView.levels(from: rock, animating: true, at: 0)
+check(waveLevels.count == rock.count, "wave: one point per band")
+check(waveLevels.allSatisfy { $0 >= 0 && $0 <= 1 }, "wave: heights stay within 0...1")
+check(waveLevels.first! < 0.1 && waveLevels.last! < 0.1, "wave: tapers to the baseline at both ends",
+      "ends \(waveLevels.first!), \(waveLevels.last!)")
+// "Barcode" means every band about as tall as the loudest. Compare how far a
+// typical band sits below the peak, in the wave and in the raw bands.
+func dip(_ values: [CGFloat]) -> CGFloat {
+    let peak = values.max()!, median = values.sorted()[values.count / 2]
+    return (peak - median) / peak
+}
+let middle = Array(waveLevels[6..<18])
+let inMiddle = rock[6..<18].map { CGFloat($0) }
+// 1.25x rather than more: the treble tilt deliberately lifts the quieter
+// right-hand bands, trading a little of this contrast for a right side that
+// isn't flat.
+check(dip(middle) > dip(inMiddle) * 1.25, "wave: peaks stand out (no more barcode)",
+      "wave dip \(dip(middle)), bands dip \(dip(inMiddle))")
+check(waveLevels.max()! > 0.8, "wave: real music uses most of the strip's height",
+      "peak \(waveLevels.max()!)")
+check(waveLevels[22..<28].max()! > 0.15, "wave: the treble side isn't dead flat",
+      "treble peak \(waveLevels[22..<28].max()!)")
+check(SpectrumWaveView.levels(from: rock, animating: false, at: 0).max()! < 0.1,
+      "wave: at rest it is a low line")
+check(SpectrumWaveView.levels(from: [], animating: true, at: 3).max()! > 0.05,
+      "wave: with no signal it still swells")
+
+let waveRect = CGRect(x: 0, y: 0, width: 426, height: 26)
+let (waveLine, waveFill) = SpectrumWaveView.paths(for: waveLevels, in: waveRect)
+check(waveRect.insetBy(dx: -0.5, dy: -0.5).contains(waveFill.boundingBoxOfPath),
+      "wave: the curve never leaves its strip", "\(waveFill.boundingBoxOfPath)")
+check(abs(waveLine.boundingBoxOfPath.width - waveRect.width) < 0.5, "wave: spans the full width")
+
+/// Draws waves to a PNG to look at; prints where.
+func renderWaves(_ sets: [[Float]], colour: NSColor) -> URL {
+    let scale: CGFloat = 2, w = waveRect.width, h = waveRect.height + 8
+    let rows = CGFloat(sets.count)
+    let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(w * scale),
+                               pixelsHigh: Int(h * rows * scale), bitsPerSample: 8,
+                               samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                               colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
+    let ctx = NSGraphicsContext(bitmapImageRep: rep)!.cgContext
+    ctx.scaleBy(x: scale, y: scale)
+    ctx.setFillColor(NSColor(white: 0.06, alpha: 1).cgColor)
+    ctx.fill(CGRect(x: 0, y: 0, width: w, height: h * rows))
+    for (row, set) in sets.enumerated() {
+        let rect = waveRect.offsetBy(dx: 0, dy: CGFloat(sets.count - 1 - row) * h + 4)
+        let (line, fill) = SpectrumWaveView.paths(
+            for: SpectrumWaveView.levels(from: set, animating: true, at: 0), in: rect)
+        ctx.saveGState()
+        ctx.addPath(fill); ctx.clip()
+        let gradient = CGGradient(colorsSpace: nil, colors: [
+            colour.withAlphaComponent(0.6).cgColor, colour.withAlphaComponent(0.05).cgColor] as CFArray,
+            locations: [0, 1])!
+        ctx.drawLinearGradient(gradient, start: CGPoint(x: 0, y: rect.maxY),
+                               end: CGPoint(x: 0, y: rect.minY), options: [])
+        ctx.restoreGState()
+        ctx.addPath(line)
+        ctx.setStrokeColor(colour.withAlphaComponent(0.85).cgColor)
+        ctx.setLineWidth(1.5); ctx.setLineCap(.round)
+        ctx.strokePath()
+    }
+    let url = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("resonata-wave.png")
+    try? rep.representation(using: .png, properties: [:])?.write(to: url)
+    return url
+}
+if ProcessInfo.processInfo.environment["RESONATA_RENDER_WAVE"] == "1" {
+    print("wave render: \(renderWaves([rock, loud], colour: NSColor(red: 0.85, green: 0.65, blue: 0.3, alpha: 1)).path)")
+}
+
 // MARK: - Last: a lyrics line that used to crash the parser
 
 // The stamp's end was taken as a UTF-16 offset and walked as a count of
