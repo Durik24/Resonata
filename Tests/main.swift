@@ -350,6 +350,20 @@ check(Battery(percent: 5, charging: true).symbol == "battery.100percent.bolt", "
 check(Battery(percent: 15, charging: false).isLow && !Battery(percent: 15, charging: true).isLow,
       "battery: low only when not charging")
 
+// MARK: - Claude limits
+
+do {
+    let now = Date(timeIntervalSince1970: 1_000_000)
+    let json = #"{"five_hour":{"used_percentage":34.2,"resets_at":1003600},"seven_day":{"used_percentage":12,"resets_at":999000}}"#
+    let limits = ClaudeLimits.parse(Data(json.utf8), now: now)
+    check(limits?.fiveHour?.usedPercentage == 34.2, "claude: session limit read")
+    check(limits?.fiveHour?.resetsAt == Date(timeIntervalSince1970: 1_003_600), "claude: reset time read")
+    check(limits != nil && limits?.sevenDay == nil, "claude: a window that has already reset is dropped")
+    let over = #"{"five_hour":{"used_percentage":90,"resets_at":999999}}"#
+    check(ClaudeLimits.parse(Data(over.utf8), now: now) == nil, "claude: nothing current, nothing shown")
+    check(ClaudeLimits.parse(Data("garbage".utf8), now: now) == nil, "claude: a broken file is ignored")
+}
+
 // MARK: - Last: a lyrics line that used to crash the parser
 
 // The stamp's end was taken as a UTF-16 offset and walked as a count of

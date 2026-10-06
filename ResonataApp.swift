@@ -51,6 +51,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Preferences.registerDefaults()
+        // The script Claude Code's status line runs to share its usage limits.
+        ClaudeLimits.installScript()
 
         // No Dock icon, no menu bar entry — it lives in the notch.
         NSApp.setActivationPolicy(.accessory)
