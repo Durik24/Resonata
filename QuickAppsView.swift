@@ -39,7 +39,9 @@ struct QuickAppsView: View {
                 .help("Přidat aplikaci")
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .fixedSize(horizontal: true, vertical: false)
+        // Centred: the panel is wider than six tiles when the calendar is on.
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     private func tile(icon: some View, title: String, dashed: Bool = false) -> some View {

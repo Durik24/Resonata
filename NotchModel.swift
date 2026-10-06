@@ -46,20 +46,15 @@ final class NotchModel: ObservableObject {
     /// Lyrics are being looked up for the current track.
     @Published var lyricsPending = false
 
-    /// Whether the panel shows a lyrics row: real lyrics, or the space for
-    /// them while a lookup is in flight — so the panel doesn't shrink and
-    /// grow back on every track change.
-    var showsLyricsRow: Bool { (lyrics != nil || lyricsPending) && Preferences.showLyrics }
-
     /// Apple Music's heart for this track; nil hides it (any other player).
     @Published var isFavorite: Bool?
 
-    /// The expanded panel grows a row when there are lyrics to show. Lives on
-    /// the model so the panel controller and the view size from one number.
-    var expandedHeight: CGFloat {
-        guard tab == .music else { return NotchView.expandedHeight }
-        return NotchView.expandedHeight + (showsLyricsRow ? NotchView.lyricsHeight : 0)
+    /// The open panel's size. Lives on the model so the panel controller
+    /// and the view size from one number. Narrower without the calendar.
+    var expandedWidth: CGFloat {
+        Preferences.showCalendar ? NotchView.expandedWidth : NotchView.expandedWidthWithoutCalendar
     }
+    var expandedHeight: CGFloat { NotchView.expandedHeight }
 
     /// A new song just started: the closed pill slides out to the right to
     /// show its title for a moment — see `SongPeek`.

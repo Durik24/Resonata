@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-// The expanded panel: artwork, title, scrubber, transport, lyrics.
+// The expanded panel: the top bar, the player, the calendar.
 // Split out of NotchView.swift; the collapsed pill and the frame live there.
 
 extension NotchView {
@@ -18,13 +18,13 @@ extension NotchView {
                 // wider than the notch, but its top strip runs *behind* the
                 // notch, where there is no screen at all. Anything drawn there
                 // simply doesn't exist. Start below it.
-                .padding(.top, notchSize.height + 6)
+                .padding(.top, notchSize.height + 8)
                 // The music page leaves the bottom strip to the wave.
-                .padding(.bottom, model.tab == .music ? Self.waveHeight + 12 : 18)
-            pageSwitcher
+                .padding(.bottom, model.tab == .music ? Self.waveHeight + 10 : 18)
+            topBar
         }
         // Laid out at the final width from frame one — see `clipShape` above.
-        .frame(width: Self.expandedWidth - 40, alignment: .leading)
+        .frame(width: model.expandedWidth - 40, alignment: .leading)
     }
 
     @ViewBuilder
@@ -39,9 +39,18 @@ extension NotchView {
         }
     }
 
-    /// The page icons, in the strip beside the cutout — real screen at the
-    /// top of the panel that nothing else used. Right of the notch, clear of
-    /// the panel's top corner.
+    /// The strip either side of the cutout — real screen at the top of the
+    /// panel that nothing else used. Pages on the left, the Mac's own bits
+    /// on the right.
+    private var topBar: some View {
+        HStack(spacing: 0) {
+            pageSwitcher
+            Spacer(minLength: notchSize.width)
+            statusItems
+        }
+        .frame(height: notchSize.height)
+    }
+
     private var pageSwitcher: some View {
         HStack(spacing: 4) {
             ForEach(PanelTab.allCases) { tab in
@@ -57,54 +66,125 @@ extension NotchView {
                 .help(tab.title)
             }
         }
-        .frame(height: notchSize.height)
-        .frame(maxWidth: .infinity, alignment: .trailing)
     }
 
+    private var statusItems: some View {
+        HStack(spacing: 10) {
+            if model.canSwitchScreens {
+                iconButton("rectangle.on.rectangle", help: "Přepnout notch na další monitor") {
+                    model.switchScreen?()
+                }
+            }
+            iconButton("gearshape", help: "Nastavení") {
+                SettingsWindowController.shared.show()
+            }
+            // Re-read every half minute while the panel is open; closed, the
+            // view doesn't exist and nothing is read at all.
+            TimelineView(.periodic(from: .now, by: 30)) { _ in
+                if let battery = Battery.read() {
+                    HStack(spacing: 4) {
+                        Text("\(battery.percent) %")
+                            .font(.system(size: 11, weight: .semibold).monospacedDigit())
+                        Image(systemName: battery.symbol)
+                            .font(.system(size: 13))
+                            .foregroundStyle(battery.isLow ? .red : .white.opacity(0.85))
+                    }
+                    .foregroundStyle(.white.opacity(0.85))
+                }
+            }
+        }
+    }
+
+    private func iconButton(_ symbol: String, help: String,
+                            action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.white.opacity(0.55))
+                .frame(width: 22, height: 20)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(TransportButtonStyle())
+        .help(help)
+    }
+
+    /// Player on the left, the days and their events on the right.
     private var musicPage: some View {
-        VStack(spacing: 0) {
+        HStack(spacing: 0) {
             expandedMain
                 .onAppear {
                     if NotchPanel.debugClick { NSLog("click: expanded body APPEARED") }
                 }
-            if model.showsLyricsRow {
-                LyricsView(lines: model.lyrics ?? [], track: model.track)
-                    .frame(height: Self.lyricsHeight - 8)
-                    .padding(.top, 8)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+            if showCalendarSetting {
+                Rectangle()
+                    .fill(.white.opacity(0.1))
+                    .frame(width: 1)
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 18)
+                CalendarColumn(store: CalendarStore.shared, accent: accentText ?? Self.fallbackAccent)
+                    .frame(width: Self.calendarWidth)
+                    .padding(.top, 2)
             }
         }
-        .animation(settle, value: model.showsLyricsRow)
+    }
+
+    /// Today's circle and the event bars when nothing is playing to take a
+    /// colour from.
+    static let fallbackAccent = Color(red: 0.36, green: 0.6, blue: 1)
+
+    /// The album accent lifted to read on near-black: as bright as it can be,
+    /// a touch less saturated. The raw accent is picked for the background
+    /// wash and is often far too dark for text.
+    var accentText: Color? {
+        guard let accent, let ns = NSColor(accent).usingColorSpace(.sRGB) else { return nil }
+        var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        ns.getHue(&h, saturation: &s, brightness: &b, alpha: &a)
+        return Color(hue: h, saturation: min(s, 0.6), brightness: max(b, 0.92))
     }
 
     private var expandedMain: some View {
-        HStack(spacing: 16) {
-            artwork(size: 92)
+        HStack(spacing: 24) {
+            artwork(size: 110)
+                .overlay(alignment: .bottomTrailing) {
+                    sourceBadge.offset(x: 7, y: 7)
+                }
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text(model.track?.title ?? "Nothing playing")
-                    .font(.system(size: 15, weight: .semibold))
+            VStack(spacing: 0) {
+                Text(model.track?.title ?? "Nic nehraje")
+                    .font(.system(size: 15, weight: .bold))
                     .lineLimit(1)
                     .contentTransition(.opacity)
                     .animation(fade, value: model.track?.title)
                 Text(model.track?.artist ?? "")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.white.opacity(0.55))
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(accentText ?? .white.opacity(0.55))
                     .lineLimit(1)
                     .contentTransition(.opacity)
                     .animation(fade, value: model.track?.artist)
+                    .padding(.top, 2)
+                if showLyricsSetting && model.track != nil {
+                    LyricsView(lines: model.lyrics, pending: model.lyricsPending,
+                               track: model.track)
+                        .padding(.top, 3)
+                }
+
+                Spacer(minLength: 6)
 
                 progress
-                    .padding(.top, 10)
 
-                HStack(spacing: 26) {
+                HStack(spacing: 22) {
                     button("backward.fill") { send(.previous) }
                     // Standard transport convention: the glyph shows what a
                     // click will do, so playing offers pause and vice versa.
-                    button(model.track?.isPlaying == true ? "pause.fill" : "play.fill") {
+                    button(model.track?.isPlaying == true ? "pause.fill" : "play.fill", size: 19) {
                         send(.playPause)
                     }
                     button("forward.fill") { send(.next) }
+                    Spacer(minLength: 0)
+                    if let level = model.volumeLevel {
+                        VolumeMeter(level: level, compact: false)
+                            .transition(.opacity)
+                    }
                     if let favorite = model.isFavorite {
                         button(favorite ? "heart.fill" : "heart") {
                             MusicFavorite.toggle { value in
@@ -113,34 +193,55 @@ extension NotchView {
                         }
                         .help(favorite ? "Odebrat z oblíbených" : "Přidat do oblíbených")
                     }
-                    if let level = model.volumeLevel {
-                        VolumeMeter(level: level, compact: false)
-                            .transition(.opacity)
-                    }
                 }
                 .animation(fade, value: model.volumeLevel == nil)
-                .padding(.top, 4)
+                // The buttons' hit areas are wider than their glyphs; this
+                // lines the first glyph up with the start of the bar.
+                .padding(.leading, -7)
             }
             .foregroundStyle(.white)
-
-            Spacer(minLength: 0)
-
-            if model.canSwitchScreens {
-                VStack(spacing: 0) {
-                    Button { model.switchScreen?() } label: {
-                        Image(systemName: "rectangle.on.rectangle")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.5))
-                            .frame(width: 26, height: 22)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(TransportButtonStyle())
-                    .help("Přepnout notch na další monitor")
-
-                    Spacer(minLength: 0)
-                }
-            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+    }
+
+    /// The playing app's icon, tucked on the artwork's corner like a badge.
+    /// Click it to bring the player forward.
+    @ViewBuilder
+    private var sourceBadge: some View {
+        if let app = sourceApp {
+            Button {
+                NSWorkspace.shared.openApplication(at: app, configuration: .init())
+                model.close?()
+            } label: {
+                Image(nsImage: Self.icon(for: app))
+                    .resizable()
+                    .frame(width: 24, height: 24)
+                    .padding(2)
+                    .background(Circle().fill(Self.panelBlack))
+                    .contentShape(Circle())
+            }
+            .buttonStyle(TransportButtonStyle())
+            .help("Otevřít \(model.track?.source ?? "")")
+        }
+    }
+
+    private var sourceApp: URL? {
+        guard let track = model.track else { return nil }
+        let id = track.bundleID ?? [
+            "Spotify": "com.spotify.client",
+            "Music": "com.apple.Music",
+        ][track.source]
+        return id.flatMap { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) }
+    }
+
+    /// Icons are looked up once per app — the panel redraws every second.
+    private static var icons: [URL: NSImage] = [:]
+
+    private static func icon(for app: URL) -> NSImage {
+        if let cached = icons[app] { return cached }
+        let icon = NSWorkspace.shared.icon(forFile: app.path)
+        icons[app] = icon
+        return icon
     }
 
     /// Commands go to whichever player the current track came from, so this is
@@ -192,7 +293,7 @@ extension NotchView {
 
                 ZStack(alignment: .leading) {
                     Capsule().fill(.white.opacity(0.22))
-                    Capsule().fill(.white)
+                    Capsule().fill(accentText ?? .white)
                         // Floor at barHeight so a capsule at position zero is a
                         // dot rather than a rendering artifact.
                         .frame(width: max(barHeight, geo.size.width * shown))
@@ -309,10 +410,11 @@ extension NotchView {
         .shadow(color: .black.opacity(0.45), radius: 5, y: 2)
     }
 
-    private func button(_ symbol: String, action: @escaping () -> Void) -> some View {
+    private func button(_ symbol: String, size: CGFloat = 15,
+                        action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 15, weight: .medium))
+                .font(.system(size: size, weight: .medium))
                 .foregroundStyle(.white)
                 // play ⇄ pause morphs rather than snapping.
                 .contentTransition(.symbolEffect(.replace))

@@ -143,9 +143,8 @@ final class NotchPanelController {
     /// draws the smaller collapsed shape inside it and leaves the rest clear —
     /// resizing an NSWindow every frame looks terrible, animating a SwiftUI
     /// shape inside a fixed window looks like Apple did it.
-    static let canvasWidth: CGFloat = 640
-    /// Room for the expanded panel at its tallest — with lyrics — plus the
-    /// a little room to spare.
+    static let canvasWidth: CGFloat = 680
+    /// Room for the expanded panel, plus a little to spare.
     static let canvasHeight: CGFloat = 280
 
     private var panel: NotchPanel?
@@ -579,7 +578,7 @@ final class NotchPanelController {
     /// Where the expanded panel is drawn, in window coordinates: top-centre
     /// of the canvas, the size the view draws it at.
     private var expandedShapeRect: NSRect {
-        let width = NotchView.expandedWidth
+        let width = model.expandedWidth
         let height = model.expandedHeight
         return NSRect(x: (Self.canvasWidth - width) / 2,
                       y: Self.canvasHeight - height,

@@ -18,25 +18,28 @@ struct NotchView: View {
     @State var isHoveringBar = false
 
     /// Accent pulled from the album art, used for the background wash.
-    @State private var accent: Color?
+    // Not private: the expanded panel and its calendar take their colour
+    // from it too.
+    @State var accent: Color?
 
     // Settings, read here so a change in the settings window re-renders.
     @AppStorage(Preferences.Key.animationSpeed) private var speedSetting = AnimationSpeed.normal.rawValue
     @AppStorage(Preferences.Key.waveColour) private var waveColourSetting = WaveColour.album.rawValue
     @AppStorage(Preferences.Key.customWaveColour) private var customWaveHex = "#FFFFFF"
-    @AppStorage(Preferences.Key.showLyrics) private var showLyricsSetting = true
+    @AppStorage(Preferences.Key.showLyrics) var showLyricsSetting = true
+    @AppStorage(Preferences.Key.showCalendar) var showCalendarSetting = true
 
-    static let expandedWidth: CGFloat = 470
+    /// The open panel with the calendar beside the player, and without it.
+    static let expandedWidth: CGFloat = 640
+    static let expandedWidthWithoutCalendar: CGFloat = 470
+    /// The calendar column, right of the divider.
+    static let calendarWidth: CGFloat = 196
     /// Tall enough to seat the content below the cutout without cramping it.
-    /// The base height, without lyrics — see `NotchModel.expandedHeight`.
-    /// 210 rather than 190: the bottom 38 points belong to the wave, which
-    /// used to share them with the last line of lyrics and drew over it.
-    static let expandedHeight: CGFloat = 210
+    /// The same for every page and every song: the lyric is one line under
+    /// the artist now, so the panel no longer grows when lyrics turn up.
+    static let expandedHeight: CGFloat = 204
     /// The wave's strip along the bottom of the expanded panel.
     static let waveHeight: CGFloat = 26
-
-    /// Three lines of lyric and the breathing room around them.
-    static let lyricsHeight: CGFloat = 58
 
     /// The song-change peek: the playing pill, slid out to the right past the
     /// bars by this much, with the title and artist in the new space.
@@ -101,14 +104,14 @@ struct NotchView: View {
     /// That's as dark as a display can go. On the laptop the real cutout is
     /// unlit hardware, so it will always be a touch darker than any lit pixel;
     /// no colour value can close that gap.
-    private static let panelBlack = Color(
+    static let panelBlack = Color(
         nsColor: NSColor(deviceRed: 0, green: 0, blue: 0, alpha: 1)
     )
 
     private var size: CGSize {
         if !model.isExpanded, model.peeking { return Self.peekSize(notch: notchSize) }
         return model.isExpanded
-            ? CGSize(width: Self.expandedWidth, height: model.expandedHeight)
+            ? CGSize(width: model.expandedWidth, height: model.expandedHeight)
             // Idle shrinks the pill back to the bare cutout, not just blacks it
             // out — an idle pill that keeps the full playing width stays
             // visibly longer than the hardware notch.
@@ -189,7 +192,6 @@ struct NotchView: View {
             // the notch and the frame around it simply snaps to fit.
             .animation(settle, value: model.isExpanded)
             .animation(settle, value: model.showsCollapsedContent)
-            .animation(settle, value: model.showsLyricsRow)
             .animation(settle, value: model.peeking)
             .animation(settle, value: model.tab)
             // Opening and closing are both handled in AppKit — see
@@ -288,78 +290,119 @@ struct NotchView: View {
     /// One row for both, never a swap. Crossfading between a "closed" view
     /// and a "peek" view drew two sets of bars for a moment — the old one
     /// re-centred in the growing pill — a ghost mid-slide. Here the artwork
-    /// and bars are the same views the whole time, pinned left where they
-    /// always sit; peeking only fades the title and artist in beside them as
-    /// the pill slides out to the right.
+    /// and bars are the same views the whole time. The artwork is pinned to
+    /// the left edge, which stays put; the bars ride the right edge, so they
+    /// travel out with the slide and back in with it. The title and artist
+    /// fade into the slot the bars leave behind, just past the cutout.
     private var closedRow: some View {
         HStack(spacing: 0) {
-            collapsed
-                .padding(.leading, NotchMetrics.collapsedInset)
-            if model.peeking {
-                VStack(alignment: .leading, spacing: 1) {
-                    // Without a cutout the title is already in the pill's middle.
-                    if hasRealNotch {
-                        Text(model.track?.title ?? "")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(.white)
-                    }
-                    Text(model.track?.artist ?? "")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.white.opacity(0.55))
-                }
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .padding(.horizontal, 10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                // The fade rides on the transition only. An `.animation`
-                // keyed on `peeking` around the whole row also animated the
-                // row's *position* on the fade's curve, against the shape's
-                // spring — measured: artwork and bars drifting 8pt right
-                // mid-slide and creeping back.
-                .transition(.opacity.animation(fade))
-            }
+            artwork(size: collapsedSlot)
+            middle
+                .frame(width: collapsedMiddleWidth)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        // The title and artist are an overlay, not part of the row, so they
+        // never push on its layout. In the row, their fixed width overflowed
+        // the pill mid-slide and the overflow got centred — measured: the
+        // artwork and bars both stepping 3.6pt left and back.
+        .overlay(alignment: .leading) {
+            // A clear box exactly as wide as the room left of the bars — a
+            // flexible frame would size itself to the text instead — with the
+            // text laid on it at its full width and clipped. Sliding back,
+            // the bars push the text out of sight instead of running over it.
+            //
+            // Always there, only its opacity changing. A view being removed
+            // keeps its last frame for the length of its fade, so a text that
+            // came and went with `peeking` was never clipped on the way out.
+            Color.clear
+                .overlay(alignment: .leading) {
+                    // A fixed width, not "whatever is left": a flexible one
+                    // re-truncated the title on every frame of the slide back.
+                    peekText
+                        .frame(width: Self.peekExtraWidth - Self.peekTextGap,
+                               alignment: .leading)
+                        // The fade is scoped to the opacity alone. An
+                        // `.animation` keyed on `peeking` around the row also
+                        // animated the row's *position* on the fade's curve,
+                        // against the shape's spring — measured: artwork and
+                        // bars drifting 8pt right mid-slide and creeping back.
+                        .animation(fade) { $0.opacity(model.peeking ? 1 : 0) }
+                }
+                .mask {
+                    HStack(spacing: 0) {
+                        Color.black
+                        LinearGradient(colors: [.black, .clear],
+                                       startPoint: .leading, endPoint: .trailing)
+                            .frame(width: Self.peekTextGap)
+                    }
+                }
+                .padding(.leading, collapsedSlot + collapsedMiddleWidth)
+                .padding(.trailing, collapsedSlot + NotchMetrics.waveformNudge
+                                    + Self.peekTextGap)
+        }
+        // The bars are laid over the row against its trailing edge, which is
+        // the pill's own right edge less the inset — the same margin the
+        // artwork keeps on the left, closed or peeking.
+        .overlay(alignment: .trailing) { waveform }
+        .padding(.horizontal, NotchMetrics.collapsedInset)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .opacity(model.showsCollapsedContent ? 1 : 0)
+        .animation(fade, value: model.showsCollapsedContent)
     }
 
     // MARK: Collapsed — artwork on the left of the notch, waveform on the right
 
-    private var collapsed: some View {
-        Group {
-            if hasRealNotch {
-                // The gap between artwork and waveform is the hardware cutout.
-                // Nothing can go in it — there are no pixels there — so the
-                // title has nowhere to live on the laptop screen.
-                HStack(spacing: 0) {
-                    artwork(size: notchSize.height - 8)
-                    Spacer(minLength: notchSize.width - 20)
-                    waveform
-                }
-            } else {
-                // On an external display that same gap is ordinary black, so
-                // the title goes where the cutout would have been. Same shape,
-                // same positions either side — just with the middle used.
-                HStack(spacing: 0) {
-                    artwork(size: notchSize.height - 8)
-                    Spacer(minLength: 8)
-                    Text(model.track?.title ?? "")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.9))
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                        .contentTransition(.opacity)
-                        .animation(fade, value: model.track?.title)
-                    Spacer(minLength: 8)
-                    waveform
-                }
-            }
+    /// What sits between the artwork and the bars when closed.
+    @ViewBuilder
+    private var middle: some View {
+        if hasRealNotch {
+            // The hardware cutout. Nothing can go in it — there are no pixels
+            // there — so the title has nowhere to live on the laptop screen.
+            Color.clear
+        } else {
+            // On an external display that same gap is ordinary black, so the
+            // title goes where the cutout would have been. Same shape, same
+            // positions either side — just with the middle used.
+            Text(model.track?.title ?? "")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.white.opacity(0.9))
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .contentTransition(.opacity)
+                .animation(fade, value: model.track?.title)
+                .padding(.horizontal, 8)
         }
-        // Pinned to the widest collapsed state so the artwork doesn't slide
-        // sideways while the box is growing. The inset moves the contents in
-        // from the edges; the pill itself keeps its size.
-        .frame(width: collapsedContentWidth)
-        .opacity(model.showsCollapsedContent ? 1 : 0)
-        .animation(fade, value: model.showsCollapsedContent)
+    }
+
+    /// Title over artist, left-aligned, while peeking.
+    private var peekText: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            // Without a cutout the title is already in the pill's middle.
+            if hasRealNotch {
+                Text(model.track?.title ?? "")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
+            Text(model.track?.artist ?? "")
+                .font(.system(size: 10))
+                .foregroundStyle(.white.opacity(0.55))
+        }
+        .lineLimit(1)
+        .truncationMode(.tail)
+    }
+
+    /// Room kept between the peek text and the bars to its right, and the
+    /// length of the fade the text runs out through when it doesn't fit.
+    private static let peekTextGap: CGFloat = 10
+
+    /// The artwork's square and the bars' slot opposite it — the same width,
+    /// so the outer margins and the gaps to the cutout both match.
+    private var collapsedSlot: CGFloat { notchSize.height - 8 }
+
+    /// The closed row between the artwork and the bars: the cutout plus a
+    /// small gap either side of it.
+    private var collapsedMiddleWidth: CGFloat {
+        collapsedContentWidth - 2 * collapsedSlot - NotchMetrics.waveformNudge
     }
 
     /// Usable width inside the collapsed pill, once the padding and the inset
@@ -368,7 +411,6 @@ struct NotchView: View {
         notchSize.width + NotchMetrics.collapsedContentWidth - 12
             - (2 * NotchMetrics.collapsedInset)
     }
-
 
     /// Always rendered, so the right-hand side never collapses to nothing when
     /// playback is paused — that asymmetry is most of what reads as "off".
@@ -388,7 +430,7 @@ struct NotchView: View {
             // unequal widths put them at unequal distances from the cutout —
             // 7pt one side, 13pt the other. Matching widths is the only way to
             // have the outer margins *and* the gaps to the notch both line up.
-            .frame(width: notchSize.height - 8, height: 16)
+            .frame(width: collapsedSlot, height: 16)
             // Trailing padding shifts only the wave inward — the artwork sits
             // on the far side of the cutout and stays put.
             .padding(.trailing, NotchMetrics.waveformNudge)

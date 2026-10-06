@@ -118,22 +118,32 @@ KROK 7 — Vyzkoušej ovládání
   - Zvuk z prohlížeče            funguje jako každý jiný přehrávač:
                                  název, obal, tlačítka i posuvník
   - Klikni na notch              rozbalí se velký panel, dole
-                                 se vlní vlnka v barvě obalu
-  - Text písně                   když ho LRCLIB zná, panel se
-                                 zvětší o tři řádky: aktuální
-                                 jasně, sousední ztlumeně. Běží
-                                 podle času skladby jako karaoke.
+                                 se vlní vlnka v barvě obalu,
+                                 pozadí má barvu obalu taky
+  - Text písně                   když ho LRCLIB zná, pod
+                                 interpretem běží právě zpívaný
+                                 řádek, podle času skladby.
                                  Stahuje se jednou, pak z cache
                                  (~/Library/Caches/com.local.resonata)
   - Klikni kamkoliv mimo panel   zase se sbalí
   - Nová skladba                 zavřený notch se na 3,5 s
-                                 vysune doprava (od vlnky) a
-                                 ukáže název a interpreta;
+                                 vysune doprava, vlnka odjede
+                                 s okrajem a na její místo
+                                 naskočí název a interpret;
                                  obal vlevo zůstane na místě
                                  (vypnout jde v nastavení)
-  - Ikony vpravo nahoře          v otevřeném panelu přepínají
+  - Ikony vlevo nahoře           v otevřeném panelu přepínají
     (vedle notche)               stránky: Hudba, Poznámky
-                                 a úkoly, Aplikace
+                                 a úkoly, Aplikace. Vpravo
+                                 nahoře je ozubené kolečko
+                                 (nastavení) a baterie.
+  - Kalendář                     vpravo vedle přehrávače: pět
+                                 dní kolem dneška (dnešek v
+                                 barvě obalu), kliknutím na den
+                                 uvidíš jeho události. Poprvé
+                                 klikni na „Připojit kalendář“
+                                 a v okně macOS povol přístup.
+                                 Jen čte, nic nemění.
   - Poznámky a úkoly             poznámka vlevo, seznam úkolů
                                  vpravo (Enter přidá úkol,
                                  kolečko ho odškrtne, × smaže).
@@ -239,6 +249,8 @@ Pravé tlačítko na notch → Nastavení…
   Zmenšit notch po pauze za   5 / 10 / 20 / 30 / 60 s
   Animace                     Rychlé / Normální / Pomalé
   Zobrazovat texty písní      zapnout / vypnout
+  Kalendář vedle přehrávače   zapnout / vypnout (bez něj je
+                              panel užší)
   Barva vlny                  podle obalu, bílá, nebo vlastní
 
 Všechno se projeví hned, bez restartu.
@@ -303,6 +315,9 @@ Notes.swift            ukládání poznámky a úkolů
 NotesView.swift        stránka Poznámky a úkoly
 QuickApps.swift        seznam aplikací, otevírání, přidávání
 QuickAppsView.swift    stránka Aplikace
+CalendarStore.swift    čtení událostí z Kalendáře (jen čtení)
+CalendarView.swift     sloupec s kalendářem v otevřeném panelu
+Battery.swift          stav baterie nahoře v panelu
 Lyrics.swift           stažení textu z LRCLIB, parsování LRC, cache
 MediaRemote.swift      název/obal/ovládání pro libovolný přehrávač
 Vendor/                mediaremote-adapter (BSD-3), sestavuje build.sh

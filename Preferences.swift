@@ -15,6 +15,7 @@ enum Preferences {
         static let hotKey = "hotKey"
         static let showSongPeek = "showSongPeek"
         static let quickApps = "quickApps"
+        static let showCalendar = "showCalendar"
     }
 
     /// Call before anything reads a preference.
@@ -27,6 +28,7 @@ enum Preferences {
             Key.showLyrics: true,
             Key.hotKey: HotKeyChoice.shiftCommandSpace.rawValue,
             Key.showSongPeek: true,
+            Key.showCalendar: true,
             Key.quickApps: QuickApps.defaultPaths().joined(separator: "\n"),
         ])
     }
@@ -41,6 +43,8 @@ enum Preferences {
     static var showLyrics: Bool { UserDefaults.standard.bool(forKey: Key.showLyrics) }
 
     static var showSongPeek: Bool { UserDefaults.standard.bool(forKey: Key.showSongPeek) }
+
+    static var showCalendar: Bool { UserDefaults.standard.bool(forKey: Key.showCalendar) }
 
     static var animationSpeed: AnimationSpeed {
         AnimationSpeed(rawValue: UserDefaults.standard.string(forKey: Key.animationSpeed) ?? "")

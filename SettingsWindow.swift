@@ -34,6 +34,7 @@ struct SettingsView: View {
     @AppStorage(Preferences.Key.showLyrics) private var showLyrics = true
     @AppStorage(Preferences.Key.hotKey) private var hotKey = HotKeyChoice.shiftCommandSpace.rawValue
     @AppStorage(Preferences.Key.showSongPeek) private var showSongPeek = true
+    @AppStorage(Preferences.Key.showCalendar) private var showCalendar = true
     @AppStorage(Preferences.Key.quickApps) private var quickApps = ""
 
     @State private var openAtLogin = LoginItem.isEnabled
@@ -69,6 +70,7 @@ struct SettingsView: View {
                 }
                 Toggle("Zobrazovat texty písní", isOn: $showLyrics)
                 Toggle("Ukázat novou skladbu v zavřeném notchi", isOn: $showSongPeek)
+                Toggle("Kalendář vedle přehrávače", isOn: $showCalendar)
             }
 
             Section("Aplikace v notchi") {

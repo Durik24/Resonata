@@ -1,8 +1,9 @@
 # Resonata — a music notch for the MacBook
 
 A Dynamic-Island-style music player pinned over the MacBook notch. Collapsed, it
-shows the album art and moving bars; click it and it expands to the title, a
-scrubber, transport controls, synced lyrics and a wave in the album's colour.
+shows the album art and moving bars; click it and it expands to the title, the
+current lyric line, a scrubber, transport controls, this week's calendar and a
+wave in the album's colour.
 Click anywhere else to close it.
 
 **It doesn't listen to your computer's sound.** No audio capture, no
@@ -43,7 +44,9 @@ keychain; `build.sh` uses it when present.
 | `Vendor/mediaremote-adapter/` | BSD-3 sources of the adapter, built into the bundle by `build.sh` |
 | `NotchModel.swift` | Everything the views show: track, state, lyrics, volume level |
 | `NotchView.swift` | The notch itself: size, colour wash, collapsed pill, open/close |
-| `NotchView+Expanded.swift` | The open panel: artwork, title, scrubber, transport, lyrics row |
+| `NotchView+Expanded.swift` | The open panel: top bar, player column, calendar column |
+| `CalendarStore.swift`, `CalendarView.swift` | Five days around today and their events (EventKit, read-only) |
+| `Battery.swift` | Battery level for the top bar (IOKit, no permission) |
 | `NotchFrame.swift` | Animates the notch's size and shape as one unit, pinned to the top |
 | `Motion.swift` | The made-up motion behind the bars and the wave |
 | `MusicBars.swift` | The pill's bars, as Core Animation layers on a display link |
@@ -53,7 +56,7 @@ keychain; `build.sh` uses it when present.
 | `SongPeek.swift` | Decides when a new song gets a moment in the closed notch |
 | `Notes.swift`, `NotesView.swift` | The notes page and its local storage |
 | `QuickApps.swift`, `QuickAppsView.swift` | The app shortcuts page and its list |
-| `LyricsView.swift` | Three lines of synced lyrics |
+| `LyricsView.swift` | The lyric line being sung, under the artist |
 | `ArtworkAccent.swift` | Picks the accent colour out of the album art |
 | `Controls.swift` | Transport button press style and the volume meter |
 | `Volume.swift` | Output volume via Core Audio, and the scroll-to-volume mapping |
@@ -92,10 +95,17 @@ code or assets — keeping only what needs no permission:
   the panel is closed, the pill slides out to the right, past the bars, for
   3.5 s with the title and artist. Its left edge (the artwork) stays still:
   `NotchFrame` animates a sideways shift together with the width, and the
-  content takes its size from that one animation only. Not on launch, not on resume, not while open;
+  content takes its size from that one animation only. The bars ride the right
+  edge out and back; the title fills the slot they leave and is clipped short
+  of them on the way back in. Not on launch, not on resume, not while open;
   switchable in settings.
-- **Pages**: icons in the strip beside the cutout switch the open panel
-  between Music, Notes and Apps.
+- **Pages**: icons in the strip left of the cutout switch the open panel
+  between Music, Notes and Apps. Right of it: settings and the battery level.
+- **Calendar** (`CalendarStore.swift`, `CalendarView.swift`): beside the
+  player, five days around today (today in the album colour) and the picked
+  day's events. Read-only; macOS asks for calendar access only when you click
+  "Připojit kalendář". Can be switched off in settings, which also narrows the
+  panel back to 470 pt.
 - **Notes & to-dos** (`Notes.swift`, `NotesView.swift`): a note and a
   checklist, saved locally to `~/Library/Application Support/Resonata/
   notes.json`, half a second after the last change. ⌘C/⌘V/⌘X/⌘A/⌘Z work even
@@ -111,7 +121,7 @@ Accessibility permissions), per the no-listening, no-camera choice above.
 Right-click → Nastavení… opens a settings window: open at login, a global
 shortcut to open the notch (⇧⌘Space by default; Carbon hot keys, so no
 Accessibility permission), how long after a pause the notch shrinks,
-animation speed, lyrics on/off, and the wave's colour (album, white, or your
+animation speed, lyrics on/off, the calendar on/off, and the wave's colour (album, white, or your
 own). Apple Music tracks get a heart button (`favorited` over AppleScript);
 Spotify has no way to like a song from the Mac short of its web API.
 
@@ -231,8 +241,7 @@ as before. Verified on macOS 26.5.
 - Synced lyric flash in place of beat detection (the audio visualiser was
   removed on purpose — no listening)
 - Synced lyrics: LRCLIB `/get` with an exact match, falling back to `/search`
-  on title and artist; the expanded panel grows a three-line row when a song
-  has them. Cached under `~/Library/Caches/com.local.resonata/lyrics/`.
+  on title and artist; the line being sung shows under the artist. Cached under `~/Library/Caches/com.local.resonata/lyrics/`.
 
 ## Next steps
 

@@ -315,6 +315,41 @@ check(QuickApps.name(of: URL(fileURLWithPath: "/System/Applications/System Setti
       || !FileManager.default.fileExists(atPath: "/System/Applications/System Settings.app"),
       "apps: names drop the .app")
 
+// MARK: - Calendar and battery
+
+do {
+    var cal = Calendar(identifier: .gregorian)
+    cal.timeZone = TimeZone(identifier: "Europe/Prague")!
+    let noon = cal.date(from: DateComponents(year: 2026, month: 10, day: 6, hour: 12))!
+    let days = CalendarStore.days(around: noon, calendar: cal)
+    check(days.count == 5, "calendar: five days shown")
+    check(days[2] == cal.startOfDay(for: noon), "calendar: today in the middle, at midnight")
+    check(cal.component(.day, from: days[0]) == 4 && cal.component(.day, from: days[4]) == 8,
+          "calendar: two days either side", "\(days.map { cal.component(.day, from: $0) })")
+
+    func at(_ day: Int, _ hour: Int) -> Date {
+        cal.date(from: DateComponents(year: 2026, month: 10, day: day, hour: hour))!
+    }
+    let events = [
+        CalendarStore.Event(id: "a", title: "Ráno", start: at(6, 9), end: at(6, 10), isAllDay: false),
+        CalendarStore.Event(id: "b", title: "Přes půlnoc", start: at(6, 22), end: at(7, 2), isAllDay: false),
+        CalendarStore.Event(id: "c", title: "Zítra", start: at(7, 9), end: at(7, 10), isAllDay: false),
+    ]
+    check(CalendarStore.events(events, on: at(6, 0), calendar: cal).map(\.id) == ["a", "b"],
+          "calendar: a day's own events")
+    check(CalendarStore.events(events, on: at(7, 0), calendar: cal).map(\.id) == ["b", "c"],
+          "calendar: an event past midnight shows on both days")
+    check(CalendarStore.events(events, on: at(8, 0), calendar: cal).isEmpty,
+          "calendar: an empty day is empty")
+}
+
+check(Battery(percent: 100, charging: false).symbol == "battery.100percent", "battery: full")
+check(Battery(percent: 70, charging: false).symbol == "battery.75percent", "battery: 70 rounds to three quarters")
+check(Battery(percent: 5, charging: false).symbol == "battery.0percent", "battery: nearly empty")
+check(Battery(percent: 5, charging: true).symbol == "battery.100percent.bolt", "battery: charging shows the bolt")
+check(Battery(percent: 15, charging: false).isLow && !Battery(percent: 15, charging: true).isLow,
+      "battery: low only when not charging")
+
 // MARK: - Last: a lyrics line that used to crash the parser
 
 // The stamp's end was taken as a UTF-16 offset and walked as a count of

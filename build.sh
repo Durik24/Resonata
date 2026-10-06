@@ -64,6 +64,11 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <!-- Required, or the AppleScript calls to Spotify/Music are killed on sight. -->
     <key>NSAppleEventsUsageDescription</key>
     <string>Resonata reads what you are currently playing.</string>
+    <!-- Asked only when you click "Připojit kalendář"; read-only. -->
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>Resonata ukazuje v notchi tvoje dnešní události.</string>
+    <key>NSCalendarsUsageDescription</key>
+    <string>Resonata ukazuje v notchi tvoje dnešní události.</string>
 </dict>
 </plist>
 PLIST
