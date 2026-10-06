@@ -16,6 +16,7 @@ enum Preferences {
         static let showSongPeek = "showSongPeek"
         static let quickApps = "quickApps"
         static let showCalendar = "showCalendar"
+        static let openMode = "openMode"
     }
 
     /// Call before anything reads a preference.
@@ -29,6 +30,7 @@ enum Preferences {
             Key.hotKey: HotKeyChoice.shiftCommandSpace.rawValue,
             Key.showSongPeek: true,
             Key.showCalendar: true,
+            Key.openMode: OpenMode.hover.rawValue,
             Key.quickApps: QuickApps.defaultPaths().joined(separator: "\n"),
         ])
     }
@@ -46,6 +48,10 @@ enum Preferences {
 
     static var showCalendar: Bool { UserDefaults.standard.bool(forKey: Key.showCalendar) }
 
+    static var openMode: OpenMode {
+        OpenMode(rawValue: UserDefaults.standard.string(forKey: Key.openMode) ?? "") ?? .click
+    }
+
     static var animationSpeed: AnimationSpeed {
         AnimationSpeed(rawValue: UserDefaults.standard.string(forKey: Key.animationSpeed) ?? "")
             ?? .normal
@@ -59,6 +65,21 @@ enum Preferences {
 }
 
 /// How unhurried the notch's springs and fades are.
+/// How the closed notch opens. A click always works; hover adds opening by
+/// resting the pointer on it, and closing when the pointer leaves.
+enum OpenMode: String, CaseIterable, Identifiable {
+    case click, hover
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .click: "Kliknutím"
+        case .hover: "Najetím myší"
+        }
+    }
+}
+
 enum AnimationSpeed: String, CaseIterable, Identifiable {
     case fast, normal, slow
 

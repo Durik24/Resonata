@@ -118,6 +118,43 @@ final class NotchPanel: NSPanel {
 /// open it, which is indistinguishable from a bug.
 final class FirstClickHostingView<Content: View>: NSHostingView<Content> {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    /// Where the pointer is over this window, in window coordinates; nil
+    /// once it has left. For hover-to-open.
+    var onPointer: ((NSPoint?) -> Void)?
+
+    private var pointerTracking: NSTrackingArea?
+
+    /// One tracking area over the whole view. `.inVisibleRect` keeps it
+    /// matched to the window as the window resizes; `.activeAlways` because
+    /// this window is never key, and the default only tracks in key windows.
+    /// It reports only while the pointer is over *this* window — nothing
+    /// watches the mouse anywhere else.
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let pointerTracking { removeTrackingArea(pointerTracking) }
+        let area = NSTrackingArea(rect: .zero,
+                                  options: [.mouseEnteredAndExited, .mouseMoved,
+                                            .activeAlways, .inVisibleRect],
+                                  owner: self, userInfo: nil)
+        addTrackingArea(area)
+        pointerTracking = area
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        super.mouseEntered(with: event)
+        onPointer?(event.locationInWindow)
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        super.mouseMoved(with: event)
+        onPointer?(event.locationInWindow)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        onPointer?(nil)
+    }
 }
 
 /// A menu item that runs a closure, so the controller needn't be an NSObject.
@@ -168,6 +205,17 @@ final class NotchPanelController {
     /// Hides the volume meter a moment after the last scroll.
     private var volumeHide: DispatchWorkItem?
 
+    /// Hover-to-open state — see `pointerMoved(to:)`.
+    private var pointerInside = false
+    private var hoverTask: Task<Void, Never>?
+
+    /// How long the pointer has to rest on the notch before it opens, so
+    /// passing over it on the way to the menu bar doesn't.
+    static let hoverDwell: Duration = .milliseconds(300)
+    /// How long after the pointer leaves before the panel closes — enough to
+    /// forgive overshooting the edge by a hair.
+    static let hoverLeaveDelay: Duration = .milliseconds(100)
+
     init(model: NotchModel) {
         self.model = model
     }
@@ -190,6 +238,9 @@ final class NotchPanelController {
         // x=750, the pill was drawn centred in *that*, and so it slid right
         // and then snapped back under the notch at the deferred shrink.
         hosting.sizingOptions = []
+        hosting.onPointer = { [weak self] location in
+            MainActor.assumeIsolated { self?.pointerMoved(to: location) }
+        }
         panel.contentView = hosting
         panel.onMouseDown = { [weak self] location in
             MainActor.assumeIsolated {
@@ -325,6 +376,21 @@ final class NotchPanelController {
             ) { [weak self] note in
                 let tag = (note.object as? String) ?? "snap"
                 MainActor.assumeIsolated { self?.debugSnapshots(tag: tag) }
+            }
+        }
+
+        // Debug: `com.local.resonata.hover` with "in" or "out" plays the
+        // pointer arriving on the notch or leaving it.
+        if NotchPanel.debugClick {
+            DistributedNotificationCenter.default().addObserver(
+                forName: Notification.Name("com.local.resonata.hover"), object: nil, queue: .main
+            ) { [weak self] note in
+                let arriving = (note.object as? String) == "in"
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    let target = self.model.isExpanded ? self.expandedShapeRect : self.pillRect
+                    self.pointerMoved(to: arriving ? NSPoint(x: target.midX, y: target.midY) : nil)
+                }
             }
         }
 
@@ -504,6 +570,57 @@ final class NotchPanelController {
                 self.panel?.displayIfNeeded()
             }
         }
+    }
+
+    /// Hover to open, the way boring.notch does it: a haptic tick the moment
+    /// the pointer reaches the notch, open once it has rested there for
+    /// `hoverDwell`, close `hoverLeaveDelay` after it leaves the panel. A
+    /// click still opens at once.
+    ///
+    /// "Inside" is the shape actually drawn — the pill, or the open panel —
+    /// not the window: open, the window is a larger transparent canvas, and
+    /// moving into its margin is leaving the panel.
+    private func pointerMoved(to location: NSPoint?) {
+        guard Preferences.openMode == .hover else { return }
+        let inside = location.map { point in
+            model.isExpanded ? expandedShapeRect.contains(point)
+                             : pillRect.insetBy(dx: -2, dy: -2).contains(point)
+        } ?? false
+        guard inside != pointerInside else { return }
+        pointerInside = inside
+        hoverTask?.cancel()
+
+        if inside {
+            guard !model.isExpanded else { return }
+            // Felt only with a finger on a Force Touch trackpad — which is
+            // exactly when you're hovering with it.
+            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+            hoverTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: Self.hoverDwell)
+                guard let self, !Task.isCancelled, self.pointerInside,
+                      !self.model.isExpanded else { return }
+                if NotchPanel.debugClick { NSLog("click: hover -> EXPAND") }
+                self.setExpanded(true)
+                if NotchPanel.debugClick { self.debugSnapshots(tag: "hover-open") }
+            }
+        } else {
+            guard model.isExpanded else { return }
+            hoverTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: Self.hoverLeaveDelay)
+                guard let self, !Task.isCancelled, !self.pointerInside,
+                      self.model.isExpanded, !self.isTyping else { return }
+                if NotchPanel.debugClick { NSLog("click: hover left -> COLLAPSE") }
+                self.setExpanded(false)
+                if NotchPanel.debugClick { self.debugSnapshots(tag: "hover-close") }
+            }
+        }
+    }
+
+    /// A note or a to-do is being typed. Leaving the panel then doesn't close
+    /// it — reaching for the mouse mid-sentence would throw the text away
+    /// from under you. A click outside still closes it.
+    private var isTyping: Bool {
+        panel?.firstResponder is NSTextView
     }
 
     /// Debug: photograph our own content view at fixed delays after an open,

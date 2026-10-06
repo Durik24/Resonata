@@ -118,12 +118,24 @@ Accessibility permissions), per the no-listening, no-camera choice above.
 
 ## Settings, shortcut, heart
 
-Right-click → Nastavení… opens a settings window: open at login, a global
+Right-click → Nastavení… opens a settings window: open at login, how the
+notch opens (click, or hover — see below), a global
 shortcut to open the notch (⇧⌘Space by default; Carbon hot keys, so no
 Accessibility permission), how long after a pause the notch shrinks,
 animation speed, lyrics on/off, the calendar on/off, and the wave's colour (album, white, or your
 own). Apple Music tracks get a heart button (`favorited` over AppleScript);
 Spotify has no way to like a song from the Mac short of its web API.
+
+## Hover to open
+
+With "Otevírat notch: Najetím myší" (the default), the notch opens the way
+boring.notch does it: a haptic tick when the pointer reaches it, open after
+0.3 s of resting there (so passing over it on the way to the menu bar
+doesn't), close 0.1 s after the pointer leaves the panel. Not while a note or
+to-do is being typed — then only a click outside closes it. A click always
+opens at once. Tracked with one `NSTrackingArea` on Resonata's own window, so
+nothing watches the mouse anywhere else and no permission is involved
+(`NotchPanelController.pointerMoved(to:)`).
 
 ## Menu and volume
 
