@@ -129,8 +129,8 @@ Spotify has no way to like a song from the Mac short of its web API.
 ## Hover to open
 
 With "Otevírat notch: Najetím myší" (the default), the notch opens the way
-boring.notch does it: a haptic tick when the pointer reaches it, open after
-0.3 s of resting there (so passing over it on the way to the menu bar
+boring.notch does it, without its haptic tick: open after 0.3 s of resting
+there (so passing over it on the way to the menu bar
 doesn't), close 0.1 s after the pointer leaves the panel. Not while a note or
 to-do is being typed — then only a click outside closes it. A click always
 opens at once. Tracked with one `NSTrackingArea` on Resonata's own window, so

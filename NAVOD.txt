@@ -125,8 +125,7 @@ KROK 7 — Vyzkoušej ovládání
                                  řádek, podle času skladby.
                                  Stahuje se jednou, pak z cache
                                  (~/Library/Caches/com.local.resonata)
-  - Najeď myší na notch          trackpad jemně ťukne a po 0,3 s
-                                 se notch otevře; když myš z
+  - Najeď myší na notch          po 0,3 s se notch otevře; když myš z
                                  panelu odjede, zavře se. Při
                                  psaní poznámky zůstane otevřený.
                                  (V nastavení „Otevírat notch“

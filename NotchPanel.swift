@@ -572,8 +572,8 @@ final class NotchPanelController {
         }
     }
 
-    /// Hover to open, the way boring.notch does it: a haptic tick the moment
-    /// the pointer reaches the notch, open once it has rested there for
+    /// Hover to open, the way boring.notch does it (minus its haptic tick):
+    /// open once the pointer has rested on the notch for
     /// `hoverDwell`, close `hoverLeaveDelay` after it leaves the panel. A
     /// click still opens at once.
     ///
@@ -592,9 +592,8 @@ final class NotchPanelController {
 
         if inside {
             guard !model.isExpanded else { return }
-            // Felt only with a finger on a Force Touch trackpad — which is
-            // exactly when you're hovering with it.
-            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+            // No haptic tick on arrival, unlike boring.notch: tried and taken
+            // out at the user's request.
             hoverTask = Task { @MainActor [weak self] in
                 try? await Task.sleep(for: Self.hoverDwell)
                 guard let self, !Task.isCancelled, self.pointerInside,
