@@ -43,7 +43,7 @@ struct NotchView: View {
 
     /// The song-change peek: the playing pill, slid out to the right past the
     /// bars by this much, with the title and artist in the new space.
-    static let peekExtraWidth: CGFloat = 160
+    static let peekExtraWidth: CGFloat = 110
 
     /// The peek's shape — shared with `NotchPanelController` so the window,
     /// the shape and the click target agree. Same height as the pill: it

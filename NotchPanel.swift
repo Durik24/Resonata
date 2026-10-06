@@ -211,7 +211,7 @@ final class NotchPanelController {
                     self.setExpanded(true)
                     if NotchPanel.debugClick { self.debugSnapshots(tag: "open") }
                 } else if !self.expandedShapeRect.contains(location) {
-                    // Expanded, the window is a 640x280 canvas and the panel
+                    // Expanded, the window is a 680x280 canvas and the panel
                     // is drawn in the top-centre of it. A click in the
                     // transparent margin is ours, so the global monitor never
                     // sees it — but to the user it is plainly a click outside
