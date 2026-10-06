@@ -28,6 +28,10 @@ final class NotchPanel: NSPanel {
         acceptsMouseMovedEvents = true
         ignoresMouseEvents = false
         level = .screenSaver
+        // The panel is black whatever the system appearance; text fields in
+        // the notes page need to draw as on a dark background — light text,
+        // a light caret — even when the Mac is in light mode.
+        appearance = NSAppearance(named: .darkAqua)
         collectionBehavior = [
             .canJoinAllSpaces,      // follow you across desktops
             .stationary,            // don't slide during Mission Control
@@ -41,6 +45,29 @@ final class NotchPanel: NSPanel {
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+
+    /// ⌘X, ⌘C, ⌘V, ⌘A, ⌘Z and ⇧⌘Z in the notes.
+    ///
+    /// In a normal app these come from the Edit menu's key equivalents.
+    /// Resonata has no menu bar, so nothing would turn ⌘V into "paste" —
+    /// typing works in a text field here, pasting silently doesn't. This sends
+    /// the same actions down the responder chain the menu would have.
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let key = event.charactersIgnoringModifiers?.lowercased() ?? ""
+        let action: Selector?
+        switch (modifiers, key) {
+        case (.command, "x"): action = #selector(NSText.cut(_:))
+        case (.command, "c"): action = #selector(NSText.copy(_:))
+        case (.command, "v"): action = #selector(NSText.paste(_:))
+        case (.command, "a"): action = #selector(NSText.selectAll(_:))
+        case (.command, "z"): action = Selector(("undo:"))
+        case ([.command, .shift], "z"): action = Selector(("redo:"))
+        default: action = nil
+        }
+        if let action, NSApp.sendAction(action, to: nil, from: self) { return true }
+        return super.performKeyEquivalent(with: event)
+    }
 
     /// Called for every mouse-down that reaches this window.
     ///
@@ -128,8 +155,6 @@ final class NotchPanelController {
     private var shrink: DispatchWorkItem?
     private var clickMonitors: [Any] = []
     private var visibilityTimer: Timer?
-    private var wasExpanded = false
-    private var wasShowingContent = false
 
     /// Whether a full-screen app owns the target display, as of the last
     /// visibility check. Cached because the check walks the window server's
@@ -153,6 +178,7 @@ final class NotchPanelController {
 
         adoptGeometry(of: screen)
         model.switchScreen = { [weak self] in self?.moveToNextScreen() }
+        model.close = { [weak self] in self?.setExpanded(false) }
 
         let panel = NotchPanel(contentRect: frame(for: screen))
         let hosting = FirstClickHostingView(rootView: NotchView(model: model))
@@ -227,7 +253,7 @@ final class NotchPanelController {
 
         model.$isExpanded
             .removeDuplicates()
-            .combineLatest(collapsedContentVisible)
+            .combineLatest(collapsedContentVisible, model.$peeking.removeDuplicates())
             // Deliver on the next run-loop pass, never inside the publish.
             //
             // `@Published` fires on *willSet*. Resizing the window right there
@@ -238,8 +264,8 @@ final class NotchPanelController {
             // with music playing, the spectrum's next tick a frame later;
             // idle, the ten-second re-sync. That was the "opens after 8s".
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] expanded, hasTrack in
-                self?.apply(expanded: expanded, hasTrack: hasTrack)
+            .sink { [weak self] expanded, hasTrack, peeking in
+                self?.apply(expanded: expanded, hasTrack: hasTrack, peeking: peeking)
             }
             .store(in: &cancellables)
 
@@ -286,6 +312,17 @@ final class NotchPanelController {
                     self.setExpanded(opening)
                     self.debugSnapshots(tag: opening ? "open" : "close")
                 }
+            }
+        }
+
+        // Debug: `com.local.resonata.snap` photographs the panel now, tagged
+        // with the notification's object — for states no click produces.
+        if NotchPanel.debugClick {
+            DistributedNotificationCenter.default().addObserver(
+                forName: Notification.Name("com.local.resonata.snap"), object: nil, queue: .main
+            ) { [weak self] note in
+                let tag = (note.object as? String) ?? "snap"
+                MainActor.assumeIsolated { self?.debugSnapshots(tag: tag) }
             }
         }
 
@@ -458,6 +495,7 @@ final class NotchPanelController {
         DispatchQueue.main.async { [weak self] in
             MainActor.assumeIsolated {
                 guard let self, self.model.isExpanded != expanded else { return }
+                if expanded { self.model.peeking = false }
                 self.model.isExpanded = expanded
                 self.panel?.contentView?.needsLayout = true
                 self.panel?.contentView?.layoutSubtreeIfNeeded()
@@ -544,48 +582,43 @@ final class NotchPanelController {
         }
     }
 
-    private func apply(expanded: Bool, hasTrack: Bool) {
-        guard panel != nil, targetScreen != nil else { return }
-
+    /// Sizes the window for a new state: grow at once, shrink afterwards.
+    ///
+    /// The SwiftUI spring needs room to animate into, and the extra area is
+    /// transparent, so growing is immediate. Shrinking has to wait until the
+    /// animation has played, or the window clips it — and moves its origin,
+    /// so the old, wider content is drawn off-centre for a moment: the pill
+    /// jumping sideways.
+    ///
+    /// One rule for every transition, instead of the flags this used to keep
+    /// for "closing after an expand" and "losing content": take the union of
+    /// the current and the new frame now, the exact new frame later. That
+    /// also covers changes that grow one way and shrink the other, which the
+    /// song-change peek brought in.
+    private func apply(expanded: Bool, hasTrack: Bool, peeking: Bool) {
+        guard let panel, let screen = targetScreen else { return }
         shrink?.cancel()
 
-        // The delayed resize is *only* for closing after an expand.
-        //
-        // Treating every collapsed state as "shrink later" meant a track
-        // starting while collapsed left the window at its old narrow width for
-        // half a second: the pill's content widened into a window that hadn't,
-        // clipped, and then the window snapped out to catch up. That snap is
-        // the jump you see when you hit play in Spotify.
-        let closingAfterExpand = wasExpanded && !expanded
-        // The pill narrowing when playback stops is a shrink too. Resizing the
-        // window first moved its origin to the right while the content was
-        // still drawn wide — the pill visibly jumped sideways, then shrank.
-        let losingContent = !expanded && wasShowingContent && !hasTrack
-        wasExpanded = expanded
-        wasShowingContent = hasTrack
+        let target = frame(for: screen, expanded: expanded, hasTrack: hasTrack, peeking: peeking)
+        let room = panel.frame.union(target)
+        if room != panel.frame { setPanelFrame(room) }
+        guard room != target else { return }
 
-        // Grow immediately — the SwiftUI spring needs the room to animate into,
-        // and the extra area is transparent anyway. Shrink only once the
-        // collapse has finished playing, or we'd clip our own animation.
-        if expanded || !(closingAfterExpand || losingContent) {
-            reposition(expanded: expanded, hasTrack: hasTrack)
-        } else {
-            let work = DispatchWorkItem { [weak self] in
-                MainActor.assumeIsolated {
-                    self?.reposition(expanded: false, hasTrack: hasTrack)
-                }
-            }
-            shrink = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.55, execute: work)
+        let work = DispatchWorkItem { [weak self] in
+            MainActor.assumeIsolated { self?.setPanelFrame(target) }
         }
+        shrink = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.55, execute: work)
     }
 
     private func reposition() {
-        reposition(expanded: model.isExpanded, hasTrack: model.showsCollapsedContent)
+        guard let screen = targetScreen else { return }
+        setPanelFrame(frame(for: screen, expanded: model.isExpanded,
+                            hasTrack: model.showsCollapsedContent, peeking: model.peeking))
     }
 
-    private func reposition(expanded: Bool, hasTrack: Bool) {
-        guard let panel, let screen = targetScreen else { return }
+    private func setPanelFrame(_ rect: NSRect) {
+        guard let panel else { return }
         // `display: false`, deliberately. With `true`, AppKit repainted the
         // resized window at once with SwiftUI's *previous* content — and its
         // layers anchor bottom-left, so the old pill flashed at the bottom of
@@ -593,8 +626,7 @@ final class NotchPanelController {
         // began the spring: a visible jump from below. Leaving the display to
         // SwiftUI's own pass, a moment later, draws the first frame of the new
         // state straight into the new frame.
-        panel.setFrame(frame(for: screen, expanded: expanded, hasTrack: hasTrack),
-                       display: false)
+        panel.setFrame(rect, display: false)
         // ...and lay SwiftUI out at the new size *now*, in the same pass, so
         // the next frame drawn is the new layout in the new frame — never the
         // old layout, anchored at the window's corner, in a frame of another
@@ -606,13 +638,19 @@ final class NotchPanelController {
     private func frame(
         for screen: NSScreen,
         expanded: Bool = false,
-        hasTrack: Bool = false
+        hasTrack: Bool = false,
+        peeking: Bool = false
     ) -> NSRect {
-        let size = expanded
-            ? CGSize(width: Self.canvasWidth, height: Self.canvasHeight)
-            : CGSize(width: screen.notchSize.width
-                        + (hasTrack ? NotchMetrics.collapsedContentWidth : 0),
-                     height: screen.notchSize.height + NotchMetrics.collapsedExtraHeight)
+        let size: CGSize
+        if expanded {
+            size = CGSize(width: Self.canvasWidth, height: Self.canvasHeight)
+        } else if peeking {
+            size = NotchView.peekSize(notch: screen.notchSize)
+        } else {
+            size = CGSize(width: screen.notchSize.width
+                            + (hasTrack ? NotchMetrics.collapsedContentWidth : 0),
+                          height: screen.notchSize.height + NotchMetrics.collapsedExtraHeight)
+        }
 
         // NSScreen coordinates are global and bottom-left origin, so "top of the
         // screen" is maxY and we subtract the panel height to get the origin.

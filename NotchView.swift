@@ -38,6 +38,17 @@ struct NotchView: View {
     /// Three lines of lyric and the breathing room around them.
     static let lyricsHeight: CGFloat = 58
 
+    /// The song-change peek: the pill's own row plus two lines underneath.
+    static let peekWidth: CGFloat = 340
+    static let peekExtraHeight: CGFloat = 44
+
+    /// The peek's size for a given notch — shared with `NotchPanelController`
+    /// so the window and the shape agree.
+    static func peekSize(notch: CGSize) -> CGSize {
+        CGSize(width: max(notch.width + NotchMetrics.collapsedContentWidth, peekWidth),
+               height: notch.height + NotchMetrics.collapsedExtraHeight + peekExtraHeight)
+    }
+
     /// One spring, one clock.
     ///
     /// Everything that moves during an expand — the frame, the shape's radii,
@@ -84,7 +95,8 @@ struct NotchView: View {
     )
 
     private var size: CGSize {
-        model.isExpanded
+        if !model.isExpanded, model.peeking { return Self.peekSize(notch: notchSize) }
+        return model.isExpanded
             ? CGSize(width: Self.expandedWidth, height: model.expandedHeight)
             // Idle shrinks the pill back to the bare cutout, not just blacks it
             // out — an idle pill that keeps the full playing width stays
@@ -118,7 +130,7 @@ struct NotchView: View {
                 // A soft wave along the bottom edge, in the album's colour.
                 // It has the bottom strip to itself — the content stops above
                 // it (see `expanded`) — so it never runs through the lyrics.
-                if model.isExpanded {
+                if model.isExpanded && model.tab == .music {
                     MusicWave(color: waveColour,
                               isAnimating: isLive)
                         .frame(height: Self.waveHeight)
@@ -139,7 +151,7 @@ struct NotchView: View {
             .modifier(NotchFrame(
                 size: size,
                 topRadius: model.isExpanded ? 12 : 0,
-                bottomRadius: model.isExpanded ? 24 : 7,
+                bottomRadius: model.isExpanded ? 24 : (model.peeking ? 16 : 7),
                 background: { shape in
                     AnyView(ZStack {
                         shape.fill(Self.panelBlack)
@@ -166,6 +178,8 @@ struct NotchView: View {
             .animation(settle, value: model.isExpanded)
             .animation(settle, value: model.showsCollapsedContent)
             .animation(settle, value: model.showsLyricsRow)
+            .animation(settle, value: model.peeking)
+            .animation(settle, value: model.tab)
             // Opening and closing are both handled in AppKit — see
             // `NotchPanel.onMouseDown` and the global monitor in the
             // controller. Nothing here reacts to clicks; the buttons and the
@@ -252,9 +266,31 @@ struct NotchView: View {
                     )
             }
             .transition(Self.crossfade)
+        } else if model.peeking {
+            peek.transition(Self.crossfade)
         } else {
             collapsed.transition(Self.crossfade)
         }
+    }
+
+    /// A new song, for a moment: the pill's own row on top — artwork and bars
+    /// exactly where they always are — and the title and artist underneath,
+    /// below the cutout, where there are pixels to draw them on.
+    private var peek: some View {
+        VStack(spacing: 2) {
+            collapsed
+                .frame(height: notchSize.height + NotchMetrics.collapsedExtraHeight)
+            Text(model.track?.title ?? "")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.white)
+            Text(model.track?.artist ?? "")
+                .font(.system(size: 11))
+                .foregroundStyle(.white.opacity(0.55))
+        }
+        .lineLimit(1)
+        .truncationMode(.tail)
+        .frame(width: Self.peekWidth - 36)
+        .frame(maxHeight: .infinity, alignment: .top)
     }
 
     // MARK: Collapsed — artwork on the left of the notch, waveform on the right

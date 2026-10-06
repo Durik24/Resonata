@@ -12,6 +12,56 @@ extension NotchView {
     // MARK: Expanded — artwork, metadata, scrubber, transport
 
     var expanded: some View {
+        ZStack(alignment: .top) {
+            page
+                // Clear the hardware cutout. The expanded panel is centred and
+                // wider than the notch, but its top strip runs *behind* the
+                // notch, where there is no screen at all. Anything drawn there
+                // simply doesn't exist. Start below it.
+                .padding(.top, notchSize.height + 6)
+                // The music page leaves the bottom strip to the wave.
+                .padding(.bottom, model.tab == .music ? Self.waveHeight + 12 : 18)
+            pageSwitcher
+        }
+        // Laid out at the final width from frame one — see `clipShape` above.
+        .frame(width: Self.expandedWidth - 40, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private var page: some View {
+        switch model.tab {
+        case .music:
+            musicPage
+        case .notes:
+            NotesView(store: NotesStore.shared)
+        case .apps:
+            QuickAppsView(onLaunch: { model.close?() })
+        }
+    }
+
+    /// The page icons, in the strip beside the cutout — real screen at the
+    /// top of the panel that nothing else used. Right of the notch, clear of
+    /// the panel's top corner.
+    private var pageSwitcher: some View {
+        HStack(spacing: 4) {
+            ForEach(PanelTab.allCases) { tab in
+                Button { model.tab = tab } label: {
+                    Image(systemName: tab.symbol)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.white.opacity(model.tab == tab ? 0.95 : 0.4))
+                        .frame(width: 28, height: 20)
+                        .background(Capsule().fill(.white.opacity(model.tab == tab ? 0.14 : 0)))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(tab.title)
+            }
+        }
+        .frame(height: notchSize.height)
+        .frame(maxWidth: .infinity, alignment: .trailing)
+    }
+
+    private var musicPage: some View {
         VStack(spacing: 0) {
             expandedMain
                 .onAppear {
@@ -25,15 +75,6 @@ extension NotchView {
             }
         }
         .animation(settle, value: model.showsLyricsRow)
-        // Clear the hardware cutout. The expanded panel is centred and wider
-        // than the notch, but its top strip runs *behind* the notch, where
-        // there is no screen at all. Anything drawn there — the title, in
-        // practice — simply doesn't exist. Start below it.
-        .padding(.top, notchSize.height + 6)
-        // Clear of the wave's strip, plus a little air.
-        .padding(.bottom, Self.waveHeight + 12)
-        // Laid out at the final width from frame one — see `clipShape` above.
-        .frame(width: Self.expandedWidth - 40, alignment: .leading)
     }
 
     private var expandedMain: some View {

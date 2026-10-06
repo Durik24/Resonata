@@ -50,6 +50,9 @@ keychain; `build.sh` uses it when present.
 | `MusicWave.swift` | The open panel's wave: Catmull-Rom curve, gradient fill |
 | `LyricPulse.swift` | Fires as each lyric line begins: one timer, set for the next line |
 | `GlowFlash.swift` | The colour flash, a render-server animation masked to the notch |
+| `SongPeek.swift` | Decides when a new song gets a moment in the closed notch |
+| `Notes.swift`, `NotesView.swift` | The notes page and its local storage |
+| `QuickApps.swift`, `QuickAppsView.swift` | The app shortcuts page and its list |
 | `LyricsView.swift` | Three lines of synced lyrics |
 | `ArtworkAccent.swift` | Picks the accent colour out of the album art |
 | `Controls.swift` | Transport button press style and the volume meter |
@@ -79,6 +82,27 @@ detected beats. All of that is gone, by choice: no capture code, no
 ScreenCaptureKit, Accelerate or AVFoundation linked, and no audio-capture
 usage string in the Info.plist, so macOS never asks. It's in the git history
 (`git log -- AudioSpectrum.swift ProcessTap.swift`) if it's ever wanted back.
+
+## Song peek, notes, app shortcuts
+
+Ideas taken from NotchNook (lo.cafe) and rebuilt from scratch — none of its
+code or assets — keeping only what needs no permission:
+
+- **Song peek** (`SongPeek.swift`): when a different song starts playing and
+  the panel is closed, the pill grows downward for 3.5 s with the title and
+  artist under its usual row. Not on launch, not on resume, not while open;
+  switchable in settings.
+- **Pages**: icons in the strip beside the cutout switch the open panel
+  between Music, Notes and Apps.
+- **Notes & to-dos** (`Notes.swift`, `NotesView.swift`): a note and a
+  checklist, saved locally to `~/Library/Application Support/Resonata/
+  notes.json`, half a second after the last change. ⌘C/⌘V/⌘X/⌘A/⌘Z work even
+  though the app has no Edit menu (`NotchPanel.performKeyEquivalent`).
+- **App shortcuts** (`QuickApps.swift`, `QuickAppsView.swift`): up to eleven
+  apps; click to open, "+" to add, remove and reorder in settings.
+
+Left out on purpose: the camera mirror and the volume-key HUD (camera and
+Accessibility permissions), per the no-listening, no-camera choice above.
 
 ## Settings, shortcut, heart
 

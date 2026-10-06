@@ -242,6 +242,70 @@ MainActor.assumeIsolated {
     }
 }
 
+// MARK: - Song-change peek
+
+let songA = track(10, playing: true, title: "A")
+let songB = track(0, playing: true, title: "B")
+var pausedB = songB; pausedB.isPlaying = false
+check(SongPeek.shouldPeek(from: songA, to: songB, expanded: false, enabled: true),
+      "peek: a new song that's playing")
+check(!SongPeek.shouldPeek(from: nil, to: songB, expanded: false, enabled: true),
+      "peek: not for the first song seen (launch)")
+check(!SongPeek.shouldPeek(from: songA, to: track(50, playing: true, title: "A"), expanded: false, enabled: true),
+      "peek: not when the same song carries on or is resumed")
+check(!SongPeek.shouldPeek(from: songA, to: pausedB, expanded: false, enabled: true),
+      "peek: not for a song that isn't playing")
+check(!SongPeek.shouldPeek(from: songA, to: songB, expanded: true, enabled: true),
+      "peek: not while the panel is open")
+check(!SongPeek.shouldPeek(from: songA, to: songB, expanded: false, enabled: false),
+      "peek: not when switched off in settings")
+let notch = CGSize(width: 209, height: 38)
+let peek = NotchView.peekSize(notch: notch)
+check(peek.width >= notch.width + NotchMetrics.collapsedContentWidth && peek.height > notch.height + 30,
+      "peek: wider and taller than the playing pill", "\(peek)")
+
+// MARK: - Notes and to-dos
+
+MainActor.assumeIsolated {
+    let file = URL(fileURLWithPath: NSTemporaryDirectory())
+        .appendingPathComponent("resonata-notes-test-\(UUID().uuidString).json")
+    defer { try? FileManager.default.removeItem(at: file) }
+
+    let store = NotesStore(url: file)
+    check(store.note.isEmpty && store.todos.isEmpty, "notes: a new file starts empty")
+    store.note = "Koupit struny"
+    store.add("  Zavolat Petrovi  ")
+    store.add("   ")
+    store.add("Nahrát demo")
+    check(store.todos.map(\.text) == ["Zavolat Petrovi", "Nahrát demo"],
+          "to-dos: trimmed, blanks ignored, kept in order", "\(store.todos.map(\.text))")
+    store.toggle(store.todos[0].id)
+    check(store.todos[0].done && !store.todos[1].done, "to-dos: tick one off")
+    store.save()
+
+    let reloaded = NotesStore(url: file)
+    check(reloaded.note == "Koupit struny", "notes: the note survives a restart")
+    check(reloaded.todos == store.todos, "to-dos: survive a restart, ticks included")
+    reloaded.removeDone()
+    check(reloaded.todos.map(\.text) == ["Nahrát demo"], "to-dos: clear the ticked ones")
+    reloaded.remove(reloaded.todos[0].id)
+    check(reloaded.todos.isEmpty, "to-dos: delete one")
+}
+
+// MARK: - App shortcuts
+
+let parsed = QuickApps.urls(from: "/Applications/A.app\n\n/Applications/B.app\n/Applications/A.app")
+check(parsed.map(\.path) == ["/Applications/A.app", "/Applications/B.app"],
+      "apps: blank lines and duplicates dropped", "\(parsed.map(\.path))")
+check(QuickApps.urls(from: QuickApps.string(from: parsed)) == parsed, "apps: list round-trips")
+let defaults = QuickApps.defaultPaths()
+check(!defaults.isEmpty && defaults.allSatisfy { FileManager.default.fileExists(atPath: $0) },
+      "apps: defaults are only apps that exist here", "\(defaults)")
+check(defaults.count <= QuickApps.limit, "apps: defaults fit the grid")
+check(QuickApps.name(of: URL(fileURLWithPath: "/System/Applications/System Settings.app")) == "System Settings"
+      || !FileManager.default.fileExists(atPath: "/System/Applications/System Settings.app"),
+      "apps: names drop the .app")
+
 // MARK: - Last: a lyrics line that used to crash the parser
 
 // The stamp's end was taken as a UTF-16 offset and walked as a count of

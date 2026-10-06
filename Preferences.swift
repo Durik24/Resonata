@@ -13,6 +13,8 @@ enum Preferences {
         static let customWaveColour = "customWaveColour"
         static let showLyrics = "showLyrics"
         static let hotKey = "hotKey"
+        static let showSongPeek = "showSongPeek"
+        static let quickApps = "quickApps"
     }
 
     /// Call before anything reads a preference.
@@ -24,6 +26,8 @@ enum Preferences {
             Key.customWaveColour: "#FFFFFF",
             Key.showLyrics: true,
             Key.hotKey: HotKeyChoice.shiftCommandSpace.rawValue,
+            Key.showSongPeek: true,
+            Key.quickApps: QuickApps.defaultPaths().joined(separator: "\n"),
         ])
     }
 
@@ -35,6 +39,8 @@ enum Preferences {
     }
 
     static var showLyrics: Bool { UserDefaults.standard.bool(forKey: Key.showLyrics) }
+
+    static var showSongPeek: Bool { UserDefaults.standard.bool(forKey: Key.showSongPeek) }
 
     static var animationSpeed: AnimationSpeed {
         AnimationSpeed(rawValue: UserDefaults.standard.string(forKey: Key.animationSpeed) ?? "")

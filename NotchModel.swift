@@ -25,6 +25,10 @@ final class NotchModel: ObservableObject {
     /// Set by `NotchPanelController`. Moves the notch to the next display.
     var switchScreen: (() -> Void)?
 
+    /// Set by `NotchPanelController`. Closes the panel — after opening an app
+    /// from the "Aplikace" page, say.
+    var close: (() -> Void)?
+
     /// Counts up once as each new line of synced lyrics begins — see
     /// `LyricPulse`. Each change flashes the colour wash.
     @Published var pulse = 0
@@ -53,8 +57,16 @@ final class NotchModel: ObservableObject {
     /// The expanded panel grows a row when there are lyrics to show. Lives on
     /// the model so the panel controller and the view size from one number.
     var expandedHeight: CGFloat {
-        NotchView.expandedHeight + (showsLyricsRow ? NotchView.lyricsHeight : 0)
+        guard tab == .music else { return NotchView.expandedHeight }
+        return NotchView.expandedHeight + (showsLyricsRow ? NotchView.lyricsHeight : 0)
     }
+
+    /// A new song just started: the closed notch grows a little downward to
+    /// show its title for a moment — see `SongPeek`.
+    @Published var peeking = false
+
+    /// Which page the open panel shows.
+    @Published var tab: PanelTab = .music
 
     /// The collapsed pill carries artwork and waveform only while playback is
     /// live. Idle, it shrinks back to the bare cutout — but `track` is still
@@ -69,4 +81,27 @@ final class NotchModel: ObservableObject {
     /// playing, so the cost of playback can be measured on a silent machine.
     static let debugForceLive =
         ProcessInfo.processInfo.environment["RESONATA_DEBUG_FORCE_LIVE"] == "1"
+}
+
+/// The open panel's pages, switched from the icons beside the notch.
+enum PanelTab: String, CaseIterable, Identifiable {
+    case music, notes, apps
+
+    var id: String { rawValue }
+
+    var symbol: String {
+        switch self {
+        case .music: "music.note"
+        case .notes: "checklist"
+        case .apps: "square.grid.2x2"
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .music: "Hudba"
+        case .notes: "Poznámky a úkoly"
+        case .apps: "Aplikace"
+        }
+    }
 }

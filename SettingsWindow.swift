@@ -33,6 +33,8 @@ struct SettingsView: View {
     @AppStorage(Preferences.Key.customWaveColour) private var customHex = "#FFFFFF"
     @AppStorage(Preferences.Key.showLyrics) private var showLyrics = true
     @AppStorage(Preferences.Key.hotKey) private var hotKey = HotKeyChoice.shiftCommandSpace.rawValue
+    @AppStorage(Preferences.Key.showSongPeek) private var showSongPeek = true
+    @AppStorage(Preferences.Key.quickApps) private var quickApps = ""
 
     @State private var openAtLogin = LoginItem.isEnabled
     @State private var hotKeyTaken = false
@@ -66,6 +68,35 @@ struct SettingsView: View {
                     ForEach(AnimationSpeed.allCases) { Text($0.title).tag($0.rawValue) }
                 }
                 Toggle("Zobrazovat texty písní", isOn: $showLyrics)
+                Toggle("Ukázat novou skladbu v zavřeném notchi", isOn: $showSongPeek)
+            }
+
+            Section("Aplikace v notchi") {
+                let apps = QuickApps.urls(from: quickApps)
+                ForEach(Array(apps.enumerated()), id: \.element) { index, url in
+                    HStack(spacing: 8) {
+                        Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
+                            .resizable()
+                            .frame(width: 18, height: 18)
+                        Text(QuickApps.name(of: url))
+                        Spacer()
+                        Button { move(index, by: -1) } label: { Image(systemName: "chevron.up") }
+                            .buttonStyle(.borderless)
+                            .disabled(index == 0)
+                        Button { move(index, by: 1) } label: { Image(systemName: "chevron.down") }
+                            .buttonStyle(.borderless)
+                            .disabled(index == apps.count - 1)
+                        Button { QuickApps.remove(url) } label: { Image(systemName: "minus.circle") }
+                            .buttonStyle(.borderless)
+                            .help("Odebrat")
+                    }
+                }
+                HStack {
+                    Button("Přidat aplikaci…") { QuickApps.chooseAndAdd() }
+                        .disabled(apps.count >= QuickApps.limit)
+                    Spacer()
+                    Button("Výchozí") { QuickApps.save(QuickApps.defaultPaths().map { URL(fileURLWithPath: $0) }) }
+                }
             }
 
             Section {
@@ -80,6 +111,14 @@ struct SettingsView: View {
         .formStyle(.grouped)
         .frame(width: 420)
         .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func move(_ index: Int, by offset: Int) {
+        var apps = QuickApps.urls(from: quickApps)
+        let target = index + offset
+        guard apps.indices.contains(index), apps.indices.contains(target) else { return }
+        apps.swapAt(index, target)
+        QuickApps.save(apps)
     }
 
     private var customColour: Binding<Color> {

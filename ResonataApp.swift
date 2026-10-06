@@ -16,6 +16,7 @@ struct ResonataApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let model = NotchModel()
     private lazy var controller = NotchPanelController(model: model)
+    private lazy var songPeek = SongPeek(model: model)
     /// MediaRemote first — it sees every player. If the adapter can't start
     /// or MediaRemote won't answer on this macOS, the AppleScript source takes
     /// over and the app behaves exactly as it did before Phase 5.
@@ -75,6 +76,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // A flash as each lyric line begins, re-armed on every change to the
         // track (play, pause, seek, new song) or to its lyrics.
         lyricPulse.onPulse = { [weak self] in self?.model.pulse &+= 1 }
+
+        // A new song gets a moment in the closed notch.
+        model.$track
+            .sink { [weak self] track in self?.songPeek.trackChanged(to: track) }
+            .store(in: &cancellables)
         model.$track
             .combineLatest(model.$lyrics)
             .sink { [weak self] track, lines in self?.lyricPulse.update(track: track, lines: lines) }
@@ -88,6 +94,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             .sink { [weak self] track in self?.loadFavorite(for: track) }
             .store(in: &cancellables)
+
+        // Debug triggers, so the peek and each page can be driven and
+        // photographed from a script: `com.local.resonata.peek`, and
+        // `com.local.resonata.page` with the page name as the object.
+        if NotchPanel.debugClick {
+            let center = DistributedNotificationCenter.default()
+            center.addObserver(forName: Notification.Name("com.local.resonata.peek"),
+                               object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.songPeek.show() }
+            }
+            center.addObserver(forName: Notification.Name("com.local.resonata.page"),
+                               object: nil, queue: .main) { [weak self] note in
+                let name = note.object as? String
+                MainActor.assumeIsolated {
+                    if let tab = PanelTab(rawValue: name ?? "") { self?.model.tab = tab }
+                }
+            }
+        }
 
         // `RESONATA_DEBUG_FAKE_PULSES=1`: a flash twice a second, so the cost
         // of the flash can be measured without music.

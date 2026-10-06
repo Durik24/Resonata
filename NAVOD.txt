@@ -126,6 +126,23 @@ KROK 7 — Vyzkoušej ovládání
                                  Stahuje se jednou, pak z cache
                                  (~/Library/Caches/com.local.resonata)
   - Klikni kamkoliv mimo panel   zase se sbalí
+  - Nová skladba                 zavřený notch se na 3,5 s
+                                 zvětší dolů a ukáže název a
+                                 interpreta (vypnout jde
+                                 v nastavení)
+  - Ikony vpravo nahoře          v otevřeném panelu přepínají
+    (vedle notche)               stránky: Hudba, Poznámky
+                                 a úkoly, Aplikace
+  - Poznámky a úkoly             poznámka vlevo, seznam úkolů
+                                 vpravo (Enter přidá úkol,
+                                 kolečko ho odškrtne, × smaže).
+                                 Ukládá se jen u tebe v Macu:
+                                 ~/Library/Application Support/
+                                 Resonata/notes.json
+  - Aplikace                     klikni na ikonu = otevře
+                                 aplikaci; dlaždice + přidá
+                                 další. Odebrat a seřadit je jde
+                                 v nastavení.
   - Pravé tlačítko na notch      menu: nastavení, přepnout
     (nebo ctrl+klik)             displej, spouštět po
                                  přihlášení, ukončit aplikaci
@@ -280,6 +297,11 @@ CO JE V KTERÉM SOUBORU
 ResonataApp.swift      start aplikace, skrytí ikony z Docku
 Motion.swift           vymyšlený pohyb sloupců a vlnky
 LyricPulse.swift       záblesk barvy na začátku každého řádku textu
+SongPeek.swift         krátké ukázání nové skladby v zavřeném notchi
+Notes.swift            ukládání poznámky a úkolů
+NotesView.swift        stránka Poznámky a úkoly
+QuickApps.swift        seznam aplikací, otevírání, přidávání
+QuickAppsView.swift    stránka Aplikace
 Lyrics.swift           stažení textu z LRCLIB, parsování LRC, cache
 MediaRemote.swift      název/obal/ovládání pro libovolný přehrávač
 Vendor/                mediaremote-adapter (BSD-3), sestavuje build.sh
