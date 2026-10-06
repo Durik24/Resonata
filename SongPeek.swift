@@ -1,7 +1,7 @@
 import Foundation
 
-/// When a new song starts, the closed notch grows a little downward for a
-/// moment to show its title and artist, then settles back.
+/// When a new song starts, the closed pill slides out to the right — past the
+/// bars — for a moment, shows the title and artist, then slides back.
 ///
 /// Only for a *different* song that is *playing*, with the panel closed: not
 /// on launch (the first song seen isn't a change), not when you resume the

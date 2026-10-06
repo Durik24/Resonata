@@ -196,8 +196,11 @@ final class NotchPanelController {
             MainActor.assumeIsolated {
                 guard let self else { return }
                 if !self.model.isExpanded {
-                    // Collapsed, the window is exactly the pill: any click is
-                    // a click on it.
+                    // Only a click on the pill itself. The window is usually
+                    // exactly the pill, but not always: during a peek it's
+                    // wider on the left than the shape, and for a moment after
+                    // closing it's still the panel's size.
+                    guard self.pillRect.insetBy(dx: -2, dy: -2).contains(location) else { return }
                     //
                     // Set on the next run-loop pass, not inside the event
                     // dispatch. Published from within `sendEvent`, the change
@@ -556,6 +559,23 @@ final class NotchPanelController {
             .representation(using: .png, properties: [:])?.write(to: url)
     }
 
+    /// Where the closed pill is drawn, in window coordinates: top-centre,
+    /// shifted right while peeking.
+    private var pillRect: NSRect {
+        guard let panel, let screen = targetScreen else { return .zero }
+        let window = panel.frame.size
+        let notch = screen.notchSize
+        let height = notch.height + NotchMetrics.collapsedExtraHeight
+        var width = notch.width + (model.showsCollapsedContent ? NotchMetrics.collapsedContentWidth : 0)
+        var shift: CGFloat = 0
+        if model.peeking {
+            width = NotchView.peekSize(notch: notch).width
+            shift = NotchView.peekShift
+        }
+        return NSRect(x: (window.width - width) / 2 + shift, y: window.height - height,
+                      width: width, height: height)
+    }
+
     /// Where the expanded panel is drawn, in window coordinates: top-centre
     /// of the canvas, the size the view draws it at.
     private var expandedShapeRect: NSRect {
@@ -645,7 +665,7 @@ final class NotchPanelController {
         if expanded {
             size = CGSize(width: Self.canvasWidth, height: Self.canvasHeight)
         } else if peeking {
-            size = NotchView.peekSize(notch: screen.notchSize)
+            size = NotchView.peekWindowSize(notch: screen.notchSize)
         } else {
             size = CGSize(width: screen.notchSize.width
                             + (hasTrack ? NotchMetrics.collapsedContentWidth : 0),

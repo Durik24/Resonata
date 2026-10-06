@@ -127,9 +127,10 @@ KROK 7 — Vyzkoušej ovládání
                                  (~/Library/Caches/com.local.resonata)
   - Klikni kamkoliv mimo panel   zase se sbalí
   - Nová skladba                 zavřený notch se na 3,5 s
-                                 zvětší dolů a ukáže název a
-                                 interpreta (vypnout jde
-                                 v nastavení)
+                                 vysune doprava (od vlnky) a
+                                 ukáže název a interpreta;
+                                 obal vlevo zůstane na místě
+                                 (vypnout jde v nastavení)
   - Ikony vpravo nahoře          v otevřeném panelu přepínají
     (vedle notche)               stránky: Hudba, Poznámky
                                  a úkoly, Aplikace

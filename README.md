@@ -89,8 +89,10 @@ Ideas taken from NotchNook (lo.cafe) and rebuilt from scratch — none of its
 code or assets — keeping only what needs no permission:
 
 - **Song peek** (`SongPeek.swift`): when a different song starts playing and
-  the panel is closed, the pill grows downward for 3.5 s with the title and
-  artist under its usual row. Not on launch, not on resume, not while open;
+  the panel is closed, the pill slides out to the right, past the bars, for
+  3.5 s with the title and artist. Its left edge (the artwork) stays still:
+  `NotchFrame` animates a sideways shift together with the width, and the
+  content takes its size from that one animation only. Not on launch, not on resume, not while open;
   switchable in settings.
 - **Pages**: icons in the strip beside the cutout switch the open panel
   between Music, Notes and Apps.

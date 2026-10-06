@@ -22,25 +22,40 @@ struct NotchFrame: ViewModifier, Animatable {
     var size: CGSize
     var topRadius: CGFloat
     var bottomRadius: CGFloat
+    /// Sideways shift of the shape from the window's centre. Animated with
+    /// the width, so a pill that grows by `w` while shifting by `w / 2` keeps
+    /// its left edge exactly still — the song peek sliding out to the right.
+    var xOffset: CGFloat = 0
     /// What to draw under the content, given the current silhouette.
     var background: (NotchShape) -> AnyView
 
-    var animatableData: AnimatablePair<AnimatablePair<CGFloat, CGFloat>,
-                                       AnimatablePair<CGFloat, CGFloat>> {
+    var animatableData: AnimatablePair<AnimatablePair<AnimatablePair<CGFloat, CGFloat>,
+                                                      AnimatablePair<CGFloat, CGFloat>>,
+                                       CGFloat> {
         get {
-            AnimatablePair(AnimatablePair(size.width, size.height),
-                           AnimatablePair(topRadius, bottomRadius))
+            AnimatablePair(AnimatablePair(AnimatablePair(size.width, size.height),
+                                          AnimatablePair(topRadius, bottomRadius)),
+                           xOffset)
         }
         set {
-            size = CGSize(width: newValue.first.first, height: newValue.first.second)
-            topRadius = newValue.second.first
-            bottomRadius = newValue.second.second
+            size = CGSize(width: newValue.first.first.first, height: newValue.first.first.second)
+            topRadius = newValue.first.second.first
+            bottomRadius = newValue.first.second.second
+            xOffset = newValue.second
         }
     }
 
     func body(content: Content) -> some View {
         let shape = NotchShape(topRadius: topRadius, bottomRadius: bottomRadius)
         content
+            // The content's size comes from this modifier, frame by frame.
+            // Without this, SwiftUI *also* animated the content's own layout
+            // from old to new on the same transaction — two animations of one
+            // position that briefly disagree. Measured on the peek: the
+            // artwork and bars drifted 6pt right mid-slide while the pill's
+            // edge held still. Fades and transitions inside keep their own
+            // animations; only this implicit one is removed.
+            .transaction { $0.animation = nil }
             .frame(width: size.width, height: size.height)
             .background(background(shape))
             // Both states are laid out at their final size and clipped, so
@@ -50,6 +65,10 @@ struct NotchFrame: ViewModifier, Animatable {
             // Hit-test the silhouette only — the rest of the panel stays
             // click-through so you can still reach the menu bar beside it.
             .contentShape(shape)
+            // Applied here, inside the animatable body, like everything else:
+            // a shift animated separately from the width would let the left
+            // edge wander while the pill grows.
+            .offset(x: xOffset)
             // Fill whatever the window is and pin the shape to its top
             // centre. Not a fixed canvas size: the hosting view reports a
             // fixed frame as the content's intrinsic size, and AppKit then

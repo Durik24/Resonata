@@ -38,16 +38,27 @@ struct NotchView: View {
     /// Three lines of lyric and the breathing room around them.
     static let lyricsHeight: CGFloat = 58
 
-    /// The song-change peek: the pill's own row plus two lines underneath.
-    static let peekWidth: CGFloat = 340
-    static let peekExtraHeight: CGFloat = 44
+    /// The song-change peek: the playing pill, slid out to the right past the
+    /// bars by this much, with the title and artist in the new space.
+    static let peekExtraWidth: CGFloat = 160
 
-    /// The peek's size for a given notch — shared with `NotchPanelController`
-    /// so the window and the shape agree.
+    /// The peek's shape — shared with `NotchPanelController` so the window,
+    /// the shape and the click target agree. Same height as the pill: it
+    /// grows sideways only.
     static func peekSize(notch: CGSize) -> CGSize {
-        CGSize(width: max(notch.width + NotchMetrics.collapsedContentWidth, peekWidth),
-               height: notch.height + NotchMetrics.collapsedExtraHeight + peekExtraHeight)
+        CGSize(width: notch.width + NotchMetrics.collapsedContentWidth + peekExtraWidth,
+               height: notch.height + NotchMetrics.collapsedExtraHeight)
     }
+
+    /// The window during a peek: symmetric about the notch, so the notch
+    /// stays at its centre, and wide enough for the shape shifted right.
+    static func peekWindowSize(notch: CGSize) -> CGSize {
+        let shape = peekSize(notch: notch)
+        return CGSize(width: shape.width + peekExtraWidth, height: shape.height)
+    }
+
+    /// How far right the peeking shape sits, so its left edge doesn't move.
+    static let peekShift: CGFloat = peekExtraWidth / 2
 
     /// One spring, one clock.
     ///
@@ -151,7 +162,8 @@ struct NotchView: View {
             .modifier(NotchFrame(
                 size: size,
                 topRadius: model.isExpanded ? 12 : 0,
-                bottomRadius: model.isExpanded ? 24 : (model.peeking ? 16 : 7),
+                bottomRadius: model.isExpanded ? 24 : 7,
+                xOffset: !model.isExpanded && model.peeking ? Self.peekShift : 0,
                 background: { shape in
                     AnyView(ZStack {
                         shape.fill(Self.panelBlack)
@@ -266,31 +278,48 @@ struct NotchView: View {
                     )
             }
             .transition(Self.crossfade)
-        } else if model.peeking {
-            peek.transition(Self.crossfade)
         } else {
-            collapsed.transition(Self.crossfade)
+            closedRow.transition(Self.crossfade)
         }
     }
 
-    /// A new song, for a moment: the pill's own row on top — artwork and bars
-    /// exactly where they always are — and the title and artist underneath,
-    /// below the cutout, where there are pixels to draw them on.
-    private var peek: some View {
-        VStack(spacing: 2) {
+    /// The closed pill's content, peeking or not.
+    ///
+    /// One row for both, never a swap. Crossfading between a "closed" view
+    /// and a "peek" view drew two sets of bars for a moment — the old one
+    /// re-centred in the growing pill — a ghost mid-slide. Here the artwork
+    /// and bars are the same views the whole time, pinned left where they
+    /// always sit; peeking only fades the title and artist in beside them as
+    /// the pill slides out to the right.
+    private var closedRow: some View {
+        HStack(spacing: 0) {
             collapsed
-                .frame(height: notchSize.height + NotchMetrics.collapsedExtraHeight)
-            Text(model.track?.title ?? "")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.white)
-            Text(model.track?.artist ?? "")
-                .font(.system(size: 11))
-                .foregroundStyle(.white.opacity(0.55))
+                .padding(.leading, NotchMetrics.collapsedInset)
+            if model.peeking {
+                VStack(alignment: .leading, spacing: 1) {
+                    // Without a cutout the title is already in the pill's middle.
+                    if hasRealNotch {
+                        Text(model.track?.title ?? "")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.white)
+                    }
+                    Text(model.track?.artist ?? "")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.white.opacity(0.55))
+                }
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .padding(.horizontal, 10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                // The fade rides on the transition only. An `.animation`
+                // keyed on `peeking` around the whole row also animated the
+                // row's *position* on the fade's curve, against the shape's
+                // spring — measured: artwork and bars drifting 8pt right
+                // mid-slide and creeping back.
+                .transition(.opacity.animation(fade))
+            }
         }
-        .lineLimit(1)
-        .truncationMode(.tail)
-        .frame(width: Self.peekWidth - 36)
-        .frame(maxHeight: .infinity, alignment: .top)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
     }
 
     // MARK: Collapsed — artwork on the left of the notch, waveform on the right

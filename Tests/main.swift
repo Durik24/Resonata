@@ -261,8 +261,17 @@ check(!SongPeek.shouldPeek(from: songA, to: songB, expanded: false, enabled: fal
       "peek: not when switched off in settings")
 let notch = CGSize(width: 209, height: 38)
 let peek = NotchView.peekSize(notch: notch)
-check(peek.width >= notch.width + NotchMetrics.collapsedContentWidth && peek.height > notch.height + 30,
-      "peek: wider and taller than the playing pill", "\(peek)")
+check(peek.width == notch.width + NotchMetrics.collapsedContentWidth + NotchView.peekExtraWidth
+      && peek.height == notch.height + NotchMetrics.collapsedExtraHeight,
+      "peek: slides out sideways — wider than the playing pill, same height", "\(peek)")
+// Left edge stays put: shape centred in the window, then shifted right.
+let peekWindow = NotchView.peekWindowSize(notch: notch)
+let pillLeft = -(notch.width + NotchMetrics.collapsedContentWidth) / 2
+let peekLeft = -peek.width / 2 + NotchView.peekShift
+check(abs(peekLeft - pillLeft) < 0.01, "peek: the left edge (artwork) doesn't move",
+      "pill \(pillLeft), peek \(peekLeft)")
+check(peek.width / 2 + NotchView.peekShift <= peekWindow.width / 2 + 0.01,
+      "peek: the shifted shape fits in its window")
 
 // MARK: - Notes and to-dos
 

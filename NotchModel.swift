@@ -61,7 +61,7 @@ final class NotchModel: ObservableObject {
         return NotchView.expandedHeight + (showsLyricsRow ? NotchView.lyricsHeight : 0)
     }
 
-    /// A new song just started: the closed notch grows a little downward to
+    /// A new song just started: the closed pill slides out to the right to
     /// show its title for a moment — see `SongPeek`.
     @Published var peeking = false
 
