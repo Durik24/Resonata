@@ -119,9 +119,9 @@ final class NotchPanel: NSPanel {
 final class FirstClickHostingView<Content: View>: NSHostingView<Content> {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-    /// Where the pointer is over this window, in window coordinates; nil
-    /// once it has left. For hover-to-open.
-    var onPointer: ((NSPoint?) -> Void)?
+    /// The pointer moved over this window, entered it or left it. For
+    /// hover-to-open, which then asks where the pointer is on screen.
+    var onPointer: (() -> Void)?
 
     private var pointerTracking: NSTrackingArea?
 
@@ -143,17 +143,17 @@ final class FirstClickHostingView<Content: View>: NSHostingView<Content> {
 
     override func mouseEntered(with event: NSEvent) {
         super.mouseEntered(with: event)
-        onPointer?(event.locationInWindow)
+        onPointer?()
     }
 
     override func mouseMoved(with event: NSEvent) {
         super.mouseMoved(with: event)
-        onPointer?(event.locationInWindow)
+        onPointer?()
     }
 
     override func mouseExited(with event: NSEvent) {
         super.mouseExited(with: event)
-        onPointer?(nil)
+        onPointer?()
     }
 }
 
@@ -238,8 +238,8 @@ final class NotchPanelController {
         // x=750, the pill was drawn centred in *that*, and so it slid right
         // and then snapped back under the notch at the deferred shrink.
         hosting.sizingOptions = []
-        hosting.onPointer = { [weak self] location in
-            MainActor.assumeIsolated { self?.pointerMoved(to: location) }
+        hosting.onPointer = { [weak self] in
+            MainActor.assumeIsolated { self?.pointerMoved(to: NSEvent.mouseLocation) }
         }
         panel.contentView = hosting
         panel.onMouseDown = { [weak self] location in
@@ -387,9 +387,9 @@ final class NotchPanelController {
             ) { [weak self] note in
                 let arriving = (note.object as? String) == "in"
                 MainActor.assumeIsolated {
-                    guard let self else { return }
-                    let target = self.model.isExpanded ? self.expandedShapeRect : self.pillRect
-                    self.pointerMoved(to: arriving ? NSPoint(x: target.midX, y: target.midY) : nil)
+                    guard let self, let shape = self.shapeOnScreen else { return }
+                    self.pointerMoved(to: arriving ? NSPoint(x: shape.midX, y: shape.midY)
+                                                   : NSPoint(x: shape.midX, y: shape.minY - 200))
                 }
             }
         }
@@ -580,12 +580,20 @@ final class NotchPanelController {
     /// "Inside" is the shape actually drawn — the pill, or the open panel —
     /// not the window: open, the window is a larger transparent canvas, and
     /// moving into its margin is leaving the panel.
-    private func pointerMoved(to location: NSPoint?) {
-        guard Preferences.openMode == .hover else { return }
-        let inside = location.map { point in
-            model.isExpanded ? expandedShapeRect.contains(point)
-                             : pillRect.insetBy(dx: -2, dy: -2).contains(point)
-        } ?? false
+    ///
+    /// Measured in screen coordinates, never against the window. The window
+    /// is resized a run-loop pass *after* the panel opens, and an event in
+    /// between, measured against the still-small window, put the pointer
+    /// outside the open panel — which closed it, which reopened it: tested
+    /// with a real pointer resting on the notch, it flickered open and shut
+    /// five times a second.
+    private func pointerMoved(to point: NSPoint) {
+        guard Preferences.openMode == .hover, let shape = shapeOnScreen else { return }
+        // A hair of slack all round. Not optional: the pointer stops at the
+        // screen's top edge, y == maxY, and a rect doesn't contain its own
+        // max edge — without it, resting the pointer at the top of the open
+        // panel counted as leaving it, and it closed under the pointer.
+        let inside = shape.insetBy(dx: -2, dy: -2).contains(point)
         guard inside != pointerInside else { return }
         pointerInside = inside
         hoverTask?.cancel()
@@ -613,6 +621,21 @@ final class NotchPanelController {
                 if NotchPanel.debugClick { self.debugSnapshots(tag: "hover-close") }
             }
         }
+    }
+
+    /// The shape drawn right now, in screen coordinates: the open panel, or
+    /// the pill (slid right while peeking). The window is always centred on
+    /// the screen's top edge, so this follows from the screen alone.
+    private var shapeOnScreen: NSRect? {
+        guard let screen = targetScreen else { return nil }
+        let top = screen.frame.maxY, mid = screen.frame.midX
+        if model.isExpanded {
+            let width = model.expandedWidth, height = model.expandedHeight
+            return NSRect(x: mid - width / 2, y: top - height, width: width, height: height)
+        }
+        let pill = pillRect
+        return NSRect(x: mid - pill.width / 2 + (model.peeking ? NotchView.peekShift : 0),
+                      y: top - pill.height, width: pill.width, height: pill.height)
     }
 
     /// A note or a to-do is being typed. Leaving the panel then doesn't close
