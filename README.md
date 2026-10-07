@@ -174,8 +174,10 @@ login, no token, no network. Turn it on by pointing Claude Code's
     "statusLine": { "type": "command",
       "command": "'~/Library/Application Support/Resonata/claude-statusline.sh'" }
 
-The numbers are as fresh as the last status-line update; windows that have
-reset are dropped, and with nothing current the ring hides.
+The ring shows the session (5-hour) limit only, never the weekly one in its
+place; once that window has reset and no newer one has been reported, it
+shows "–". The weekly limit is in the tooltip. The numbers are as fresh as
+the last status-line update.
 
 ## Menu and volume
 
