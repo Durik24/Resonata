@@ -1,7 +1,7 @@
 #!/bin/bash
 # Builds Resonata.app without needing an Xcode project.
-#   ./build.sh          build
-#   ./build.sh run      build, then relaunch
+#   ./build.sh          build (into this folder)
+#   ./build.sh run      build, install into /Applications, launch from there
 set -euo pipefail
 
 cd "$(dirname "$0")"
@@ -93,8 +93,15 @@ fi
 
 echo "Built $PWD/$APP"
 
+# The copy that runs day to day — and starts at login — lives in
+# /Applications, not in this folder: moving or tidying the project must not
+# quietly stop Resonata starting. The first launch from there moves the login
+# item over (see `openAtLoginOnce`).
 if [ "${1:-}" = "run" ]; then
     pkill -x Resonata 2>/dev/null || true
-    open "$APP"
-    echo "Launched. Quit it later with: pkill -x Resonata"
+    sleep 0.5
+    rm -rf "/Applications/$APP"
+    ditto "$APP" "/Applications/$APP"
+    open "/Applications/$APP"
+    echo "Installed to /Applications/$APP and launched. Quit it later with: pkill -x Resonata"
 fi

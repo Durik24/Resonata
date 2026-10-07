@@ -20,8 +20,12 @@ step-by-step (Czech).
 
 ```
 ./setup-signing.sh   # once: a stable signing identity, so permissions stick
-./build.sh run
+./build.sh run       # build, install into /Applications, launch from there
 ```
+
+`./build.sh` alone only builds, into this folder. The everyday copy — the
+one that starts at login — is `/Applications/Resonata.app`, so moving or
+tidying the project folder can't stop Resonata starting.
 
 The only permission it may ask for is **Automation** for Spotify / Music,
 used by the fallback that reads what's playing and by the Apple Music heart.
@@ -126,6 +130,13 @@ animation speed, lyrics on/off, the calendar on/off, and the wave's colour (albu
 own). Apple Music tracks get a heart button (`favorited` over AppleScript);
 Spotify has no way to like a song from the Mac short of its web API.
 
+## Scrolling
+
+Closed, and on the music page, scrolling is the notch's: the volume, or the
+swipes in the NotchNook mode. On the notes and apps pages the page scrolls
+like any page, except along the top strip beside the cutout, which still
+works the notch (`NotchPanelController.takesScroll`).
+
 ## Opening: click, hover, gestures
 
 "Otevírat notch" has three modes; a click opens the panel in all of them.
@@ -193,6 +204,12 @@ The first launch registers Resonata with `SMAppService.mainApp`, so it opens
 again after a restart; macOS shows a "Login item added" notice. It registers
 once only: switching it off in System Settings › General › Login Items is
 respected. The registration survives `./build.sh` rebuilds (checked).
+
+The item belongs to one copy of the app, by path. When the copy in
+/Applications runs and the item was registered by another copy, it moves the
+item to itself — never the other way, so a test run from the project folder
+can't pull it back, and never when it was switched off (checked with
+`sfltool dumpbtm`: one item, at /Applications/Resonata.app).
 
 ## Tests
 

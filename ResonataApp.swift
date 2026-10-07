@@ -217,14 +217,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// that it hadn't started — the notch was just a notch. Registered only
     /// on the first launch that succeeds: switching it off in System
     /// Settings is a choice, and re-registering on every launch would undo it.
+    ///
+    /// The login item belongs to one copy of the app, by path. When the copy
+    /// in /Applications runs and the item was registered by another copy —
+    /// the build in the project folder — it moves the item to itself, so
+    /// tidying the project folder can't quietly stop Resonata starting.
+    /// Only ever *to* /Applications: a test run from the project folder must
+    /// not pull it back. And never when it was switched off.
     private func openAtLoginOnce() {
         let key = "registeredLoginItem"
+        let pathKey = "registeredLoginItemPath"
         let status = SMAppService.mainApp.status
+        let path = Bundle.main.bundlePath
         NSLog("Resonata: login item status %ld", status.rawValue)
+        let registered = UserDefaults.standard.bool(forKey: key)
+        let installed = path.hasPrefix("/Applications/")
+        let elsewhere = UserDefaults.standard.string(forKey: pathKey) != path
+        if registered, installed, elsewhere, status == .enabled || status == .notFound {
+            LoginItem.set(false)
+            if LoginItem.set(true) { UserDefaults.standard.set(path, forKey: pathKey) }
+            return
+        }
         // `.notFound` is the system losing track of the bundle — a rebuild
         // can do that — not the user saying no, so it's safe to re-register.
-        guard !UserDefaults.standard.bool(forKey: key) || status == .notFound else { return }
-        if LoginItem.set(true) { UserDefaults.standard.set(true, forKey: key) }
+        guard !registered || status == .notFound else { return }
+        if LoginItem.set(true) {
+            UserDefaults.standard.set(true, forKey: key)
+            UserDefaults.standard.set(path, forKey: pathKey)
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {

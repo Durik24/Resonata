@@ -67,7 +67,11 @@ KROK 4 — Sestav a spusť
     ./build.sh run
 
 Trvá to pár sekund. Xcode otevírat nemusíš. Když to dopadne dobře,
-vypíše to "Built ..." a "Launched.".
+vypíše to "Built ..." a "Installed to /Applications/Resonata.app".
+
+Aplikace se zkopíruje do složky Aplikace a spouští se odtamtud — i
+po přihlášení. Složku projektu tak můžeš klidně přesunout a Resonata
+dál naběhne. (./build.sh bez „run“ jen sestaví, nic neinstaluje.)
 
 Když to zahlásí "permission denied", nejdřív povol spuštění:
 

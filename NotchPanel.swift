@@ -80,8 +80,11 @@ final class NotchPanel: NSPanel {
     var onMouseDown: ((NSPoint) -> Void)?
     /// Right-click, or control-click: the app's menu.
     var onContextMenu: ((NSEvent) -> Void)?
-    /// Scrolling over the notch: the volume.
+    /// Scrolling over the notch: the volume, or swipes.
     var onScroll: ((NSEvent) -> Void)?
+    /// Whether a scroll is the notch's (`onScroll`) or the page's under the
+    /// pointer — a list of to-dos has to scroll like any list.
+    var takesScroll: ((NSEvent) -> Bool)?
 
     override func sendEvent(_ event: NSEvent) {
         switch event.type {
@@ -96,7 +99,7 @@ final class NotchPanel: NSPanel {
                 NSLog("click: mouse-down reached the panel at %@", NSStringFromPoint(event.locationInWindow))
             }
             onMouseDown?(event.locationInWindow)
-        case .scrollWheel:
+        case .scrollWheel where takesScroll?(event) ?? true:
             onScroll?(event)
             return
         default:
@@ -285,6 +288,9 @@ final class NotchPanelController {
         }
         panel.onContextMenu = { [weak self] event in
             MainActor.assumeIsolated { self?.showMenu(for: event) }
+        }
+        panel.takesScroll = { [weak self] event in
+            MainActor.assumeIsolated { self?.takesScroll(event) ?? true }
         }
         panel.onScroll = { [weak self] event in
             MainActor.assumeIsolated {
@@ -701,6 +707,20 @@ final class NotchPanelController {
             NSEvent.removeMonitor(monitor)
             leaveMonitor = nil
         }
+    }
+
+    /// Scrolls the notch keeps for itself — volume, or swipes in `.nook` mode
+    /// — and the ones it passes on to the page under the pointer.
+    ///
+    /// Closed, and on the music page, every scroll is the notch's: there's
+    /// nothing there to scroll. On the notes and apps pages the content has
+    /// to scroll like any page — it used to swallow every scroll, so a long
+    /// to-do list couldn't be scrolled at all — except along the top strip
+    /// beside the cutout, which still works the notch.
+    private func takesScroll(_ event: NSEvent) -> Bool {
+        guard model.isExpanded, model.tab != .music,
+              let notch = targetScreen?.notchSize else { return true }
+        return event.locationInWindow.y >= expandedShapeRect.maxY - notch.height
     }
 
     /// Swipes on the notch, in `.nook` mode — NotchNook's gestures, in place
