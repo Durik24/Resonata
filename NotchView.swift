@@ -93,6 +93,15 @@ struct NotchView: View {
     private static let crossfade = AnyTransition.opacity
         .animation(.easeInOut(duration: 0.22))
 
+    /// The closed row fades back in on close as before, but on open it's
+    /// gone in the first frame. Fading it out — 0.22 s, and even 0.08 s —
+    /// drew it, the song peek's title included, into the panel growing
+    /// around it: a blip of text at the top of every open from a hover peek.
+    private static let closedSwap = AnyTransition.asymmetric(
+        insertion: .opacity.animation(.easeInOut(duration: 0.22)),
+        removal: .identity
+    )
+
     /// The open panel's content comes into focus rather than just fading:
     /// NotchNook's scale-and-blur. The scale half already comes from the
     /// content growing with the box (see `content`), so this adds the blur.
@@ -313,7 +322,7 @@ struct NotchView: View {
             }
             .transition(Self.focusIn)
         } else {
-            closedRow.transition(Self.crossfade)
+            closedRow.transition(Self.closedSwap)
         }
     }
 
