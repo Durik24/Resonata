@@ -364,6 +364,23 @@ do {
     check(ClaudeLimits.parse(Data("garbage".utf8), now: now) == nil, "claude: a broken file is ignored")
 }
 
+// MARK: - Swipes on the notch
+
+do {
+    typealias C = NotchPanelController
+    check(C.swipeAction(travel: CGSize(width: 0, height: 40), precise: true) == .down, "swipe: down opens")
+    check(C.swipeAction(travel: CGSize(width: 0, height: -40), precise: true) == .up, "swipe: up closes")
+    check(C.swipeAction(travel: CGSize(width: 0, height: 20), precise: true) == nil, "swipe: too short does nothing")
+    check(C.swipeAction(travel: CGSize(width: 60, height: 5), precise: true) == .right, "swipe: right is next")
+    check(C.swipeAction(travel: CGSize(width: -60, height: 0), precise: true) == .left, "swipe: left is previous")
+    check(C.swipeAction(travel: CGSize(width: 40, height: 0), precise: true) == nil,
+          "swipe: sideways needs a longer swipe than up or down")
+    check(C.swipeAction(travel: CGSize(width: 35, height: 40), precise: true) == nil,
+          "swipe: a diagonal is neither")
+    check(C.swipeAction(travel: CGSize(width: 0, height: 1), precise: false) == .down,
+          "swipe: one wheel click counts")
+}
+
 // MARK: - Last: a lyrics line that used to crash the parser
 
 // The stamp's end was taken as a UTF-16 offset and walked as a count of

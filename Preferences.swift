@@ -30,7 +30,7 @@ enum Preferences {
             Key.hotKey: HotKeyChoice.shiftCommandSpace.rawValue,
             Key.showSongPeek: true,
             Key.showCalendar: true,
-            Key.openMode: OpenMode.hover.rawValue,
+            Key.openMode: OpenMode.nook.rawValue,
             Key.quickApps: QuickApps.defaultPaths().joined(separator: "\n"),
         ])
     }
@@ -65,17 +65,21 @@ enum Preferences {
 }
 
 /// How unhurried the notch's springs and fades are.
-/// How the closed notch opens. A click always works; hover adds opening by
-/// resting the pointer on it, and closing when the pointer leaves.
+/// How the closed notch opens. A click always works.
+/// - hover: the boring.notch way — rest the pointer on it to open, leave
+///   to close.
+/// - nook: the NotchNook way — hovering only previews the song; swipes on
+///   the notch open, close and skip, in place of scrolling the volume.
 enum OpenMode: String, CaseIterable, Identifiable {
-    case click, hover
+    case click, hover, nook
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .click: "Kliknutím"
-        case .hover: "Najetím myší"
+        case .hover: "Najetím myší (jako boring.notch)"
+        case .nook: "Kliknutím a gesty (jako NotchNook)"
         }
     }
 }
@@ -97,7 +101,9 @@ enum AnimationSpeed: String, CaseIterable, Identifiable {
     var spring: Animation {
         switch self {
         case .fast: .spring(response: 0.25, dampingFraction: 0.86)
-        case .normal: .spring(response: 0.45, dampingFraction: 0.82)
+        // boring.notch's spring: quicker than ours was, with a hint of
+        // overshoot, so the panel lands rather than just stops.
+        case .normal: .spring(response: 0.38, dampingFraction: 0.8)
         case .slow: .spring(response: 0.7, dampingFraction: 0.8)
         }
     }

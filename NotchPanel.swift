@@ -205,9 +205,19 @@ final class NotchPanelController {
     /// Hides the volume meter a moment after the last scroll.
     private var volumeHide: DispatchWorkItem?
 
-    /// Hover-to-open state — see `pointerMoved(to:)`.
+    /// Hover state — see `pointerMoved(to:)`.
     private var pointerInside = false
     private var hoverTask: Task<Void, Never>?
+    /// Watches the pointer *outside* our window, only while it's on the notch
+    /// — see `pointerMoved(to:)`.
+    private var leaveMonitor: Any?
+    /// The song peek on show is the hover preview, not a song change — so
+    /// leaving the notch takes it away again.
+    private var hoverPeeking = false
+
+    /// The swipe in progress on the notch — see `swipe(_:)`.
+    private var swipeTravel = CGSize.zero
+    private var swipeDone = false
 
     /// How long the pointer has to rest on the notch before it opens, so
     /// passing over it on the way to the menu bar doesn't.
@@ -277,7 +287,14 @@ final class NotchPanelController {
             MainActor.assumeIsolated { self?.showMenu(for: event) }
         }
         panel.onScroll = { [weak self] event in
-            MainActor.assumeIsolated { self?.scrollVolume(event) }
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                if Preferences.openMode == .nook {
+                    self.swipe(event)
+                } else {
+                    self.scrollVolume(event)
+                }
+            }
         }
         self.panel = panel
         updateVisibility()
@@ -306,7 +323,8 @@ final class NotchPanelController {
 
         model.$isExpanded
             .removeDuplicates()
-            .combineLatest(collapsedContentVisible, model.$peeking.removeDuplicates())
+            .combineLatest(collapsedContentVisible, model.$peeking.removeDuplicates(),
+                           model.$hovering.removeDuplicates())
             // Deliver on the next run-loop pass, never inside the publish.
             //
             // `@Published` fires on *willSet*. Resizing the window right there
@@ -317,8 +335,9 @@ final class NotchPanelController {
             // with music playing, the spectrum's next tick a frame later;
             // idle, the ten-second re-sync. That was the "opens after 8s".
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] expanded, hasTrack, peeking in
-                self?.apply(expanded: expanded, hasTrack: hasTrack, peeking: peeking)
+            .sink { [weak self] expanded, hasTrack, peeking, hovering in
+                self?.apply(expanded: expanded, hasTrack: hasTrack, peeking: peeking,
+                            hovering: hovering)
             }
             .store(in: &cancellables)
 
@@ -563,7 +582,11 @@ final class NotchPanelController {
         DispatchQueue.main.async { [weak self] in
             MainActor.assumeIsolated {
                 guard let self, self.model.isExpanded != expanded else { return }
-                if expanded { self.model.peeking = false }
+                if expanded {
+                    self.model.peeking = false
+                    self.model.hovering = false
+                    self.hoverPeeking = false
+                }
                 self.model.isExpanded = expanded
                 self.panel?.contentView?.needsLayout = true
                 self.panel?.contentView?.layoutSubtreeIfNeeded()
@@ -572,10 +595,14 @@ final class NotchPanelController {
         }
     }
 
-    /// Hover to open, the way boring.notch does it (minus its haptic tick):
-    /// open once the pointer has rested on the notch for
-    /// `hoverDwell`, close `hoverLeaveDelay` after it leaves the panel. A
-    /// click still opens at once.
+    /// The pointer on the notch, in every mode:
+    /// - the closed pill swells a little under it (NotchNook's hover state);
+    /// - `.hover` (boring.notch): open once the pointer has rested there for
+    ///   `hoverDwell`, close `hoverLeaveDelay` after it leaves the panel;
+    /// - `.nook` (NotchNook): after the same rest, the song peeks out — title
+    ///   and artist — and slides back when the pointer leaves. Opening is a
+    ///   click or a swipe down.
+    /// A click opens at once in every mode. No haptics, by request.
     ///
     /// "Inside" is the shape actually drawn — the pill, or the open panel —
     /// not the window: open, the window is a larger transparent canvas, and
@@ -588,7 +615,7 @@ final class NotchPanelController {
     /// with a real pointer resting on the notch, it flickered open and shut
     /// five times a second.
     private func pointerMoved(to point: NSPoint) {
-        guard Preferences.openMode == .hover, let shape = shapeOnScreen else { return }
+        guard let shape = shapeOnScreen else { return }
         // A hair of slack all round. Not optional: the pointer stops at the
         // screen's top edge, y == maxY, and a rect doesn't contain its own
         // max edge — without it, resting the pointer at the top of the open
@@ -597,30 +624,136 @@ final class NotchPanelController {
         guard inside != pointerInside else { return }
         pointerInside = inside
         hoverTask?.cancel()
-
-        if inside {
-            guard !model.isExpanded else { return }
-            // No haptic tick on arrival, unlike boring.notch: tried and taken
-            // out at the user's request.
-            hoverTask = Task { @MainActor [weak self] in
-                try? await Task.sleep(for: Self.hoverDwell)
-                guard let self, !Task.isCancelled, self.pointerInside,
-                      !self.model.isExpanded else { return }
-                if NotchPanel.debugClick { NSLog("click: hover -> EXPAND") }
-                self.setExpanded(true)
-                if NotchPanel.debugClick { self.debugSnapshots(tag: "hover-open") }
-            }
-        } else {
-            guard model.isExpanded else { return }
-            hoverTask = Task { @MainActor [weak self] in
-                try? await Task.sleep(for: Self.hoverLeaveDelay)
-                guard let self, !Task.isCancelled, !self.pointerInside,
-                      self.model.isExpanded, !self.isTyping else { return }
-                if NotchPanel.debugClick { NSLog("click: hover left -> COLLAPSE") }
-                self.setExpanded(false)
-                if NotchPanel.debugClick { self.debugSnapshots(tag: "hover-close") }
+        watchForLeaving(inside)
+        // Published on the next pass, never from inside the event dispatch —
+        // see `setExpanded`.
+        let swell = inside && !model.isExpanded
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, self.model.hovering != swell else { return }
+                self.model.hovering = swell
             }
         }
+
+        switch Preferences.openMode {
+        case .click:
+            break
+        case .hover:
+            if inside {
+                guard !model.isExpanded else { return }
+                hoverTask = Task { @MainActor [weak self] in
+                    try? await Task.sleep(for: Self.hoverDwell)
+                    guard let self, !Task.isCancelled, self.pointerInside,
+                          !self.model.isExpanded else { return }
+                    if NotchPanel.debugClick { NSLog("click: hover -> EXPAND") }
+                    self.setExpanded(true)
+                    if NotchPanel.debugClick { self.debugSnapshots(tag: "hover-open") }
+                }
+            } else {
+                guard model.isExpanded else { return }
+                hoverTask = Task { @MainActor [weak self] in
+                    try? await Task.sleep(for: Self.hoverLeaveDelay)
+                    guard let self, !Task.isCancelled, !self.pointerInside,
+                          self.model.isExpanded, !self.isTyping else { return }
+                    if NotchPanel.debugClick { NSLog("click: hover left -> COLLAPSE") }
+                    self.setExpanded(false)
+                    if NotchPanel.debugClick { self.debugSnapshots(tag: "hover-close") }
+                }
+            }
+        case .nook:
+            if inside {
+                guard !model.isExpanded, !model.peeking, model.track != nil else { return }
+                hoverTask = Task { @MainActor [weak self] in
+                    try? await Task.sleep(for: Self.hoverDwell)
+                    guard let self, !Task.isCancelled, self.pointerInside,
+                          !self.model.isExpanded, !self.model.peeking else { return }
+                    if NotchPanel.debugClick { NSLog("click: hover -> PEEK") }
+                    self.hoverPeeking = true
+                    self.model.peeking = true
+                    if NotchPanel.debugClick { self.debugSnapshots(tag: "hover-peek") }
+                }
+            } else if hoverPeeking {
+                hoverPeeking = false
+                if NotchPanel.debugClick { NSLog("click: hover left -> UNPEEK") }
+                model.peeking = false
+            }
+        }
+    }
+
+    /// The window's own tracking area can't be trusted to report the pointer
+    /// leaving: when the window resizes under a resting pointer — the swell,
+    /// the peek sliding out — AppKit can lose track of it being inside, and
+    /// then never sends the exit. Tested: the peek stayed out and the pill
+    /// stayed swollen after the pointer had gone. So while the pointer is on
+    /// the notch, a global monitor follows it outside our window too, and is
+    /// removed the moment it has left. Mouse movement only — no permission,
+    /// and nothing at all while the pointer is elsewhere.
+    private func watchForLeaving(_ inside: Bool) {
+        if inside, leaveMonitor == nil {
+            leaveMonitor = NSEvent.addGlobalMonitorForEvents(
+                matching: [.mouseMoved, .leftMouseDragged]
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.pointerMoved(to: NSEvent.mouseLocation) }
+            }
+        } else if !inside, let monitor = leaveMonitor {
+            NSEvent.removeMonitor(monitor)
+            leaveMonitor = nil
+        }
+    }
+
+    /// Swipes on the notch, in `.nook` mode — NotchNook's gestures, in place
+    /// of scrolling the volume:
+    /// - down opens, up closes;
+    /// - right skips to the next song, left goes back.
+    /// One action per swipe, decided once the fingers have travelled far
+    /// enough in one direction; the rest of the swipe and its momentum are
+    /// ignored, so a long swipe doesn't skip three songs.
+    private func swipe(_ event: NSEvent) {
+        guard event.momentumPhase.isEmpty else { return }
+        // A trackpad marks where a swipe begins; a mouse wheel doesn't, and
+        // each of its clicks is a swipe of its own.
+        if event.phase == .began || event.phase == .mayBegin || event.phase.isEmpty {
+            swipeTravel = .zero
+            swipeDone = false
+        }
+        guard !swipeDone else { return }
+
+        // Where the *fingers* went, whatever the scrolling direction setting:
+        // down and right positive.
+        let finger: CGFloat = event.isDirectionInvertedFromDevice ? 1 : -1
+        swipeTravel.width += event.scrollingDeltaX * finger
+        swipeTravel.height += event.scrollingDeltaY * finger
+
+        guard let action = Self.swipeAction(travel: swipeTravel,
+                                            precise: event.hasPreciseScrollingDeltas) else { return }
+        swipeDone = true
+        if NotchPanel.debugClick { NSLog("click: swipe \(action)") }
+        switch action {
+        case .down where !model.isExpanded: setExpanded(true)
+        case .up where model.isExpanded: setExpanded(false)
+        case .left, .right:
+            guard let source = model.track?.source else { return }
+            transport(action == .right ? .next : .previous, in: source)
+        default: break
+        }
+    }
+
+    enum SwipeAction { case up, down, left, right }
+
+    /// Which way a swipe went, once it has gone far enough to count — and
+    /// clearly more one way than the other, so a slightly diagonal swipe
+    /// down doesn't skip a song. Sideways needs a longer swipe than up or
+    /// down: skipping a song by accident is the worse mistake.
+    nonisolated static func swipeAction(travel: CGSize, precise: Bool) -> SwipeAction? {
+        let reach: CGFloat = precise ? 36 : 1
+        let x = travel.width, y = travel.height
+        if abs(y) >= reach, abs(y) > abs(x) * 1.5 {
+            return y > 0 ? .down : .up
+        }
+        if abs(x) >= reach * 1.6, abs(x) > abs(y) * 1.5 {
+            return x > 0 ? .right : .left
+        }
+        return nil
     }
 
     /// The shape drawn right now, in screen coordinates: the open panel, or
@@ -703,12 +836,17 @@ final class NotchPanelController {
         guard let panel, let screen = targetScreen else { return .zero }
         let window = panel.frame.size
         let notch = screen.notchSize
-        let height = notch.height + NotchMetrics.collapsedExtraHeight
+        var height = notch.height + NotchMetrics.collapsedExtraHeight
         var width = notch.width + (model.showsCollapsedContent ? NotchMetrics.collapsedContentWidth : 0)
         var shift: CGFloat = 0
         if model.peeking {
             width = NotchView.peekSize(notch: notch).width
             shift = NotchView.peekShift
+        }
+        // The swell stays on through a hover peek — the pointer is still there.
+        if model.hovering {
+            width += NotchMetrics.hoverGrowth.width
+            height += NotchMetrics.hoverGrowth.height
         }
         return NSRect(x: (window.width - width) / 2 + shift, y: window.height - height,
                       width: width, height: height)
@@ -753,11 +891,12 @@ final class NotchPanelController {
     /// the current and the new frame now, the exact new frame later. That
     /// also covers changes that grow one way and shrink the other, which the
     /// song-change peek brought in.
-    private func apply(expanded: Bool, hasTrack: Bool, peeking: Bool) {
+    private func apply(expanded: Bool, hasTrack: Bool, peeking: Bool, hovering: Bool = false) {
         guard let panel, let screen = targetScreen else { return }
         shrink?.cancel()
 
-        let target = frame(for: screen, expanded: expanded, hasTrack: hasTrack, peeking: peeking)
+        let target = frame(for: screen, expanded: expanded, hasTrack: hasTrack, peeking: peeking,
+                           hovering: hovering)
         let room = panel.frame.union(target)
         if room != panel.frame { setPanelFrame(room) }
         guard room != target else { return }
@@ -797,17 +936,22 @@ final class NotchPanelController {
         for screen: NSScreen,
         expanded: Bool = false,
         hasTrack: Bool = false,
-        peeking: Bool = false
+        peeking: Bool = false,
+        hovering: Bool = false
     ) -> NSRect {
         let size: CGSize
         if expanded {
             size = CGSize(width: Self.canvasWidth, height: Self.canvasHeight)
         } else if peeking {
-            size = NotchView.peekWindowSize(notch: screen.notchSize)
+            let peek = NotchView.peekWindowSize(notch: screen.notchSize)
+            size = CGSize(width: peek.width + (hovering ? NotchMetrics.hoverGrowth.width : 0),
+                          height: peek.height + (hovering ? NotchMetrics.hoverGrowth.height : 0))
         } else {
             size = CGSize(width: screen.notchSize.width
-                            + (hasTrack ? NotchMetrics.collapsedContentWidth : 0),
-                          height: screen.notchSize.height + NotchMetrics.collapsedExtraHeight)
+                            + (hasTrack ? NotchMetrics.collapsedContentWidth : 0)
+                            + (hovering ? NotchMetrics.hoverGrowth.width : 0),
+                          height: screen.notchSize.height + NotchMetrics.collapsedExtraHeight
+                            + (hovering ? NotchMetrics.hoverGrowth.height : 0))
         }
 
         // NSScreen coordinates are global and bottom-left origin, so "top of the

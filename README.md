@@ -119,17 +119,39 @@ Accessibility permissions), per the no-listening, no-camera choice above.
 ## Settings, shortcut, heart
 
 Right-click → Nastavení… opens a settings window: open at login, how the
-notch opens (click, or hover — see below), a global
+notch opens (click, hover or gestures — see below), a global
 shortcut to open the notch (⇧⌘Space by default; Carbon hot keys, so no
 Accessibility permission), how long after a pause the notch shrinks,
 animation speed, lyrics on/off, the calendar on/off, and the wave's colour (album, white, or your
 own). Apple Music tracks get a heart button (`favorited` over AppleScript);
 Spotify has no way to like a song from the Mac short of its web API.
 
-## Hover to open
+## Opening: click, hover, gestures
 
-With "Otevírat notch: Najetím myší" (the default), the notch opens the way
-boring.notch does it, without its haptic tick: open after 0.3 s of resting
+"Otevírat notch" has three modes; a click opens the panel in all of them.
+
+- **Kliknutím a gesty (jako NotchNook)** — the default. Resting the pointer
+  on the notch for 0.3 s slides the song out (the song peek) until the
+  pointer leaves. Swipes on the notch: down opens, up closes, right skips
+  to the next song, left goes back. Swipes take the place of scrolling the
+  volume in this mode.
+- **Najetím myší (jako boring.notch)**, below.
+- **Kliknutím** — click only, scroll for volume.
+
+In every mode the closed pill swells a little (12×4 pt, a quick spring)
+while the pointer is on it, the panel opens on boring.notch's spring
+(response 0.38, damping 0.8) and its content comes into focus from a blur
+(NotchNook's scale-and-blur; the scale comes from the content growing with
+the box). No haptics.
+
+While the pointer is on the notch a global mouse-moved monitor follows it
+outside the window, and is removed once it has left: the window's own
+tracking area loses the pointer when the window resizes under it, and then
+never reports the exit.
+
+### Hover to open
+
+The boring.notch way, without its haptic tick: open after 0.3 s of resting
 there (so passing over it on the way to the menu bar
 doesn't), close 0.1 s after the pointer leaves the panel. Not while a note or
 to-do is being typed — then only a click outside closes it. A click always

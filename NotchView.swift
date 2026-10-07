@@ -93,6 +93,27 @@ struct NotchView: View {
     private static let crossfade = AnyTransition.opacity
         .animation(.easeInOut(duration: 0.22))
 
+    /// The open panel's content comes into focus rather than just fading:
+    /// NotchNook's scale-and-blur. The scale half already comes from the
+    /// content growing with the box (see `content`), so this adds the blur.
+    private static let focusIn = AnyTransition.modifier(
+        active: Defocus(radius: 10, opacity: 0),
+        identity: Defocus(radius: 0, opacity: 1)
+    ).animation(.easeOut(duration: 0.32))
+
+    /// The closed pill's size, swollen by `hoverGrowth` when asked — shared
+    /// with `NotchPanelController`, so the window and the click target grow
+    /// with the shape.
+    static func collapsedSize(model: NotchModel, grown: Bool) -> CGSize {
+        let base = CGSize(
+            width: model.notchSize.width
+                + (model.showsCollapsedContent ? NotchMetrics.collapsedContentWidth : 0),
+            height: model.notchSize.height + NotchMetrics.collapsedExtraHeight)
+        guard grown else { return base }
+        return CGSize(width: base.width + NotchMetrics.hoverGrowth.width,
+                      height: base.height + NotchMetrics.hoverGrowth.height)
+    }
+
     /// Device-space black, deliberately not `Color.black`.
     ///
     /// `Color.black` is sRGB and gets colour-managed into the display's
@@ -109,7 +130,14 @@ struct NotchView: View {
     )
 
     private var size: CGSize {
-        if !model.isExpanded, model.peeking { return Self.peekSize(notch: notchSize) }
+        if !model.isExpanded, model.peeking {
+            // The swell stays on through a hover peek — the pointer is still there.
+            let peek = Self.peekSize(notch: notchSize)
+            guard model.hovering else { return peek }
+            return CGSize(width: peek.width + NotchMetrics.hoverGrowth.width,
+                          height: peek.height + NotchMetrics.hoverGrowth.height)
+        }
+        if !model.isExpanded, model.hovering { return Self.collapsedSize(model: model, grown: true) }
         return model.isExpanded
             ? CGSize(width: model.expandedWidth, height: model.expandedHeight)
             // Idle shrinks the pill back to the bare cutout, not just blacks it
@@ -194,6 +222,9 @@ struct NotchView: View {
             .animation(settle, value: model.showsCollapsedContent)
             .animation(settle, value: model.peeking)
             .animation(settle, value: model.tab)
+            // The hover swell is quicker and springier than the open: a
+            // small, live response to the pointer, not a change of state.
+            .animation(.spring(response: 0.28, dampingFraction: 0.62), value: model.hovering)
             // Opening and closing are both handled in AppKit — see
             // `NotchPanel.onMouseDown` and the global monitor in the
             // controller. Nothing here reacts to clicks; the buttons and the
@@ -279,7 +310,7 @@ struct NotchView: View {
                         anchor: .top
                     )
             }
-            .transition(Self.crossfade)
+            .transition(Self.focusIn)
         } else {
             closedRow.transition(Self.crossfade)
         }
@@ -434,5 +465,15 @@ struct NotchView: View {
             // Trailing padding shifts only the wave inward — the artwork sits
             // on the far side of the cutout and stays put.
             .padding(.trailing, NotchMetrics.waveformNudge)
+    }
+}
+
+/// Blur plus opacity, for `NotchView.focusIn`.
+private struct Defocus: ViewModifier {
+    var radius: CGFloat
+    var opacity: Double
+
+    func body(content: Content) -> some View {
+        content.blur(radius: radius).opacity(opacity)
     }
 }

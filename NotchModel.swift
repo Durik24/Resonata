@@ -60,6 +60,9 @@ final class NotchModel: ObservableObject {
     /// show its title for a moment — see `SongPeek`.
     @Published var peeking = false
 
+    /// The pointer is on the closed pill, which swells a little under it.
+    @Published var hovering = false
+
     /// Which page the open panel shows.
     @Published var tab: PanelTab = .music
 

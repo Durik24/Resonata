@@ -35,7 +35,7 @@ struct SettingsView: View {
     @AppStorage(Preferences.Key.hotKey) private var hotKey = HotKeyChoice.shiftCommandSpace.rawValue
     @AppStorage(Preferences.Key.showSongPeek) private var showSongPeek = true
     @AppStorage(Preferences.Key.showCalendar) private var showCalendar = true
-    @AppStorage(Preferences.Key.openMode) private var openMode = OpenMode.hover.rawValue
+    @AppStorage(Preferences.Key.openMode) private var openMode = OpenMode.nook.rawValue
     @AppStorage(Preferences.Key.quickApps) private var quickApps = ""
 
     @State private var openAtLogin = LoginItem.isEnabled
