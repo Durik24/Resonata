@@ -125,11 +125,18 @@ KROK 7 — Vyzkoušej ovládání
                                  řádek, podle času skladby.
                                  Stahuje se jednou, pak z cache
                                  (~/Library/Caches/com.local.resonata)
-  - Najeď myší na notch          po 0,3 s se notch otevře; když myš z
-                                 panelu odjede, zavře se. Při
-                                 psaní poznámky zůstane otevřený.
+  - Najeď myší na notch          notch se trochu nafoukne a po
+                                 0,3 s vysune název skladby;
+                                 když myš odjede, zasune se
+  - Přejeď dvěma prsty na notchi dolů = otevřít, nahoru = zavřít,
+                                 doprava = další skladba,
+                                 doleva = předchozí
                                  (V nastavení „Otevírat notch“
-                                 jde přepnout jen na kliknutí.)
+                                 jde přepnout na „Najetím myší“
+                                 — otevře se samo po 0,3 s a
+                                 zavře, když myš odjede — nebo
+                                 jen na kliknutí. Hlasitost
+                                 kolečkem funguje v těch dvou.)
   - Klikni kamkoliv mimo panel   zase se sbalí
   - Nová skladba                 zavřený notch se na 3,5 s
                                  vysune doprava, vlnka odjede
