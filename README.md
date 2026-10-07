@@ -172,24 +172,6 @@ opens at once. Tracked with one `NSTrackingArea` on Resonata's own window, so
 nothing watches the mouse anywhere else and no permission is involved
 (`NotchPanelController.pointerMoved(to:)`).
 
-## Claude limits
-
-A small ring in the open panel's top bar shows how much of Claude's 5-hour
-session limit is used (hover: reset time and the weekly limit). Claude Code
-hands its status line `rate_limits` as JSON; Resonata installs a status-line
-script at `~/Library/Application Support/Resonata/claude-statusline.sh` that
-keeps only that part in `claude-limits.json` (`ClaudeLimits.swift`). No
-login, no token, no network. Turn it on by pointing Claude Code's
-`statusLine` at the script in `~/.claude/settings.json`:
-
-    "statusLine": { "type": "command",
-      "command": "'~/Library/Application Support/Resonata/claude-statusline.sh'" }
-
-The ring shows the session (5-hour) limit only, never the weekly one in its
-place; once that window has reset and no newer one has been reported, it
-shows "–". The weekly limit is in the tooltip. The numbers are as fresh as
-the last status-line update.
-
 ## Menu and volume
 
 Right-click (or control-click) the notch: switch display, open at login,

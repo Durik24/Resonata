@@ -78,7 +78,6 @@ extension NotchView {
             iconButton("gearshape", help: "Nastavení") {
                 SettingsWindowController.shared.show()
             }
-            ClaudeLimitsBadge()
             // Re-read every half minute while the panel is open; closed, the
             // view doesn't exist and nothing is read at all.
             TimelineView(.periodic(from: .now, by: 30)) { _ in
