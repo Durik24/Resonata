@@ -43,7 +43,7 @@ struct NotchView: View {
 
     /// The song-change peek: the playing pill, slid out to the right past the
     /// bars by this much, with the title and artist in the new space.
-    static let peekExtraWidth: CGFloat = 110
+    static let peekExtraWidth: CGFloat = 118
 
     /// The peek's shape — shared with `NotchPanelController` so the window,
     /// the shape and the click target agree. Same height as the pill: it
@@ -222,9 +222,10 @@ struct NotchView: View {
             .animation(settle, value: model.showsCollapsedContent)
             .animation(settle, value: model.peeking)
             .animation(settle, value: model.tab)
-            // The hover swell is quicker and springier than the open: a
-            // small, live response to the pointer, not a change of state.
-            .animation(.spring(response: 0.28, dampingFraction: 0.62), value: model.hovering)
+            // The hover swell eases in and out without overshoot. A bouncy
+            // one, on top of the song sliding out, looked like the notch
+            // wobbling.
+            .animation(.spring(response: 0.3, dampingFraction: 1), value: model.hovering)
             // Opening and closing are both handled in AppKit — see
             // `NotchPanel.onMouseDown` and the global monitor in the
             // controller. Nothing here reacts to clicks; the buttons and the
@@ -350,7 +351,7 @@ struct NotchView: View {
                     // A fixed width, not "whatever is left": a flexible one
                     // re-truncated the title on every frame of the slide back.
                     peekText
-                        .frame(width: Self.peekExtraWidth - Self.peekTextGap,
+                        .frame(width: Self.peekExtraWidth - Self.peekTextGap - Self.peekTextIndent,
                                alignment: .leading)
                         // The fade is scoped to the opacity alone. An
                         // `.animation` keyed on `peeking` around the row also
@@ -367,7 +368,7 @@ struct NotchView: View {
                             .frame(width: Self.peekTextGap)
                     }
                 }
-                .padding(.leading, collapsedSlot + collapsedMiddleWidth)
+                .padding(.leading, collapsedSlot + collapsedMiddleWidth + Self.peekTextIndent)
                 .padding(.trailing, collapsedSlot + NotchMetrics.waveformNudge
                                     + Self.peekTextGap)
         }
@@ -421,6 +422,10 @@ struct NotchView: View {
         .lineLimit(1)
         .truncationMode(.tail)
     }
+
+    /// How far past the cutout's gap the peek text starts. Flush with the
+    /// slot the bars left, it sat tight against the notch.
+    private static let peekTextIndent: CGFloat = 8
 
     /// Room kept between the peek text and the bars to its right, and the
     /// length of the fade the text runs out through when it doesn't fit.

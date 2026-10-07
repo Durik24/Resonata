@@ -125,8 +125,8 @@ KROK 7 — Vyzkoušej ovládání
                                  řádek, podle času skladby.
                                  Stahuje se jednou, pak z cache
                                  (~/Library/Caches/com.local.resonata)
-  - Najeď myší na notch          notch se trochu nafoukne a po
-                                 0,3 s vysune název skladby;
+  - Najeď myší na notch          po 0,3 s se vysune název
+                                 skladby;
                                  když myš odjede, zasune se
   - Přejeď dvěma prsty na notchi dolů = otevřít, nahoru = zavřít,
                                  doprava = další skladba,

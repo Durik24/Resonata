@@ -138,8 +138,10 @@ Spotify has no way to like a song from the Mac short of its web API.
 - **Najetím myší (jako boring.notch)**, below.
 - **Kliknutím** — click only, scroll for volume.
 
-In every mode the closed pill swells a little (12×4 pt, a quick spring)
-while the pointer is on it, the panel opens on boring.notch's spring
+In the click and hover modes the closed pill swells a little (8×2 pt, no
+overshoot) while the pointer is on it — not in the NotchNook mode, where the
+song sliding out is the hover feedback and a swell on top looked like a
+wobble. In every mode the panel opens on boring.notch's spring
 (response 0.38, damping 0.8) and its content comes into focus from a blur
 (NotchNook's scale-and-blur; the scale comes from the content growing with
 the box). No haptics.

@@ -61,7 +61,7 @@ enum NotchMetrics {
 
     /// How much the closed pill swells while the pointer is on it — the
     /// "I see you" before a click, NotchNook's hover state.
-    static let hoverGrowth = CGSize(width: 12, height: 4)
+    static let hoverGrowth = CGSize(width: 8, height: 2)
 
     /// Shifts the waveform further left, on its own. Applied as trailing
     /// padding, so it moves the wave without touching the artwork opposite it.

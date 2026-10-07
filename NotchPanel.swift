@@ -627,7 +627,9 @@ final class NotchPanelController {
         watchForLeaving(inside)
         // Published on the next pass, never from inside the event dispatch —
         // see `setExpanded`.
-        let swell = inside && !model.isExpanded
+        // Not in `.nook` mode: there the hover feedback is the song sliding
+        // out, and a swell on top of it read as the notch wobbling.
+        let swell = inside && !model.isExpanded && Preferences.openMode != .nook
         DispatchQueue.main.async { [weak self] in
             MainActor.assumeIsolated {
                 guard let self, self.model.hovering != swell else { return }
