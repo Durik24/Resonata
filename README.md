@@ -296,9 +296,6 @@ as before. Verified on macOS 26.5.
 - Synced lyrics: LRCLIB `/get` with an exact match, falling back to `/search`
   on title and artist; the line being sung shows under the artist. Cached under `~/Library/Caches/com.local.resonata/lyrics/`.
 
-## Next steps
-
-
 ## License
 
 MIT — see `LICENSE`. The bundled MediaRemote adapter in
