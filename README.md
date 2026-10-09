@@ -298,3 +298,8 @@ as before. Verified on macOS 26.5.
 
 ## Next steps
 
+
+## License
+
+MIT — see `LICENSE`. The bundled MediaRemote adapter in
+`Vendor/mediaremote-adapter` keeps its own BSD 3-Clause license.
