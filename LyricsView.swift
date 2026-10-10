@@ -8,6 +8,8 @@ struct LyricsView: View {
     /// A lookup is still running for this track.
     var pending: Bool
     var track: Track?
+    /// Centred under a centred title, leading under a leading one.
+    var alignment: Alignment = .center
 
     var body: some View {
         Group {
@@ -37,7 +39,7 @@ struct LyricsView: View {
             }
         }
         .frame(height: 16)
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, alignment: alignment)
         .clipped()
     }
 

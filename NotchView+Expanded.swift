@@ -142,6 +142,9 @@ extension NotchView {
         return Color(hue: h, saturation: min(s, 0.6), brightness: max(b, 0.92))
     }
 
+    /// Where the title, artist and lyric line sit in the player column.
+    private var textAlignment: Alignment { showCalendarSetting ? .center : .leading }
+
     private var expandedMain: some View {
         HStack(spacing: 24) {
             artwork(size: 110)
@@ -149,7 +152,11 @@ extension NotchView {
                     sourceBadge.offset(x: 7, y: 7)
                 }
 
-            VStack(spacing: 0) {
+            // Centred over the bar beside the calendar, the way the layout was
+            // drawn; without the calendar the column is wide, and centred text
+            // floated off on its own in the middle of the panel — so it sits
+            // against the cover instead.
+            VStack(alignment: textAlignment.horizontal, spacing: 0) {
                 Text(model.track?.title ?? "Nic nehraje")
                     .font(.system(size: 15, weight: .bold))
                     .lineLimit(1)
@@ -164,7 +171,7 @@ extension NotchView {
                     .padding(.top, 2)
                 if showLyricsSetting && model.track != nil {
                     LyricsView(lines: model.lyrics, pending: model.lyricsPending,
-                               track: model.track)
+                               track: model.track, alignment: textAlignment)
                         .padding(.top, 3)
                 }
 
