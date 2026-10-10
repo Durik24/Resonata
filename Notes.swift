@@ -66,14 +66,20 @@ final class NotesStore: ObservableObject {
     }
 
     /// Typing changes the note on every keystroke; writing the file each time
-    /// would be pointless. Half a second after the last change is soon enough
-    /// that quitting straight after typing still keeps it.
+    /// would be pointless, so it's written half a second after the last
+    /// change — and at once on quit, see `saveIfPending`.
     private func scheduleSave() {
         guard !loading else { return }
         pendingSave?.cancel()
         let work = DispatchWorkItem { [weak self] in self?.save() }
         pendingSave = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
+    }
+
+    /// Quitting within that half second used to lose the last few
+    /// keystrokes: the pending save never ran. Called on quit.
+    func saveIfPending() {
+        if pendingSave != nil { save() }
     }
 
     func save() {

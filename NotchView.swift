@@ -97,18 +97,29 @@ struct NotchView: View {
     /// gone in the first frame. Fading it out — 0.22 s, and even 0.08 s —
     /// drew it, the song peek's title included, into the panel growing
     /// around it: a blip of text at the top of every open from a hover peek.
+    ///
+    /// On close it waits for the open content's 0.1 s fade before coming
+    /// in, so the two never show at once.
     private static let closedSwap = AnyTransition.asymmetric(
-        insertion: .opacity.animation(.easeInOut(duration: 0.22)),
+        insertion: .opacity.animation(.easeInOut(duration: 0.22).delay(0.08)),
         removal: .identity
     )
 
     /// The open panel's content comes into focus rather than just fading:
     /// NotchNook's scale-and-blur. The scale half already comes from the
     /// content growing with the box (see `content`), so this adds the blur.
-    private static let focusIn = AnyTransition.modifier(
-        active: Defocus(radius: 10, opacity: 0),
-        identity: Defocus(radius: 0, opacity: 1)
-    ).animation(.easeOut(duration: 0.32))
+    ///
+    /// On close it just goes, quickly. A view being removed keeps its last
+    /// layout, so the open panel's content stayed full size while the box
+    /// shrank around it, and over 0.32 s of blur it lay across the closed
+    /// row fading in — two titles on top of each other mid-close.
+    private static let focusIn = AnyTransition.asymmetric(
+        insertion: AnyTransition.modifier(
+            active: Defocus(radius: 10, opacity: 0),
+            identity: Defocus(radius: 0, opacity: 1)
+        ).animation(.easeOut(duration: 0.32)),
+        removal: .opacity.animation(.easeOut(duration: 0.1))
+    )
 
     /// The closed pill's size, swollen by `hoverGrowth` when asked — shared
     /// with `NotchPanelController`, so the window and the click target grow

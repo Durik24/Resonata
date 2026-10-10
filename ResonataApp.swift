@@ -246,6 +246,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        NotesStore.shared.saveIfPending()
         mediaRemote.stop()
         appleScript?.stop()
         lyricPulse.stop()

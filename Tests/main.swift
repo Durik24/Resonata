@@ -350,6 +350,26 @@ check(Battery(percent: 5, charging: true).symbol == "battery.100percent.bolt", "
 check(Battery(percent: 15, charging: false).isLow && !Battery(percent: 15, charging: true).isLow,
       "battery: low only when not charging")
 
+// MARK: - Notes
+
+MainActor.assumeIsolated {
+    let url = FileManager.default.temporaryDirectory
+        .appendingPathComponent("resonata-notes-\(UUID().uuidString).json")
+    defer { try? FileManager.default.removeItem(at: url) }
+    let store = NotesStore(url: url)
+    store.note = "ahoj"
+    store.add("  koupit mléko  ")
+    store.add("   ")
+    check(store.todos.map(\.text) == ["koupit mléko"], "notes: to-dos trimmed, blanks ignored")
+    // Quit inside the half-second debounce: the change must still be on disk.
+    store.saveIfPending()
+    let again = NotesStore(url: url)
+    check(again.note == "ahoj" && again.todos.count == 1, "notes: a quit straight after typing keeps it")
+    if let id = again.todos.first?.id { again.toggle(id) }
+    again.removeDone()
+    check(again.todos.isEmpty, "notes: ticked to-dos cleared")
+}
+
 // MARK: - Swipes on the notch
 
 do {
