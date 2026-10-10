@@ -142,12 +142,15 @@ extension NotchView {
         return Color(hue: h, saturation: min(s, 0.6), brightness: max(b, 0.92))
     }
 
+    /// The cover in the open panel; the column beside it matches its height.
+    static let coverSize: CGFloat = 110
+
     /// Where the title, artist and lyric line sit in the player column.
     private var textAlignment: Alignment { showCalendarSetting ? .center : .leading }
 
     private var expandedMain: some View {
         HStack(spacing: 24) {
-            artwork(size: 110)
+            artwork(size: Self.coverSize)
                 .overlay(alignment: .bottomTrailing) {
                     sourceBadge.offset(x: 7, y: 7)
                 }
@@ -207,7 +210,16 @@ extension NotchView {
                 .padding(.leading, -7)
             }
             .foregroundStyle(.white)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // Exactly the cover's height, so the title starts at its top edge
+            // and the controls end at its bottom. Filling the page instead,
+            // the column ran 9 pt past the cover at both ends. The negative
+            // padding takes out the space inside the frames themselves —
+            // above the title's capitals, below the buttons' glyphs —
+            // measured at 3 pt and 5 pt.
+            .padding(.top, -3)
+            .padding(.bottom, -5)
+            .frame(maxWidth: .infinity)
+            .frame(height: Self.coverSize)
         }
     }
 
