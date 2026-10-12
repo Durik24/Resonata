@@ -27,6 +27,8 @@ final class CalendarStore: ObservableObject {
 
     private let store = EKEventStore()
     private var observer: NSObjectProtocol?
+    /// Showing `Demo`'s invented events: the real calendar isn't read.
+    private var demo = false
 
     init() {
         access = Self.currentAccess()
@@ -67,6 +69,7 @@ final class CalendarStore: ObservableObject {
 
     /// Re-reads the shown days. Cheap: five days of one person's calendars.
     func reload(now: Date = Date()) {
+        guard !demo else { return }
         access = Self.currentAccess()
         guard access == .granted else { events = []; return }
         let days = Self.days(around: now)
@@ -78,6 +81,13 @@ final class CalendarStore: ObservableObject {
                          title: $0.title ?? "",
                          start: $0.startDate, end: $0.endDate, isAllDay: $0.isAllDay) }
             .sorted { ($0.isAllDay ? 0 : 1, $0.start) < ($1.isAllDay ? 0 : 1, $1.start) }
+    }
+
+    /// `Demo` only: show these instead of the calendar's events.
+    func showDemo(_ list: [Event]) {
+        demo = true
+        access = .granted
+        events = list
     }
 
     func events(on day: Date) -> [Event] {

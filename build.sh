@@ -44,6 +44,9 @@ FWPLIST
   && ln -sfn Versions/Current/Resources Resources && ln -sfn Versions/Current/Headers Headers )
 cp "$ADAPTER/bin/mediaremote-adapter.pl" "$APP/Contents/Resources/"
 
+# The icon, drawn by Icon/make-icon.swift (run it again after changing it).
+cp Icon/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -55,6 +58,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <key>CFBundleVersion</key>           <string>1</string>
     <key>CFBundleShortVersionString</key><string>1.0</string>
     <key>CFBundlePackageType</key>       <string>APPL</string>
+    <key>CFBundleIconFile</key>          <string>AppIcon</string>
     <key>LSMinimumSystemVersion</key>    <string>14.0</string>
     <!-- No Dock icon, no app switcher entry — it lives in the notch. -->
     <key>LSUIElement</key>               <true/>
@@ -102,6 +106,8 @@ if [ "${1:-}" = "run" ]; then
     sleep 0.5
     rm -rf "/Applications/$APP"
     ditto "$APP" "/Applications/$APP"
+    # Finder caches icons by modification date; nudge it to look again.
+    touch "/Applications/$APP"
     open "/Applications/$APP"
     echo "Installed to /Applications/$APP and launched. Quit it later with: pkill -x Resonata"
 fi

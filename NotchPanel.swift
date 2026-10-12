@@ -419,6 +419,16 @@ final class NotchPanelController {
             }
         }
 
+        // Debug: `com.local.resonata.screen` moves the notch to the next
+        // display, like the switch button — for screenshots of either layout.
+        if NotchPanel.debugClick {
+            DistributedNotificationCenter.default().addObserver(
+                forName: Notification.Name("com.local.resonata.screen"), object: nil, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.moveToNextScreen() }
+            }
+        }
+
         // Debug: `com.local.resonata.settings` opens the settings window.
         if NotchPanel.debugClick {
             DistributedNotificationCenter.default().addObserver(

@@ -68,7 +68,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         openAtLoginOnce()
         controller.show()
-        startNowPlaying()
+        // The demo's made-up song stands in for real playback — see `Demo`.
+        if !Demo.isOn { startNowPlaying() }
 
         HotKey.shared.action = { [weak self] in self?.controller.toggle() }
         HotKey.shared.apply(Preferences.hotKey)
@@ -128,6 +129,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         lyrics.$isFetching
             .sink { [weak self] pending in self?.model.lyricsPending = pending }
             .store(in: &cancellables)
+
+        // Last, so nothing above overwrites the demo's song or lyrics.
+        if Demo.isOn { Demo.install(on: model) }
 
     }
 

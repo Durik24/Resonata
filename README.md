@@ -1,3 +1,5 @@
+<p align="center"><img src="Icon/AppIcon-1024.png" width="128" alt="Resonata icon"></p>
+
 # Resonata — a music notch for the MacBook
 
 A Dynamic-Island-style music player pinned over the MacBook notch. Collapsed, it
@@ -15,6 +17,24 @@ stays in time with the song without hearing it.
 
 macOS 14+, Swift 6, no Xcode project needed. See `NAVOD.txt` for the
 step-by-step (Czech).
+
+![The open panel: cover, title, lyric line, controls and this week's calendar](docs/open.png)
+
+Closed, it's the notch with the cover on one side and the bars on the other.
+When a new song starts — or when you rest the pointer on it — it slides out
+to the right with the title and artist:
+
+![The closed notch](docs/closed.png)
+![The song sliding out of the notch](docs/peek.png)
+
+Two more pages: a note with a to-do list, and app shortcuts.
+
+![Notes and to-dos](docs/notes.png)
+![App shortcuts](docs/apps.png)
+
+The song, cover, lyrics and events in these pictures are made up: they come
+from the app's demo mode (`RESONATA_DEMO=1`, see `Demo.swift`), not from
+anyone's music or calendar.
 
 ## Getting it running
 
@@ -51,6 +71,7 @@ keychain; `build.sh` uses it when present.
 | `NotchView+Expanded.swift` | The open panel: top bar, player column, calendar column |
 | `CalendarStore.swift`, `CalendarView.swift` | Five days around today and their events (EventKit, read-only) |
 | `Battery.swift` | Battery level for the top bar (IOKit, no permission) |
+| `Demo.swift` | Demo mode: a made-up song, cover, lyrics and events, for screenshots |
 | `NotchFrame.swift` | Animates the notch's size and shape as one unit, pinned to the top |
 | `Motion.swift` | The made-up motion behind the bars and the wave |
 | `MusicBars.swift` | The pill's bars, as Core Animation layers on a display link |
@@ -192,6 +213,13 @@ The item belongs to one copy of the app, by path. When the copy in
 item to itself — never the other way, so a test run from the project folder
 can't pull it back, and never when it was switched off (checked with
 `sfltool dumpbtm`: one item, at /Applications/Resonata.app).
+
+## Icon
+
+Drawn in code by `Icon/make-icon.swift` — the notch with a cover and bars,
+over an album-coloured wave. After changing it, run `swift
+Icon/make-icon.swift` to rewrite `Icon/AppIcon.icns`; `build.sh` copies it
+into the app.
 
 ## Tests
 
