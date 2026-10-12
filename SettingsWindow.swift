@@ -35,6 +35,7 @@ struct SettingsView: View {
     @AppStorage(Preferences.Key.hotKey) private var hotKey = HotKeyChoice.shiftCommandSpace.rawValue
     @AppStorage(Preferences.Key.showSongPeek) private var showSongPeek = true
     @AppStorage(Preferences.Key.showCalendar) private var showCalendar = true
+    @AppStorage(Preferences.Key.showChargingPeek) private var showChargingPeek = true
     @AppStorage(Preferences.Key.openMode) private var openMode = OpenMode.nook.rawValue
     @AppStorage(Preferences.Key.quickApps) private var quickApps = ""
 
@@ -74,6 +75,7 @@ struct SettingsView: View {
                 }
                 Toggle("Zobrazovat texty písní", isOn: $showLyrics)
                 Toggle("Ukázat novou skladbu v zavřeném notchi", isOn: $showSongPeek)
+                Toggle("Ukázat nabíjení po připojení nabíječky", isOn: $showChargingPeek)
                 Toggle("Kalendář vedle přehrávače", isOn: $showCalendar)
             }
 

@@ -56,9 +56,24 @@ final class NotchModel: ObservableObject {
     }
     var expandedHeight: CGFloat { NotchView.expandedHeight }
 
-    /// A new song just started: the closed pill slides out to the right to
-    /// show its title for a moment — see `SongPeek`.
-    @Published var peeking = false
+    /// The closed pill is slid out to the right — for the song (`songPeeking`)
+    /// or for an `activity` such as the charger. Each keeps its own flag and
+    /// its own timer: with one shared flag, the song peek's timer ended the
+    /// charging peek half-way and the other way round.
+    @Published private(set) var peeking = false
+
+    /// A new song just started, or the pointer rests on the notch: the song
+    /// slides out with its title — see `SongPeek`.
+    @Published var songPeeking = false { didSet { updatePeeking() } }
+
+    private func updatePeeking() {
+        let slidOut = songPeeking || activity != nil
+        if peeking != slidOut { peeking = slidOut }
+    }
+
+    /// Something other than the song, shown in the closed notch for a
+    /// moment — see `NotchActivity`.
+    @Published var activity: NotchActivity? { didSet { updatePeeking() } }
 
     /// The pointer is on the closed pill, which swells a little under it.
     @Published var hovering = false
@@ -69,7 +84,9 @@ final class NotchModel: ObservableObject {
     /// The collapsed pill carries artwork and waveform only while playback is
     /// live. Idle, it shrinks back to the bare cutout — but `track` is still
     /// there, so a click brings up the last song and its play button.
-    var showsCollapsedContent: Bool { (track != nil && !isIdle) || volumeLevel != nil }
+    var showsCollapsedContent: Bool {
+        (track != nil && !isIdle) || volumeLevel != nil || activity != nil
+    }
 
     /// Set for a moment after the volume is scrolled, so the notch can show
     /// the new level. Nil the rest of the time.
@@ -79,6 +96,13 @@ final class NotchModel: ObservableObject {
     /// playing, so the cost of playback can be measured on a silent machine.
     static let debugForceLive =
         ProcessInfo.processInfo.environment["RESONATA_DEBUG_FORCE_LIVE"] == "1"
+}
+
+/// A moment in the closed notch that isn't the song: it slides out like the
+/// song peek, with its own picture in the cover's place.
+enum NotchActivity: Equatable {
+    /// The charger was just plugged in.
+    case charging(percent: Int)
 }
 
 /// The open panel's pages, switched from the icons beside the notch.

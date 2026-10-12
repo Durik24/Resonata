@@ -17,6 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let model = NotchModel()
     private lazy var controller = NotchPanelController(model: model)
     private lazy var songPeek = SongPeek(model: model)
+    private lazy var chargingPeek = ChargingPeek(model: model)
     /// MediaRemote first — it sees every player. If the adapter can't start
     /// or MediaRemote won't answer on this macOS, the AppleScript source takes
     /// over and the app behaves exactly as it did before Phase 5.
@@ -78,6 +79,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // track (play, pause, seek, new song) or to its lyrics.
         lyricPulse.onPulse = { [weak self] in self?.model.pulse &+= 1 }
 
+        // Plugging in the charger gets a moment in the closed notch too.
+        PowerWatcher.shared.onPlugIn = { [weak self] battery in self?.chargingPeek.show(battery) }
+        PowerWatcher.shared.start()
+
         // A new song gets a moment in the closed notch.
         model.$track
             .sink { [weak self] track in self?.songPeek.trackChanged(to: track) }
@@ -104,6 +109,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             center.addObserver(forName: Notification.Name("com.local.resonata.peek"),
                                object: nil, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated { self?.songPeek.show() }
+            }
+            // `com.local.resonata.charging`: the charging peek, without a cable.
+            center.addObserver(forName: Notification.Name("com.local.resonata.charging"),
+                               object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.chargingPeek.show(Battery.read() ?? Battery(percent: 80, charging: true))
+                }
             }
             center.addObserver(forName: Notification.Name("com.local.resonata.page"),
                                object: nil, queue: .main) { [weak self] note in

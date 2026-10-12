@@ -348,7 +348,7 @@ struct NotchView: View {
     /// fade into the slot the bars leave behind, just past the cutout.
     private var closedRow: some View {
         HStack(spacing: 0) {
-            artwork(size: collapsedSlot)
+            coverSlot
             middle
                 .frame(width: collapsedMiddleWidth)
         }
@@ -407,7 +407,12 @@ struct NotchView: View {
     /// What sits between the artwork and the bars when closed.
     @ViewBuilder
     private var middle: some View {
-        if hasRealNotch {
+        if !hasRealNotch, model.activity != nil {
+            Text(activityTitle)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.white.opacity(0.9))
+                .padding(.horizontal, 8)
+        } else if hasRealNotch {
             // The hardware cutout. Nothing can go in it — there are no pixels
             // there — so the title has nowhere to live on the laptop screen.
             Color.clear
@@ -426,18 +431,50 @@ struct NotchView: View {
         }
     }
 
-    /// Title over artist, left-aligned, while peeking.
+    /// The cover, or an activity's picture in its place.
+    @ViewBuilder
+    private var coverSlot: some View {
+        if case .charging = model.activity {
+            Image(systemName: "bolt.fill")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Self.chargingGreen)
+                .frame(width: collapsedSlot, height: collapsedSlot)
+                .transition(.opacity)
+        } else {
+            artwork(size: collapsedSlot)
+        }
+    }
+
+    /// The charging peek's green — the one the system uses for charging.
+    static let chargingGreen = Color(red: 0.2, green: 0.84, blue: 0.4)
+
+    private var activityTitle: String {
+        switch model.activity {
+        case .charging: "Nabíjení"
+        case nil: ""
+        }
+    }
+
+    private var activityDetail: String {
+        switch model.activity {
+        case .charging(let percent): "\(percent) %"
+        case nil: ""
+        }
+    }
+
+    /// Title over artist, left-aligned, while peeking — or the activity's.
     private var peekText: some View {
-        VStack(alignment: .leading, spacing: 1) {
+        let activity = model.activity != nil
+        return VStack(alignment: .leading, spacing: 1) {
             // Without a cutout the title is already in the pill's middle.
             if hasRealNotch {
-                Text(model.track?.title ?? "")
+                Text(activity ? activityTitle : model.track?.title ?? "")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.white)
             }
-            Text(model.track?.artist ?? "")
-                .font(.system(size: 10))
-                .foregroundStyle(.white.opacity(0.55))
+            Text(activity ? activityDetail : model.track?.artist ?? "")
+                .font(.system(size: 10, weight: activity ? .semibold : .regular))
+                .foregroundStyle(activity ? Self.chargingGreen : .white.opacity(0.55))
         }
         .lineLimit(1)
         .truncationMode(.tail)
@@ -473,7 +510,15 @@ struct NotchView: View {
     private var waveform: some View {
         let live = isLive
         return Group {
-            if let level = model.volumeLevel {
+            if case .charging(let percent) = model.activity {
+                // The level, not another bolt: the bolt is already on the left.
+                Image(systemName: Battery(percent: percent, charging: false).symbol)
+                    .font(.system(size: 14))
+                    // One colour for outline and level alike. (The debug
+                    // snapshots draw this symbol white; the screen doesn't.)
+                    .symbolRenderingMode(.monochrome)
+                    .foregroundStyle(Self.chargingGreen)
+            } else if let level = model.volumeLevel {
                 VolumeMeter(level: level, compact: true)
             } else {
                 MusicBars(barCount: 3,

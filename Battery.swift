@@ -7,6 +7,9 @@ import IOKit.ps
 struct Battery: Equatable {
     var percent: Int
     var charging: Bool
+    /// On the charger, whether or not it's charging right now — a full
+    /// battery on the charger isn't charging, but it is plugged in.
+    var onPower = false
 
     static func read() -> Battery? {
         guard let info = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
@@ -23,7 +26,8 @@ struct Battery: Equatable {
             // bar shows then too, even when it's sitting at 100%.
             let plugged = d[kIOPSPowerSourceStateKey] as? String == kIOPSACPowerValue
             return Battery(percent: min(100, current * 100 / max),
-                           charging: plugged || d[kIOPSIsChargingKey] as? Bool == true)
+                           charging: plugged || d[kIOPSIsChargingKey] as? Bool == true,
+                           onPower: plugged)
         }
         return nil
     }
@@ -41,4 +45,38 @@ struct Battery: Equatable {
     }
 
     var isLow: Bool { !charging && percent <= 20 }
+}
+
+/// Tells Resonata when the Mac is plugged in. IOKit's power-source
+/// notification, delivered on the main run loop, so nothing polls: it fires
+/// when the power source or the charge changes, and only a change from
+/// battery to charger counts.
+@MainActor
+final class PowerWatcher {
+    static let shared = PowerWatcher()
+
+    var onPlugIn: ((Battery) -> Void)?
+
+    private var source: CFRunLoopSource?
+    private var wasOnPower: Bool?
+
+    func start() {
+        guard source == nil else { return }
+        wasOnPower = Battery.read()?.onPower
+        guard let src = IOPSNotificationCreateRunLoopSource(powerSourcesChanged, nil)?
+            .takeRetainedValue() else { return }
+        CFRunLoopAddSource(CFRunLoopGetMain(), src, .defaultMode)
+        source = src
+    }
+
+    func changed() {
+        guard let battery = Battery.read() else { return }
+        defer { wasOnPower = battery.onPower }
+        if battery.onPower, wasOnPower == false { onPlugIn?(battery) }
+    }
+}
+
+/// IOKit wants a plain C function; it's called on the main run loop.
+private func powerSourcesChanged(_ context: UnsafeMutableRawPointer?) {
+    MainActor.assumeIsolated { PowerWatcher.shared.changed() }
 }

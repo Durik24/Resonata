@@ -124,6 +124,13 @@ code or assets — keeping only what needs no permission:
   edge out and back; the title fills the slot they leave and is clipped short
   of them on the way back in. Not on launch, not on resume, not while open;
   switchable in settings.
+- **Charging peek** (`ChargingPeek` in `SongPeek.swift`, `PowerWatcher` in
+  `Battery.swift`): plugging in the charger slides the closed notch out for
+  3 s — a green bolt in the cover's place, "Nabíjení" and the charge — even
+  with nothing playing. IOKit's power-source notification, no polling.
+  Switchable in settings. The song peek and an activity like this one each
+  keep their own flag (`songPeeking`, `activity`); sharing one, either timer
+  cut the other short.
 - **Pages**: icons in the strip left of the cutout switch the open panel
   between Music, Notes and Apps. Right of it: settings and the battery level.
 - **Calendar** (`CalendarStore.swift`, `CalendarView.swift`): beside the

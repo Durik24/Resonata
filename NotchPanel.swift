@@ -323,8 +323,10 @@ final class NotchPanelController {
         // The volume meter shows in the pill's wing, so it widens the pill
         // too — even an idle one. Mirrors `NotchModel.showsCollapsedContent`.
         let collapsedContentVisible = model.$track.map { $0 != nil }
-            .combineLatest(model.$isIdle, model.$volumeLevel)
-            .map { hasTrack, idle, volume in (hasTrack && !idle) || volume != nil }
+            .combineLatest(model.$isIdle, model.$volumeLevel, model.$activity)
+            .map { hasTrack, idle, volume, activity in
+                (hasTrack && !idle) || volume != nil || activity != nil
+            }
             .removeDuplicates()
 
         model.$isExpanded
@@ -599,7 +601,8 @@ final class NotchPanelController {
             MainActor.assumeIsolated {
                 guard let self, self.model.isExpanded != expanded else { return }
                 if expanded {
-                    self.model.peeking = false
+                    self.model.songPeeking = false
+                    self.model.activity = nil
                     self.model.hovering = false
                     self.hoverPeeking = false
                 }
@@ -687,13 +690,13 @@ final class NotchPanelController {
                           !self.model.isExpanded, !self.model.peeking else { return }
                     if NotchPanel.debugClick { NSLog("click: hover -> PEEK") }
                     self.hoverPeeking = true
-                    self.model.peeking = true
+                    self.model.songPeeking = true
                     if NotchPanel.debugClick { self.debugSnapshots(tag: "hover-peek") }
                 }
             } else if hoverPeeking {
                 hoverPeeking = false
                 if NotchPanel.debugClick { NSLog("click: hover left -> UNPEEK") }
-                model.peeking = false
+                model.songPeeking = false
             }
         }
     }

@@ -17,6 +17,7 @@ enum Preferences {
         static let quickApps = "quickApps"
         static let showCalendar = "showCalendar"
         static let openMode = "openMode"
+        static let showChargingPeek = "showChargingPeek"
     }
 
     /// Call before anything reads a preference.
@@ -30,6 +31,7 @@ enum Preferences {
             Key.hotKey: HotKeyChoice.shiftCommandSpace.rawValue,
             Key.showSongPeek: true,
             Key.showCalendar: true,
+            Key.showChargingPeek: true,
             Key.openMode: OpenMode.nook.rawValue,
             Key.quickApps: QuickApps.defaultPaths().joined(separator: "\n"),
         ])
@@ -47,6 +49,8 @@ enum Preferences {
     static var showSongPeek: Bool { UserDefaults.standard.bool(forKey: Key.showSongPeek) }
 
     static var showCalendar: Bool { UserDefaults.standard.bool(forKey: Key.showCalendar) }
+
+    static var showChargingPeek: Bool { UserDefaults.standard.bool(forKey: Key.showChargingPeek) }
 
     static var openMode: OpenMode {
         OpenMode(rawValue: UserDefaults.standard.string(forKey: Key.openMode) ?? "") ?? .click

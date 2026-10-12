@@ -29,9 +29,9 @@ final class SongPeek {
     }
 
     func show() {
-        model.peeking = true
+        model.songPeeking = true
         hide?.cancel()
-        let work = DispatchWorkItem { [weak self] in self?.model.peeking = false }
+        let work = DispatchWorkItem { [weak self] in self?.model.songPeeking = false }
         hide = work
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.duration, execute: work)
     }
@@ -40,5 +40,30 @@ final class SongPeek {
                                        expanded: Bool, enabled: Bool) -> Bool {
         guard enabled, !expanded, let old, let new, new.isPlaying else { return false }
         return !new.isSameTrack(as: old)
+    }
+}
+
+/// When the charger is plugged in, the closed notch slides out for a moment
+/// like the song peek — a green bolt in the cover's place, "Nabíjení" and the
+/// charge — even with nothing playing.
+@MainActor
+final class ChargingPeek {
+
+    static let duration: TimeInterval = 3
+
+    private let model: NotchModel
+    private var hide: DispatchWorkItem?
+
+    init(model: NotchModel) {
+        self.model = model
+    }
+
+    func show(_ battery: Battery) {
+        guard Preferences.showChargingPeek, !model.isExpanded else { return }
+        model.activity = .charging(percent: battery.percent)
+        hide?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.model.activity = nil }
+        hide = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.duration, execute: work)
     }
 }

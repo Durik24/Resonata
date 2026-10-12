@@ -129,6 +129,10 @@ KROK 7 — Vyzkoušej ovládání
                                  řádek, podle času skladby.
                                  Stahuje se jednou, pak z cache
                                  (~/Library/Caches/com.local.resonata)
+  - Připoj nabíječku             zavřený notch se na 3 s vysune
+                                 se zeleným bleskem, „Nabíjení“
+                                 a procenty baterie (vypnout jde
+                                 v nastavení)
   - Najeď myší na notch          po 0,3 s se vysune název
                                  skladby;
                                  když myš odjede, zasune se
