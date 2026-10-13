@@ -602,6 +602,7 @@ final class NotchPanelController {
                 guard let self, self.model.isExpanded != expanded else { return }
                 if expanded {
                     self.model.songPeeking = false
+                    self.model.activityShown = false
                     self.model.activity = nil
                     self.model.hovering = false
                     self.hoverPeeking = false

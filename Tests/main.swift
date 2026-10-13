@@ -349,6 +349,10 @@ check(Battery(percent: 5, charging: false).symbol == "battery.0percent", "batter
 check(Battery(percent: 5, charging: true).symbol == "battery.100percent.bolt", "battery: charging shows the bolt")
 check(Battery(percent: 15, charging: false).isLow && !Battery(percent: 15, charging: true).isLow,
       "battery: low only when not charging")
+check(PowerWatcher.isPlugIn(was: false, now: true), "power: battery to charger is a plug-in")
+check(!PowerWatcher.isPlugIn(was: true, now: true), "power: the charge ticking up on the charger isn't")
+check(!PowerWatcher.isPlugIn(was: nil, now: true), "power: already on the charger at launch isn't")
+check(!PowerWatcher.isPlugIn(was: true, now: false), "power: unplugging isn't")
 
 // MARK: - Notes
 

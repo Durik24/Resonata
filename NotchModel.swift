@@ -66,14 +66,20 @@ final class NotchModel: ObservableObject {
     /// slides out with its title — see `SongPeek`.
     @Published var songPeeking = false { didSet { updatePeeking() } }
 
+    /// The activity is slid out. Separate from `activity` itself, which
+    /// stays set while the pill slides back in, so the text going out of
+    /// sight is still the activity's — cleared together, the song's title
+    /// flashed up in its place mid-slide.
+    @Published var activityShown = false { didSet { updatePeeking() } }
+
     private func updatePeeking() {
-        let slidOut = songPeeking || activity != nil
+        let slidOut = songPeeking || activityShown
         if peeking != slidOut { peeking = slidOut }
     }
 
     /// Something other than the song, shown in the closed notch for a
     /// moment — see `NotchActivity`.
-    @Published var activity: NotchActivity? { didSet { updatePeeking() } }
+    @Published var activity: NotchActivity?
 
     /// The pointer is on the closed pill, which swells a little under it.
     @Published var hovering = false

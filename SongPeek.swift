@@ -61,9 +61,24 @@ final class ChargingPeek {
     func show(_ battery: Battery) {
         guard Preferences.showChargingPeek, !model.isExpanded else { return }
         model.activity = .charging(percent: battery.percent)
+        model.activityShown = true
         hide?.cancel()
-        let work = DispatchWorkItem { [weak self] in self?.model.activity = nil }
+        let work = DispatchWorkItem { [weak self] in self?.slideBack() }
         hide = work
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.duration, execute: work)
+    }
+
+    /// Slides back in still showing the charge, and only then lets the song
+    /// back into the pill. If the song is peeking already, it takes over at
+    /// once instead.
+    private func slideBack() {
+        model.activityShown = false
+        guard !model.songPeeking else { model.activity = nil; return }
+        let clear = DispatchWorkItem { [weak self] in
+            guard let self, !self.model.activityShown else { return }
+            self.model.activity = nil
+        }
+        hide = clear
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: clear)
     }
 }

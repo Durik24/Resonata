@@ -129,8 +129,10 @@ code or assets — keeping only what needs no permission:
   3 s — a green bolt in the cover's place, "Nabíjení" and the charge — even
   with nothing playing. IOKit's power-source notification, no polling.
   Switchable in settings. The song peek and an activity like this one each
-  keep their own flag (`songPeeking`, `activity`); sharing one, either timer
-  cut the other short.
+  keep their own flag (`songPeeking`, `activityShown`); sharing one, either
+  timer cut the other short. The activity's content outlives its flag by the
+  slide back, so the text going out of sight is still "Nabíjení", not the
+  song's title.
 - **Pages**: icons in the strip left of the cutout switch the open panel
   between Music, Notes and Apps. Right of it: settings and the battery level.
 - **Calendar** (`CalendarStore.swift`, `CalendarView.swift`): beside the

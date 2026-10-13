@@ -65,14 +65,23 @@ final class PowerWatcher {
         wasOnPower = Battery.read()?.onPower
         guard let src = IOPSNotificationCreateRunLoopSource(powerSourcesChanged, nil)?
             .takeRetainedValue() else { return }
-        CFRunLoopAddSource(CFRunLoopGetMain(), src, .defaultMode)
+        // Common modes, not just the default: in the default mode alone the
+        // notice waits while a menu is open — the notch's own right-click
+        // menu, say.
+        CFRunLoopAddSource(CFRunLoopGetMain(), src, .commonModes)
         source = src
     }
 
     func changed() {
         guard let battery = Battery.read() else { return }
         defer { wasOnPower = battery.onPower }
-        if battery.onPower, wasOnPower == false { onPlugIn?(battery) }
+        if Self.isPlugIn(was: wasOnPower, now: battery.onPower) { onPlugIn?(battery) }
+    }
+
+    /// Battery to charger, and nothing else: the notice also fires as the
+    /// charge ticks up or down, and on launch the state isn't a change.
+    nonisolated static func isPlugIn(was: Bool?, now: Bool) -> Bool {
+        was == false && now
     }
 }
 

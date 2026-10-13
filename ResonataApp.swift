@@ -110,6 +110,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                object: nil, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated { self?.songPeek.show() }
             }
+            // `com.local.resonata.notrack`: as if nothing were playing.
+            center.addObserver(forName: Notification.Name("com.local.resonata.notrack"),
+                               object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.model.track = nil }
+            }
             // `com.local.resonata.charging`: the charging peek, without a cable.
             center.addObserver(forName: Notification.Name("com.local.resonata.charging"),
                                object: nil, queue: .main) { [weak self] _ in

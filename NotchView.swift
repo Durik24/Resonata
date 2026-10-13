@@ -432,17 +432,24 @@ struct NotchView: View {
     }
 
     /// The cover, or an activity's picture in its place.
-    @ViewBuilder
     private var coverSlot: some View {
-        if case .charging = model.activity {
-            Image(systemName: "bolt.fill")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(Self.chargingGreen)
-                .frame(width: collapsedSlot, height: collapsedSlot)
-                .transition(.opacity)
-        } else {
-            artwork(size: collapsedSlot)
+        ZStack {
+            if case .charging = model.activity {
+                Image(systemName: "bolt.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Self.chargingGreen)
+                    .frame(width: collapsedSlot, height: collapsedSlot)
+                    .transition(.opacity)
+            } else {
+                artwork(size: collapsedSlot)
+                    .transition(.opacity)
+            }
         }
+        .frame(width: collapsedSlot, height: collapsedSlot)
+        // A crossfade between cover and bolt. Scoped here, on a fixed-size
+        // slot, so it can't animate anything's position — see the note on
+        // the peek text below.
+        .animation(fade, value: model.activity)
     }
 
     /// The charging peek's green — the one the system uses for charging.
