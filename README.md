@@ -160,6 +160,15 @@ animation speed, lyrics on/off, the calendar on/off, and the wave's colour (albu
 own). Apple Music tracks get a heart button (`favorited` over AppleScript);
 Spotify has no way to like a song from the Mac short of its web API.
 
+## Mission Control
+
+The panel is `.stationary` at screen-saver level, so Mission Control used to
+leave it on top of the strip of desktops. It now hides while Mission Control
+or App Exposé is up: the Dock draws those in its own windows over each
+display at layer 18 (its usual level is 20), checked with the full-screen
+test four times a second (`NSScreen.isShowingMissionControl`). Verified by
+opening Mission Control: hidden within 0.6 s, back once it closes.
+
 ## Scrolling
 
 Closed, and on the music page, scrolling is the notch's: the volume, or the

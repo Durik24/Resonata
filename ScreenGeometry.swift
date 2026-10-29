@@ -182,6 +182,34 @@ extension NSScreen {
         }
     }
 
+    /// Mission Control — or App Exposé — is up on this display.
+    ///
+    /// The panel is `.stationary` at screen-saver level, so Mission Control
+    /// leaves it where it is, on top of everything: the notch sat over the
+    /// strip of desktops. Nothing announces Mission Control, but the Dock
+    /// draws it in windows of its own covering each display, between the
+    /// desktop and the Dock's level — measured at layer 18, against the
+    /// Dock's usual 20, and none at all at other times. Owner names and
+    /// bounds need no permission.
+    var isShowingMissionControl: Bool {
+        guard let primary = NSScreen.screens.first,
+              let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID)
+                as? [[String: Any]] else { return false }
+        let whole = CGRect(x: frame.minX, y: primary.frame.maxY - frame.maxY,
+                           width: frame.width, height: frame.height)
+        let dockLevel = Int(CGWindowLevelForKey(.dockWindow))
+        return windows.contains { window in
+            guard (window[kCGWindowOwnerName as String] as? String) == "Dock",
+                  let layer = window[kCGWindowLayer as String] as? Int,
+                  layer > 0, layer < dockLevel,
+                  let raw = window[kCGWindowBounds as String] as? [String: Any],
+                  let bounds = CGRect(dictionaryRepresentation: raw as CFDictionary)
+            else { return false }
+            return abs(bounds.minX - whole.minX) < 2 && abs(bounds.minY - whole.minY) < 2
+                && abs(bounds.width - whole.width) < 2 && abs(bounds.height - whole.height) < 2
+        }
+    }
+
     var notchSize: CGSize {
         CGSize(width: notchWidth, height: notchHeight)
     }

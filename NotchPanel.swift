@@ -458,7 +458,11 @@ final class NotchPanelController {
         // the *start* of the transition,
         // when the window hasn't resized yet, so a single check right then sees
         // the pre-transition layout and nothing ever re-checks it.
-        visibilityTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+        //
+        // Four times a second, so the notch is out of Mission Control's way
+        // almost as it opens. Each check reads the window list, measured at
+        // 0.7 ms — about 0.3% of a core at this rate.
+        visibilityTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.updateVisibility() }
         }
 
@@ -906,8 +910,10 @@ final class NotchPanelController {
     /// back.
     private func updateVisibility() {
         guard let panel else { return }
-        fullScreenCovered = targetScreen?.isShowingFullScreenApp ?? false
-        if fullScreenCovered {
+        let screen = targetScreen
+        fullScreenCovered = screen?.isShowingFullScreenApp ?? false
+        let missionControl = screen?.isShowingMissionControl ?? false
+        if fullScreenCovered || missionControl {
             if panel.isVisible { panel.orderOut(nil) }
         } else if !panel.isVisible {
             panel.orderFrontRegardless()
