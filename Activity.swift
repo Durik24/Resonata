@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 
 /// A moment in the closed notch that isn't the song: it slides out like the
@@ -21,6 +22,16 @@ enum NotchActivity: Equatable {
         switch self {
         case .charging, .lowBattery, .headphones: 3
         case .meeting, .timerDone: 6
+        }
+    }
+
+    /// Worth showing late. With the panel open the notch can't slide out;
+    /// a reminder, a warning or the end of the timer then waits for it to
+    /// close, while "charging" or "headphones connected" is old news by then.
+    var waitsForClose: Bool {
+        switch self {
+        case .lowBattery, .meeting, .timerDone: true
+        case .charging, .headphones: false
         }
     }
 
@@ -78,19 +89,41 @@ final class ActivityPeek {
 
     private let model: NotchModel
     private var hide: DispatchWorkItem?
+    /// Came while the panel was open — see `NotchActivity.waitsForClose`.
+    private var waiting: NotchActivity?
+    private var closed: AnyCancellable?
 
     init(model: NotchModel) {
         self.model = model
+        // Each time the panel closes, show what came while it was open —
+        // once the close has played, so it slides out of a settled pill.
+        closed = model.$isExpanded
+            .removeDuplicates()
+            .filter { !$0 }
+            .sink { [weak self] _ in
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                    MainActor.assumeIsolated { self?.showWaiting() }
+                }
+            }
     }
 
     func show(_ activity: NotchActivity) {
-        guard !model.isExpanded else { return }
+        guard !model.isExpanded else {
+            if activity.waitsForClose { waiting = activity }
+            return
+        }
         model.activity = activity
         model.activityShown = true
         hide?.cancel()
         let work = DispatchWorkItem { [weak self] in self?.slideBack() }
         hide = work
         DispatchQueue.main.asyncAfter(deadline: .now() + activity.duration, execute: work)
+    }
+
+    private func showWaiting() {
+        guard let activity = waiting, !model.isExpanded else { return }
+        waiting = nil
+        show(activity)
     }
 
     /// If the song is peeking already, it takes over at once instead.
