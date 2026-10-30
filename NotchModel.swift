@@ -91,8 +91,11 @@ final class NotchModel: ObservableObject {
     /// live. Idle, it shrinks back to the bare cutout — but `track` is still
     /// there, so a click brings up the last song and its play button.
     var showsCollapsedContent: Bool {
-        (track != nil && !isIdle) || volumeLevel != nil || activity != nil
+        (track != nil && !isIdle) || volumeLevel != nil || activity != nil || timerRunning
     }
+
+    /// The timer is running or paused: the closed notch shows the time left.
+    @Published var timerRunning = false
 
     /// Set for a moment after the volume is scrolled, so the notch can show
     /// the new level. Nil the rest of the time.
@@ -104,16 +107,9 @@ final class NotchModel: ObservableObject {
         ProcessInfo.processInfo.environment["RESONATA_DEBUG_FORCE_LIVE"] == "1"
 }
 
-/// A moment in the closed notch that isn't the song: it slides out like the
-/// song peek, with its own picture in the cover's place.
-enum NotchActivity: Equatable {
-    /// The charger was just plugged in.
-    case charging(percent: Int)
-}
-
 /// The open panel's pages, switched from the icons beside the notch.
 enum PanelTab: String, CaseIterable, Identifiable {
-    case music, notes, apps
+    case music, notes, apps, timer
 
     var id: String { rawValue }
 
@@ -122,6 +118,7 @@ enum PanelTab: String, CaseIterable, Identifiable {
         case .music: "music.note"
         case .notes: "checklist"
         case .apps: "square.grid.2x2"
+        case .timer: "timer"
         }
     }
 
@@ -130,6 +127,7 @@ enum PanelTab: String, CaseIterable, Identifiable {
         case .music: "Hudba"
         case .notes: "Poznámky a úkoly"
         case .apps: "Aplikace"
+        case .timer: "Časovač"
         }
     }
 }

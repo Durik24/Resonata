@@ -407,8 +407,8 @@ struct NotchView: View {
     /// What sits between the artwork and the bars when closed.
     @ViewBuilder
     private var middle: some View {
-        if !hasRealNotch, model.activity != nil {
-            Text(activityTitle)
+        if !hasRealNotch, let look = model.activity?.look {
+            Text(look.title)
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(.white.opacity(0.9))
                 .padding(.horizontal, 8)
@@ -434,11 +434,18 @@ struct NotchView: View {
     /// The cover, or an activity's picture in its place.
     private var coverSlot: some View {
         ZStack {
-            if case .charging = model.activity {
-                Image(systemName: "bolt.fill")
+            if let look = model.activity?.look {
+                Image(systemName: look.symbol)
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(Self.chargingGreen)
+                    .symbolRenderingMode(.monochrome)
+                    .foregroundStyle(look.tint)
                     .frame(width: collapsedSlot, height: collapsedSlot)
+                    .transition(.opacity)
+            } else if model.track == nil, model.timerRunning {
+                // Nothing playing, just the timer: its symbol, not an empty cover.
+                Image(systemName: "timer")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(ActivityLook.orange)
                     .transition(.opacity)
             } else {
                 artwork(size: collapsedSlot)
@@ -446,42 +453,37 @@ struct NotchView: View {
             }
         }
         .frame(width: collapsedSlot, height: collapsedSlot)
-        // A crossfade between cover and bolt. Scoped here, on a fixed-size
+        // A crossfade between cover and symbol. Scoped here, on a fixed-size
         // slot, so it can't animate anything's position — see the note on
         // the peek text below.
         .animation(fade, value: model.activity)
     }
 
-    /// The charging peek's green — the one the system uses for charging.
-    static let chargingGreen = Color(red: 0.2, green: 0.84, blue: 0.4)
-
-    private var activityTitle: String {
-        switch model.activity {
-        case .charging: "Nabíjení"
-        case nil: ""
-        }
-    }
-
-    private var activityDetail: String {
-        switch model.activity {
-        case .charging(let percent): "\(percent) %"
-        case nil: ""
+    /// The time left, in the bars' place while the timer runs.
+    private var timerBadge: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            let timer = CountdownTimer.shared
+            Text(CountdownTimer.format(timer.remaining(at: context.date)))
+                .font(.system(size: 10, weight: .semibold).monospacedDigit())
+                .foregroundStyle(ActivityLook.orange.opacity(timer.isPaused ? 0.5 : 1))
+                .lineLimit(1)
+                .fixedSize()
         }
     }
 
     /// Title over artist, left-aligned, while peeking — or the activity's.
     private var peekText: some View {
-        let activity = model.activity != nil
+        let look = model.activity?.look
         return VStack(alignment: .leading, spacing: 1) {
             // Without a cutout the title is already in the pill's middle.
             if hasRealNotch {
-                Text(activity ? activityTitle : model.track?.title ?? "")
+                Text(look?.title ?? model.track?.title ?? "")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.white)
             }
-            Text(activity ? activityDetail : model.track?.artist ?? "")
-                .font(.system(size: 10, weight: activity ? .semibold : .regular))
-                .foregroundStyle(activity ? Self.chargingGreen : .white.opacity(0.55))
+            Text(look?.detail ?? model.track?.artist ?? "")
+                .font(.system(size: 10, weight: look != nil ? .semibold : .regular))
+                .foregroundStyle(look?.tint ?? .white.opacity(0.55))
         }
         .lineLimit(1)
         .truncationMode(.tail)
@@ -517,16 +519,17 @@ struct NotchView: View {
     private var waveform: some View {
         let live = isLive
         return Group {
-            if case .charging(let percent) = model.activity {
-                // The level, not another bolt: the bolt is already on the left.
-                Image(systemName: Battery(percent: percent, charging: false).symbol)
-                    .font(.system(size: 14))
-                    // One colour for outline and level alike. (The debug
-                    // snapshots draw this symbol white; the screen doesn't.)
+            if let look = model.activity?.look {
+                Image(systemName: look.trailing)
+                    .font(.system(size: 13))
+                    // One colour for outline and fill alike. (The debug
+                    // snapshots draw battery symbols white; the screen doesn't.)
                     .symbolRenderingMode(.monochrome)
-                    .foregroundStyle(Self.chargingGreen)
+                    .foregroundStyle(look.tint)
             } else if let level = model.volumeLevel {
                 VolumeMeter(level: level, compact: true)
+            } else if model.timerRunning {
+                timerBadge
             } else {
                 MusicBars(barCount: 3,
                           isAnimating: live,

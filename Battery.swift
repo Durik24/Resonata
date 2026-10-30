@@ -56,13 +56,21 @@ final class PowerWatcher {
     static let shared = PowerWatcher()
 
     var onPlugIn: ((Battery) -> Void)?
+    /// The charge has just fallen to a warning level, on battery.
+    var onLow: ((Battery) -> Void)?
+
+    /// Where the low-battery warning comes, once on the way down each.
+    nonisolated static let warnings = [20, 10]
 
     private var source: CFRunLoopSource?
     private var wasOnPower: Bool?
+    private var lastPercent: Int?
 
     func start() {
         guard source == nil else { return }
-        wasOnPower = Battery.read()?.onPower
+        let now = Battery.read()
+        wasOnPower = now?.onPower
+        lastPercent = now?.percent
         guard let src = IOPSNotificationCreateRunLoopSource(powerSourcesChanged, nil)?
             .takeRetainedValue() else { return }
         // Common modes, not just the default: in the default mode alone the
@@ -74,8 +82,22 @@ final class PowerWatcher {
 
     func changed() {
         guard let battery = Battery.read() else { return }
-        defer { wasOnPower = battery.onPower }
+        defer {
+            wasOnPower = battery.onPower
+            lastPercent = battery.percent
+        }
         if Self.isPlugIn(was: wasOnPower, now: battery.onPower) { onPlugIn?(battery) }
+        if !battery.onPower, Self.crossesWarning(from: lastPercent, to: battery.percent) {
+            onLow?(battery)
+        }
+    }
+
+    /// The charge has just gone down past a warning level — 21 % to 20 %,
+    /// say. Only on the way down, and only once per level: the notice fires
+    /// on every tick of the charge, and sitting at 20 % isn't news.
+    nonisolated static func crossesWarning(from old: Int?, to new: Int) -> Bool {
+        guard let old, new < old else { return false }
+        return warnings.contains { old > $0 && new <= $0 }
     }
 
     /// Battery to charger, and nothing else: the notice also fires as the

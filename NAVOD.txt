@@ -131,8 +131,17 @@ KROK 7 — Vyzkoušej ovládání
                                  (~/Library/Caches/com.local.resonata)
   - Připoj nabíječku             zavřený notch se na 3 s vysune
                                  se zeleným bleskem, „Nabíjení“
-                                 a procenty baterie (vypnout jde
-                                 v nastavení)
+                                 a procenty baterie
+  - Baterie klesne na 20 / 10 %  vysune se červené „Slabá baterie“
+  - Připojíš sluchátka           vysune se jejich jméno a
+                                 „Připojeno“ (Bluetooth)
+  - 5 min před událostí          vysune se její název a čas
+                                 (jen s připojeným kalendářem)
+  - Časovač (4. stránka panelu)  5–60 min jedním klepnutím;
+                                 zbývající čas je vidět v
+                                 zavřeném notchi, na konci se
+                                 vysune „Čas vypršel“ a cinkne
+                                 (vše jde vypnout v nastavení)
   - Najeď myší na notch          po 0,3 s se vysune název
                                  skladby;
                                  když myš odjede, zasune se
@@ -338,7 +347,11 @@ QuickApps.swift        seznam aplikací, otevírání, přidávání
 QuickAppsView.swift    stránka Aplikace
 CalendarStore.swift    čtení událostí z Kalendáře (jen čtení)
 CalendarView.swift     sloupec s kalendářem v otevřeném panelu
-Battery.swift          stav baterie nahoře v panelu
+Battery.swift          stav baterie, nabíječka, slabá baterie
+Activity.swift         chvilkové zprávy v notchi (baterie, sluchátka…)
+Headphones.swift       připojení sluchátek (z Core Audio)
+CountdownTimer.swift   časovač
+TimerView.swift        stránka Časovač
 Demo.swift             ukázková (vymyšlená) skladba pro screenshoty
 Icon/make-icon.swift   nakreslí ikonu aplikace (swift Icon/make-icon.swift)
 docs/                  obrázky do README

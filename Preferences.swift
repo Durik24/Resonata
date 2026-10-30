@@ -18,6 +18,8 @@ enum Preferences {
         static let showCalendar = "showCalendar"
         static let openMode = "openMode"
         static let showChargingPeek = "showChargingPeek"
+        static let showHeadphonesPeek = "showHeadphonesPeek"
+        static let meetingReminder = "meetingReminder"
     }
 
     /// Call before anything reads a preference.
@@ -32,6 +34,8 @@ enum Preferences {
             Key.showSongPeek: true,
             Key.showCalendar: true,
             Key.showChargingPeek: true,
+            Key.showHeadphonesPeek: true,
+            Key.meetingReminder: true,
             Key.openMode: OpenMode.nook.rawValue,
             Key.quickApps: QuickApps.defaultPaths().joined(separator: "\n"),
         ])
@@ -51,6 +55,10 @@ enum Preferences {
     static var showCalendar: Bool { UserDefaults.standard.bool(forKey: Key.showCalendar) }
 
     static var showChargingPeek: Bool { UserDefaults.standard.bool(forKey: Key.showChargingPeek) }
+
+    static var showHeadphonesPeek: Bool { UserDefaults.standard.bool(forKey: Key.showHeadphonesPeek) }
+
+    static var meetingReminder: Bool { UserDefaults.standard.bool(forKey: Key.meetingReminder) }
 
     static var openMode: OpenMode {
         OpenMode(rawValue: UserDefaults.standard.string(forKey: Key.openMode) ?? "") ?? .click

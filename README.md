@@ -124,17 +124,30 @@ code or assets — keeping only what needs no permission:
   edge out and back; the title fills the slot they leave and is clipped short
   of them on the way back in. Not on launch, not on resume, not while open;
   switchable in settings.
-- **Charging peek** (`ChargingPeek` in `SongPeek.swift`, `PowerWatcher` in
-  `Battery.swift`): plugging in the charger slides the closed notch out for
-  3 s — a green bolt in the cover's place, "Nabíjení" and the charge — even
-  with nothing playing. IOKit's power-source notification, no polling.
-  Switchable in settings. The song peek and an activity like this one each
+- **Activities** (`Activity.swift`): moments that aren't the song slide the
+  closed notch out the same way, with their own symbol in the cover's place
+  and the bars' — even with nothing playing:
+  - *charging* (green bolt, "Nabíjení", the charge) when the charger is
+    plugged in, and *low battery* (red, "Slabá baterie") as the charge falls
+    to 20 % and 10 % — IOKit's power-source notification, no polling
+    (`PowerWatcher` in `Battery.swift`);
+  - *headphones* (their name, "Připojeno") when sound moves to Bluetooth
+    headphones — read from Core Audio's default output and its transport
+    type, so no Bluetooth permission (`Headphones.swift`);
+  - *a meeting* ("za 5 min · 14:00") five minutes before a timed event, once
+    the calendar is connected (`MeetingReminder` in `CalendarStore.swift`);
+  - *time's up* when the timer runs out.
+  Each can be switched off in settings. The song peek and an activity like this one each
   keep their own flag (`songPeeking`, `activityShown`); sharing one, either
   timer cut the other short. The activity's content outlives its flag by the
   slide back, so the text going out of sight is still "Nabíjení", not the
   song's title.
+- **Timer** (`CountdownTimer.swift`, `TimerView.swift`): a fourth page —
+  5 to 60 minutes in one tap, pause, cancel. While it runs the closed notch
+  shows the time left in the bars' place; at the end it slides out and
+  chimes. Kept across restarts.
 - **Pages**: icons in the strip left of the cutout switch the open panel
-  between Music, Notes and Apps. Right of it: settings and the battery level.
+  between Music, Notes, Apps and Timer. Right of it: settings and the battery level.
 - **Calendar** (`CalendarStore.swift`, `CalendarView.swift`): beside the
   player, five days around today (today in the album colour) and the picked
   day's events. Read-only; macOS asks for calendar access only when you click

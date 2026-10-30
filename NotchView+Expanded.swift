@@ -36,6 +36,8 @@ extension NotchView {
             NotesView(store: NotesStore.shared)
         case .apps:
             QuickAppsView(onLaunch: { model.close?() })
+        case .timer:
+            TimerView(timer: .shared, accent: ActivityLook.orange)
         }
     }
 

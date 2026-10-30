@@ -374,6 +374,38 @@ MainActor.assumeIsolated {
     check(again.todos.isEmpty, "notes: ticked to-dos cleared")
 }
 
+// MARK: - Activities
+
+check(PowerWatcher.crossesWarning(from: 21, to: 20), "low battery: 21 -> 20 warns")
+check(PowerWatcher.crossesWarning(from: 11, to: 10), "low battery: 11 -> 10 warns")
+check(PowerWatcher.crossesWarning(from: 23, to: 19), "low battery: a jump past 20 warns")
+check(!PowerWatcher.crossesWarning(from: 20, to: 19), "low battery: already below 20, no repeat")
+check(!PowerWatcher.crossesWarning(from: 19, to: 20), "low battery: going up isn't a warning")
+check(!PowerWatcher.crossesWarning(from: nil, to: 15), "low battery: not at launch")
+check(!PowerWatcher.crossesWarning(from: 50, to: 49), "low battery: nowhere near")
+
+do {
+    let now = Date(timeIntervalSince1970: 1_000_000)
+    func event(_ id: String, inMinutes m: Double, allDay: Bool = false) -> CalendarStore.Event {
+        let start = now.addingTimeInterval(m * 60)
+        return CalendarStore.Event(id: id, title: id, start: start,
+                                   end: start.addingTimeInterval(3600), isAllDay: allDay)
+    }
+    let events = [event("later", inMinutes: 30), event("soon", inMinutes: 4),
+                  event("sooner", inMinutes: 1), event("started", inMinutes: -2),
+                  event("allday", inMinutes: 3, allDay: true)]
+    let due = MeetingReminder.due(events, now: now, lead: 300).map(\.id)
+    check(due == ["sooner", "soon"], "reminder: timed events within 5 min, soonest first", "\(due)")
+    check(NotchActivity.meetingDetail(start: now.addingTimeInterval(300), now: now).hasPrefix("za 5 min · "),
+          "reminder: 'za 5 min · time'")
+    check(NotchActivity.meetingDetail(start: now, now: now).hasPrefix("teď"), "reminder: 'teď' once started")
+}
+
+check(CountdownTimer.format(25 * 60) == "25:00", "timer: 25:00")
+check(CountdownTimer.format(59.2) == "1:00", "timer: rounds up, never shows 0:00 early")
+check(CountdownTimer.format(9 * 60 + 5) == "9:05", "timer: 9:05")
+check(CountdownTimer.format(65 * 60) == "65 min", "timer: an hour and up in minutes")
+
 // MARK: - Swipes on the notch
 
 do {

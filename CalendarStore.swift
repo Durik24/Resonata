@@ -109,3 +109,49 @@ final class CalendarStore: ObservableObject {
         return (-2...2).compactMap { calendar.date(byAdding: .day, value: $0, to: today) }
     }
 }
+
+/// Five minutes before an event, the closed notch slides out with its name
+/// and time — see `NotchActivity.meeting`. Only with calendar access, and
+/// only for events with a time (not all-day ones), once each.
+@MainActor
+final class MeetingReminder {
+
+    /// How long before the start the reminder comes.
+    static let lead: TimeInterval = 5 * 60
+
+    var onReminder: ((CalendarStore.Event) -> Void)?
+
+    private let store: CalendarStore
+    private var timer: Timer?
+    private var reminded = Set<String>()
+
+    init(store: CalendarStore? = nil) {
+        self.store = store ?? .shared
+    }
+
+    /// Checks once a minute: five days of one person's calendars is a cheap
+    /// read, and a minute is as fine as a reminder needs to be.
+    func start() {
+        guard timer == nil else { return }
+        check()
+        timer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.check() }
+        }
+    }
+
+    func check(now: Date = Date()) {
+        guard Preferences.meetingReminder, CalendarStore.currentAccess() == .granted else { return }
+        store.reload(now: now)
+        guard let next = Self.due(store.events, now: now, lead: Self.lead)
+            .first(where: { !reminded.contains($0.id) }) else { return }
+        reminded.insert(next.id)
+        onReminder?(next)
+    }
+
+    /// Timed events starting within `lead` from now, soonest first.
+    nonisolated static func due(_ events: [CalendarStore.Event], now: Date,
+                                lead: TimeInterval) -> [CalendarStore.Event] {
+        events.filter { !$0.isAllDay && $0.start > now && $0.start.timeIntervalSince(now) <= lead }
+            .sorted { $0.start < $1.start }
+    }
+}

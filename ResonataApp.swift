@@ -17,7 +17,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let model = NotchModel()
     private lazy var controller = NotchPanelController(model: model)
     private lazy var songPeek = SongPeek(model: model)
-    private lazy var chargingPeek = ChargingPeek(model: model)
+    private lazy var activityPeek = ActivityPeek(model: model)
+    private let meetingReminder = MeetingReminder()
     /// MediaRemote first — it sees every player. If the adapter can't start
     /// or MediaRemote won't answer on this macOS, the AppleScript source takes
     /// over and the app behaves exactly as it did before Phase 5.
@@ -80,8 +81,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         lyricPulse.onPulse = { [weak self] in self?.model.pulse &+= 1 }
 
         // Plugging in the charger gets a moment in the closed notch too.
-        PowerWatcher.shared.onPlugIn = { [weak self] battery in self?.chargingPeek.show(battery) }
+        PowerWatcher.shared.onPlugIn = { [weak self] battery in
+            guard Preferences.showChargingPeek else { return }
+            self?.activityPeek.show(.charging(percent: battery.percent))
+        }
+        PowerWatcher.shared.onLow = { [weak self] battery in
+            guard Preferences.showChargingPeek else { return }
+            self?.activityPeek.show(.lowBattery(percent: battery.percent))
+        }
         PowerWatcher.shared.start()
+
+        // So do headphones taking over the sound.
+        OutputWatcher.shared.onHeadphones = { [weak self] name in
+            guard Preferences.showHeadphonesPeek else { return }
+            self?.activityPeek.show(.headphones(name: name))
+        }
+        OutputWatcher.shared.start()
+
+        // And an event about to start.
+        meetingReminder.onReminder = { [weak self] event in
+            self?.activityPeek.show(.meeting(title: event.title, start: event.start))
+        }
+        meetingReminder.start()
+
+        // The timer: its state shows in the closed notch, and its end is an
+        // activity of its own.
+        let timer = CountdownTimer.shared
+        timer.$end.combineLatest(timer.$pausedRemaining)
+            .map { end, paused in end != nil || paused != nil }
+            .removeDuplicates()
+            .sink { [weak self] running in self?.model.timerRunning = running }
+            .store(in: &cancellables)
+        timer.onFinish = { [weak self] minutes in self?.activityPeek.show(.timerDone(minutes: minutes)) }
 
         // A new song gets a moment in the closed notch.
         model.$track
@@ -115,11 +146,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                object: nil, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated { self?.model.track = nil }
             }
+            // `com.local.resonata.activity` with lowbattery, headphones,
+            // meeting or timer: that activity's peek, without the real thing.
+            center.addObserver(forName: Notification.Name("com.local.resonata.activity"),
+                               object: nil, queue: .main) { [weak self] note in
+                let kind = note.object as? String
+                MainActor.assumeIsolated {
+                    let activity: NotchActivity? = switch kind {
+                    case "lowbattery": .lowBattery(percent: 20)
+                    case "headphones": .headphones(name: OutputWatcher.currentName ?? "Sluchátka")
+                    case "meeting": .meeting(title: "Schůzka", start: Date().addingTimeInterval(300))
+                    case "timer": .timerDone(minutes: 25)
+                    default: nil
+                    }
+                    if let activity { self?.activityPeek.show(activity) }
+                }
+            }
+            // `com.local.resonata.timer`: an 8-second timer, to watch it end.
+            center.addObserver(forName: Notification.Name("com.local.resonata.timer"),
+                               object: nil, queue: .main) { _ in
+                MainActor.assumeIsolated { CountdownTimer.shared.startForTesting(seconds: 8) }
+            }
             // `com.local.resonata.charging`: the charging peek, without a cable.
             center.addObserver(forName: Notification.Name("com.local.resonata.charging"),
                                object: nil, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated {
-                    self?.chargingPeek.show(Battery.read() ?? Battery(percent: 80, charging: true))
+                    self?.activityPeek.show(.charging(percent: Battery.read()?.percent ?? 80))
                 }
             }
             center.addObserver(forName: Notification.Name("com.local.resonata.page"),

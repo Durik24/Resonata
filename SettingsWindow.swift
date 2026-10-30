@@ -36,6 +36,8 @@ struct SettingsView: View {
     @AppStorage(Preferences.Key.showSongPeek) private var showSongPeek = true
     @AppStorage(Preferences.Key.showCalendar) private var showCalendar = true
     @AppStorage(Preferences.Key.showChargingPeek) private var showChargingPeek = true
+    @AppStorage(Preferences.Key.showHeadphonesPeek) private var showHeadphonesPeek = true
+    @AppStorage(Preferences.Key.meetingReminder) private var meetingReminder = true
     @AppStorage(Preferences.Key.openMode) private var openMode = OpenMode.nook.rawValue
     @AppStorage(Preferences.Key.quickApps) private var quickApps = ""
 
@@ -75,7 +77,9 @@ struct SettingsView: View {
                 }
                 Toggle("Zobrazovat texty písní", isOn: $showLyrics)
                 Toggle("Ukázat novou skladbu v zavřeném notchi", isOn: $showSongPeek)
-                Toggle("Ukázat nabíjení po připojení nabíječky", isOn: $showChargingPeek)
+                Toggle("Ukázat baterii v notchi (nabíjení, slabá baterie)", isOn: $showChargingPeek)
+                Toggle("Ukázat připojení sluchátek", isOn: $showHeadphonesPeek)
+                Toggle("Připomenout událost z kalendáře 5 min předem", isOn: $meetingReminder)
                 Toggle("Kalendář vedle přehrávače", isOn: $showCalendar)
             }
 

@@ -322,11 +322,13 @@ final class NotchPanelController {
         // so the pill shrinks back to the cutout when the music stops.
         // The volume meter shows in the pill's wing, so it widens the pill
         // too — even an idle one. Mirrors `NotchModel.showsCollapsedContent`.
+        // Things that put content in the pill whatever the music is doing.
+        let extras = model.$volumeLevel.map { $0 != nil }
+            .combineLatest(model.$activity.map { $0 != nil }, model.$timerRunning)
+            .map { $0 || $1 || $2 }
         let collapsedContentVisible = model.$track.map { $0 != nil }
-            .combineLatest(model.$isIdle, model.$volumeLevel, model.$activity)
-            .map { hasTrack, idle, volume, activity in
-                (hasTrack && !idle) || volume != nil || activity != nil
-            }
+            .combineLatest(model.$isIdle, extras)
+            .map { hasTrack, idle, extra in (hasTrack && !idle) || extra }
             .removeDuplicates()
 
         model.$isExpanded
