@@ -36,6 +36,14 @@ The song, cover, lyrics and events in these pictures are made up: they come
 from the app's demo mode (`RESONATA_DEMO=1`, see `Demo.swift`), not from
 anyone's music or calendar.
 
+## Download
+
+A ready-made app is on the [Releases page](https://github.com/Durik24/Resonata/releases/latest)
+— macOS 14+, Apple silicon. It isn't notarized (that needs a paid Apple
+developer account), so the first time macOS won't open it: go to System
+Settings → Privacy & Security and click **Open Anyway**. Or build it
+yourself, below.
+
 ## Getting it running
 
 ```
