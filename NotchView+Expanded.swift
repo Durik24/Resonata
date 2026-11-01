@@ -47,20 +47,34 @@ extension NotchView {
     private var topBar: some View {
         HStack(spacing: 0) {
             pageSwitcher
-            Spacer(minLength: notchSize.width)
+                .frame(width: stripWidth, alignment: .leading)
+            Spacer(minLength: 0)
             statusItems
+                .frame(width: stripWidth, alignment: .trailing)
         }
         .frame(height: notchSize.height)
     }
 
+    /// The room either side of the cutout in the top bar, kept 8 pt clear of
+    /// it. Narrow without the calendar: the fourth page icon, the timer's,
+    /// used to sit half under the hardware notch — out of sight, and
+    /// unreachable, the pointer slipping under the cutout on the way to it.
+    private var stripWidth: CGFloat {
+        (model.expandedWidth - 40 - notchSize.width) / 2 - 8
+    }
+
     private var pageSwitcher: some View {
-        HStack(spacing: 4) {
+        let count = CGFloat(PanelTab.allCases.count)
+        let gap: CGFloat = 4
+        // As wide as there's room for, up to the usual 28.
+        let iconWidth = min(28, ((stripWidth - gap * (count - 1)) / count).rounded(.down))
+        return HStack(spacing: gap) {
             ForEach(PanelTab.allCases) { tab in
                 Button { model.tab = tab } label: {
                     Image(systemName: tab.symbol)
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.white.opacity(model.tab == tab ? 0.95 : 0.4))
-                        .frame(width: 28, height: 20)
+                        .frame(width: iconWidth, height: 20)
                         .background(Capsule().fill(.white.opacity(model.tab == tab ? 0.14 : 0)))
                         .contentShape(Rectangle())
                 }
@@ -71,7 +85,12 @@ extension NotchView {
     }
 
     private var statusItems: some View {
-        HStack(spacing: 10) {
+        // The percentage goes first when room is short — the battery symbol
+        // says much the same. Widths: icon buttons 22, the battery with its
+        // percentage about 66, without it 20.
+        let buttons: CGFloat = (model.canSwitchScreens ? 32 : 0) + 32
+        let showPercent = buttons + 66 <= stripWidth
+        return HStack(spacing: 10) {
             if model.canSwitchScreens {
                 iconButton("rectangle.on.rectangle", help: "Přepnout notch na další monitor") {
                     model.switchScreen?()
@@ -85,8 +104,10 @@ extension NotchView {
             TimelineView(.periodic(from: .now, by: 30)) { _ in
                 if let battery = Battery.read() {
                     HStack(spacing: 4) {
-                        Text("\(battery.percent) %")
-                            .font(.system(size: 11, weight: .semibold).monospacedDigit())
+                        if showPercent {
+                            Text("\(battery.percent) %")
+                                .font(.system(size: 11, weight: .semibold).monospacedDigit())
+                        }
                         Image(systemName: battery.symbol)
                             .font(.system(size: 13))
                             .foregroundStyle(battery.isLow ? .red : .white.opacity(0.85))
