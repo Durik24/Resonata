@@ -975,7 +975,14 @@ final class NotchPanelController {
         let screen = targetScreen
         fullScreenCovered = screen?.isShowingFullScreenApp ?? false
         let missionControl = screen?.isShowingMissionControl ?? false
-        if fullScreenCovered || missionControl {
+        // In a full-screen app the menu bar slides down when the pointer
+        // reaches the top edge — the status items are back, so the notch
+        // shows — and slides away again as the pointer moves down. Hiding
+        // then would pull the open panel out from under the pointer, which
+        // is what happened, mid-use. So never while it's open or the pointer
+        // is on it; once it has closed and the pointer has gone, it hides.
+        let inUse = model.isExpanded || pointerInside
+        if (fullScreenCovered || missionControl) && !(fullScreenCovered && !missionControl && inUse) {
             if panel.isVisible { panel.orderOut(nil) }
         } else if !panel.isVisible {
             panel.orderFrontRegardless()
