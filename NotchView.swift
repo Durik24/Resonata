@@ -465,7 +465,8 @@ struct NotchView: View {
             let timer = CountdownTimer.shared
             Text(CountdownTimer.format(timer.remaining(at: context.date)))
                 .font(.system(size: 10, weight: .semibold).monospacedDigit())
-                .foregroundStyle(ActivityLook.orange.opacity(timer.isPaused ? 0.5 : 1))
+                .foregroundStyle((timer.phase == .rest ? ActivityLook.green : ActivityLook.orange)
+                    .opacity(timer.isPaused ? 0.5 : 1))
                 .lineLimit(1)
                 .fixedSize()
         }

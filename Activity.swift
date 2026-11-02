@@ -15,13 +15,15 @@ enum NotchActivity: Equatable {
     case meeting(title: String, start: Date)
     /// The timer has run out; the minutes it ran for.
     case timerDone(minutes: Int)
+    /// A Pomodoro phase has begun: a break, or back to work.
+    case pomodoro(rest: Bool, minutes: Int)
 
     /// How long it stays out. Long enough to read; a meeting or a finished
     /// timer is worth a little longer.
     var duration: TimeInterval {
         switch self {
         case .charging, .lowBattery, .headphones: 3
-        case .meeting, .timerDone: 6
+        case .meeting, .timerDone, .pomodoro: 6
         }
     }
 
@@ -30,7 +32,7 @@ enum NotchActivity: Equatable {
     /// close, while "charging" or "headphones connected" is old news by then.
     var waitsForClose: Bool {
         switch self {
-        case .lowBattery, .meeting, .timerDone: true
+        case .lowBattery, .meeting, .timerDone, .pomodoro: true
         case .charging, .headphones: false
         }
     }
@@ -54,6 +56,12 @@ enum NotchActivity: Equatable {
         case .timerDone(let minutes):
             ActivityLook(symbol: "timer", tint: ActivityLook.orange, title: "Čas vypršel",
                          detail: "\(minutes) min", trailing: "bell.fill")
+        case .pomodoro(let rest, let minutes):
+            rest
+                ? ActivityLook(symbol: "cup.and.saucer.fill", tint: ActivityLook.green, title: "Pauza",
+                               detail: "\(minutes) min", trailing: "bell.fill")
+                : ActivityLook(symbol: "timer", tint: ActivityLook.orange, title: "Zpátky do práce",
+                               detail: "\(minutes) min", trailing: "bell.fill")
         }
     }
 

@@ -38,6 +38,8 @@ extension NotchView {
             QuickAppsView(onLaunch: { model.close?() })
         case .timer:
             TimerView(timer: .shared, accent: ActivityLook.orange)
+        case .shelf:
+            ShelfView(shelf: .shared)
         }
     }
 
@@ -65,7 +67,7 @@ extension NotchView {
 
     private var pageSwitcher: some View {
         let count = CGFloat(PanelTab.allCases.count)
-        let gap: CGFloat = 4
+        let gap: CGFloat = 3
         // As wide as there's room for, up to the usual 28.
         let iconWidth = min(28, ((stripWidth - gap * (count - 1)) / count).rounded(.down))
         return HStack(spacing: gap) {
@@ -318,12 +320,24 @@ extension NotchView {
         // Paused playback needs no clock, and neither does a drag: both are
         // driven by state changes SwiftUI already re-renders for. Only built
         // while expanded (see `content`), so the collapsed pill pays nothing.
+        //
+        // As often as the bar moves a device pixel, not thirty times a second:
+        // across ~600 pixels a four-minute song advances a pixel every 0.4 s,
+        // and each redraw is a SwiftUI layout pass — measured as most of the
+        // open panel's CPU. Never slower than twice a second, for the time
+        // labels; never faster than 30 fps, for very short tracks.
         TimelineView(
-            .animation(minimumInterval: 1 / 30,
+            .animation(minimumInterval: Self.progressInterval(duration: model.track?.duration ?? 0),
                        paused: model.track?.isPlaying != true || isScrubbing)
         ) { context in
             progressBody(at: context.date)
         }
+    }
+
+    /// Seconds per device pixel of progress bar, within 1/30 s and 1/2 s.
+    nonisolated static func progressInterval(duration: TimeInterval) -> TimeInterval {
+        guard duration > 0 else { return 0.5 }
+        return min(max(duration / 600, 1.0 / 30), 0.5)
     }
 
     private func progressBody(at date: Date) -> some View {

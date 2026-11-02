@@ -25,6 +25,10 @@ final class NotchModel: ObservableObject {
     /// Set by `NotchPanelController`. Moves the notch to the next display.
     var switchScreen: (() -> Void)?
 
+    /// Set by `NotchPanelController`. Opens the panel — for a file dragged
+    /// onto the closed notch.
+    var open: (() -> Void)?
+
     /// Set by `NotchPanelController`. Closes the panel — after opening an app
     /// from the "Aplikace" page, say.
     var close: (() -> Void)?
@@ -109,7 +113,7 @@ final class NotchModel: ObservableObject {
 
 /// The open panel's pages, switched from the icons beside the notch.
 enum PanelTab: String, CaseIterable, Identifiable {
-    case music, notes, apps, timer
+    case music, notes, apps, timer, shelf
 
     var id: String { rawValue }
 
@@ -119,6 +123,7 @@ enum PanelTab: String, CaseIterable, Identifiable {
         case .notes: "checklist"
         case .apps: "square.grid.2x2"
         case .timer: "timer"
+        case .shelf: "tray"
         }
     }
 
@@ -128,6 +133,7 @@ enum PanelTab: String, CaseIterable, Identifiable {
         case .notes: "Poznámky a úkoly"
         case .apps: "Aplikace"
         case .timer: "Časovač"
+        case .shelf: "Police"
         }
     }
 }

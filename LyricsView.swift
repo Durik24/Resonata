@@ -17,8 +17,10 @@ struct LyricsView: View {
                 // Ten times a second is plenty for something that changes
                 // every few seconds, and it is only built while the panel is
                 // open.
-                TimelineView(.animation(minimumInterval: 1 / 10,
-                                        paused: track?.isPlaying != true)) { context in
+                // Redrawn exactly when a line begins, not ten times a second:
+                // the line only changes every few seconds, and each redraw is
+                // a layout pass. Paused, there's nothing to schedule at all.
+                TimelineView(.explicit(Self.lineStarts(lines, track: track, after: Date()))) { context in
                     let position = track?.position(at: context.date) ?? 0
                     let index = LyricsStore.index(in: lines, at: position)
                     let text = index.flatMap { lines.indices.contains($0) ? lines[$0].text : nil } ?? ""
@@ -41,6 +43,17 @@ struct LyricsView: View {
         .frame(height: 16)
         .frame(maxWidth: .infinity, alignment: alignment)
         .clipped()
+    }
+
+    /// The moments the coming lines begin, from the track's playhead — and
+    /// now, for the first draw.
+    nonisolated static func lineStarts(_ lines: [LyricLine], track: Track?,
+                                       after now: Date) -> [Date] {
+        guard let track, track.isPlaying else { return [now] }
+        let position = track.position(at: now)
+        return [now] + lines.lazy
+            .filter { $0.time > position }
+            .map { now.addingTimeInterval($0.time - position) }
     }
 
     private func line(_ text: String, opacity: Double) -> some View {

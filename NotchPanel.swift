@@ -5,8 +5,11 @@ import SwiftUI
 /// A borderless, transparent, always-on-top panel.
 ///
 /// The two settings that matter most:
-///   - `level = .screenSaver` puts it above the menu bar. `.statusBar` is *not*
-///     high enough; you'll end up drawing underneath the clock.
+///   - `level` is just above the menu bar and its status items (main menu
+///     + 3). `.statusBar` is *not* high enough; you'll end up drawing
+///     underneath the clock. It used to be `.screenSaver`, which is above
+///     the level dragged items are drawn at — and macOS only hands a drag to
+///     windows below that, so files couldn't be dropped on the notch.
 ///   - `.nonactivatingPanel` + `canBecomeMain = false` means clicking it never
 ///     steals focus from whatever app you're actually using.
 final class NotchPanel: NSPanel {
@@ -27,7 +30,7 @@ final class NotchPanel: NSPanel {
         hidesOnDeactivate = false
         acceptsMouseMovedEvents = true
         ignoresMouseEvents = false
-        level = .screenSaver
+        level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.mainMenuWindow)) + 3)
         // The panel is black whatever the system appearance; text fields in
         // the notes page need to draw as on a dark background — light text,
         // a light caret — even when the Mac is in light mode.
@@ -108,6 +111,45 @@ final class NotchPanel: NSPanel {
         super.sendEvent(event)
     }
 
+    /// A file is being dragged over the panel / was dropped on it — for the
+    /// shelf. The window is the drag destination, not the hosting view:
+    /// tested, neither SwiftUI's onDrop nor a registration on the hosting
+    /// view ever saw a drag — SwiftUI manages that view's drag types itself.
+    /// `@objc`, or AppKit never sees these: plain Swift methods on an NSWindow
+    /// subclass aren't visible to it. And the window has to sit below the
+    /// level dragged items are drawn at — see `level` (tested: at
+    /// `.screenSaver`, no drop arrived even with all of this in place).
+    var onFileDragEnter: (() -> Void)?
+    var onFileDrop: (([URL]) -> Void)?
+
+    func acceptFileDrops() {
+        registerForDraggedTypes([.fileURL])
+    }
+
+    @objc func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        guard !Self.fileURLs(in: sender).isEmpty else { return [] }
+        onFileDragEnter?()
+        return .copy
+    }
+
+    @objc func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        Self.fileURLs(in: sender).isEmpty ? [] : .copy
+    }
+
+    @objc func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool { true }
+
+    @objc func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        let urls = Self.fileURLs(in: sender)
+        guard !urls.isEmpty else { return false }
+        onFileDrop?(urls)
+        return true
+    }
+
+    private static func fileURLs(in info: NSDraggingInfo) -> [URL] {
+        info.draggingPasteboard.readObjects(forClasses: [NSURL.self],
+                                            options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+    }
+
     /// `RESONATA_DEBUG_CLICK=1` logs every mouse-down the panel receives.
     static let debugClick = ProcessInfo.processInfo.environment["RESONATA_DEBUG_CLICK"] == "1"
 }
@@ -143,6 +185,7 @@ final class FirstClickHostingView<Content: View>: NSHostingView<Content> {
         addTrackingArea(area)
         pointerTracking = area
     }
+
 
     override func mouseEntered(with event: NSEvent) {
         super.mouseEntered(with: event)
@@ -239,6 +282,7 @@ final class NotchPanelController {
         adoptGeometry(of: screen)
         model.switchScreen = { [weak self] in self?.moveToNextScreen() }
         model.close = { [weak self] in self?.setExpanded(false) }
+        model.open = { [weak self] in self?.setExpanded(true) }
 
         let panel = NotchPanel(contentRect: frame(for: screen))
         let hosting = FirstClickHostingView(rootView: NotchView(model: model))
@@ -251,6 +295,22 @@ final class NotchPanelController {
         // x=750, the pill was drawn centred in *that*, and so it slid right
         // and then snapped back under the notch at the deferred shrink.
         hosting.sizingOptions = []
+        // Files dragged onto the notch: it opens on the shelf; dropped, they
+        // are parked there.
+        panel.acceptFileDrops()
+        panel.onFileDragEnter = { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.model.tab = .shelf
+                if !self.model.isExpanded { self.setExpanded(true) }
+            }
+        }
+        panel.onFileDrop = { [weak self] urls in
+            MainActor.assumeIsolated {
+                ShelfStore.shared.add(urls)
+                self?.model.tab = .shelf
+            }
+        }
         hosting.onPointer = { [weak self] in
             MainActor.assumeIsolated { self?.pointerMoved(to: NSEvent.mouseLocation) }
         }

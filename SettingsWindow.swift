@@ -46,16 +46,13 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
-            Section {
+            Section("Obecné") {
                 Toggle("Spouštět po přihlášení", isOn: $openAtLogin)
                     .onChange(of: openAtLogin) { _, on in
                         LoginItem.set(on)
                         openAtLogin = LoginItem.isEnabled
                     }
-                Picker("Otevírat notch", selection: $openMode) {
-                    ForEach(OpenMode.allCases) { Text($0.title).tag($0.rawValue) }
-                }
-                Picker("Otevřít notch zkratkou", selection: $hotKey) {
+                Picker("Klávesová zkratka", selection: $hotKey) {
                     ForEach(HotKeyChoice.allCases) { Text($0.title).tag($0.rawValue) }
                 }
                 .onChange(of: hotKey) { _, value in
@@ -68,19 +65,40 @@ struct SettingsView: View {
                 }
             }
 
-            Section {
-                Picker("Zmenšit notch po pauze za", selection: $idleTimeout) {
-                    ForEach(Preferences.idleChoices, id: \.self) { Text("\(Int($0)) s").tag($0) }
+            Section("Otevírání") {
+                Picker("Otevírat notch", selection: $openMode) {
+                    ForEach(OpenMode.allCases) { Text($0.title).tag($0.rawValue) }
                 }
                 Picker("Animace", selection: $speed) {
                     ForEach(AnimationSpeed.allCases) { Text($0.title).tag($0.rawValue) }
                 }
-                Toggle("Zobrazovat texty písní", isOn: $showLyrics)
-                Toggle("Ukázat novou skladbu v zavřeném notchi", isOn: $showSongPeek)
-                Toggle("Ukázat baterii v notchi (nabíjení, slabá baterie)", isOn: $showChargingPeek)
-                Toggle("Ukázat připojení sluchátek", isOn: $showHeadphonesPeek)
-                Toggle("Připomenout událost z kalendáře 5 min předem", isOn: $meetingReminder)
+                Picker("Zmenšit notch po pauze za", selection: $idleTimeout) {
+                    ForEach(Preferences.idleChoices, id: \.self) { Text("\(Int($0)) s").tag($0) }
+                }
+            }
+
+            Section("Otevřený panel") {
+                Toggle("Texty písní", isOn: $showLyrics)
                 Toggle("Kalendář vedle přehrávače", isOn: $showCalendar)
+                Picker("Barva vlny", selection: $waveColour) {
+                    ForEach(WaveColour.allCases) { Text($0.title).tag($0.rawValue) }
+                }
+                if waveColour == WaveColour.custom.rawValue {
+                    ColorPicker("Vlastní barva", selection: customColour, supportsOpacity: false)
+                }
+            }
+
+            Section {
+                Toggle("Nová skladba", isOn: $showSongPeek)
+                Toggle("Baterie — nabíjení a slabá baterie", isOn: $showChargingPeek)
+                Toggle("Připojená sluchátka", isOn: $showHeadphonesPeek)
+                Toggle("Událost z kalendáře 5 min předem", isOn: $meetingReminder)
+            } header: {
+                Text("Zprávy v notchi")
+            } footer: {
+                Text("Na chvíli se vysunou ze zavřeného notche. Když je panel zrovna otevřený, připomínka, slabá baterie a konec časovače počkají, až ho zavřeš.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Aplikace v notchi") {
@@ -111,18 +129,11 @@ struct SettingsView: View {
                 }
             }
 
-            Section {
-                Picker("Barva vlny", selection: $waveColour) {
-                    ForEach(WaveColour.allCases) { Text($0.title).tag($0.rawValue) }
-                }
-                if waveColour == WaveColour.custom.rawValue {
-                    ColorPicker("Vlastní barva", selection: customColour, supportsOpacity: false)
-                }
-            }
         }
         .formStyle(.grouped)
-        .frame(width: 420)
-        .fixedSize(horizontal: false, vertical: true)
+        // A fixed height that scrolls, rather than a window that grows past
+        // the bottom of the screen as settings are added.
+        .frame(width: 440, height: 640)
     }
 
     private func move(_ index: Int, by offset: Int) {

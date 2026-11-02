@@ -137,6 +137,13 @@ KROK 7 — Vyzkoušej ovládání
                                  „Připojeno“ (Bluetooth)
   - 5 min před událostí          vysune se její název a čas
                                  (jen s připojeným kalendářem)
+  - Pomodoro (stránka Časovač)   25 min práce, 5 min pauza
+                                 pořád dokola; každá změna
+                                 cinkne a vysune se z notche
+  - Police (5. stránka)          přetáhni soubor na notch, otevře
+                                 se police; soubor si pak odtáhneš
+                                 kam potřebuješ (zkopíruje se),
+                                 kliknutím ho otevřeš
   - Časovač (4. stránka panelu)  5–60 min jedním klepnutím;
                                  zbývající čas je vidět v
                                  zavřeném notchi, na konci se
@@ -351,7 +358,8 @@ Battery.swift          stav baterie, nabíječka, slabá baterie
 Activity.swift         chvilkové zprávy v notchi (baterie, sluchátka…)
 Headphones.swift       připojení sluchátek (z Core Audio)
 CountdownTimer.swift   časovač
-TimerView.swift        stránka Časovač
+TimerView.swift        stránka Časovač (i Pomodoro)
+Shelf.swift            police na soubory
 Demo.swift             ukázková (vymyšlená) skladba pro screenshoty
 Icon/make-icon.swift   nakreslí ikonu aplikace (swift Icon/make-icon.swift)
 docs/                  obrázky do README

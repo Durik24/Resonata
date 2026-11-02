@@ -154,8 +154,19 @@ code or assets — keeping only what needs no permission:
   5 to 60 minutes in one tap, pause, cancel. While it runs the closed notch
   shows the time left in the bars' place; at the end it slides out and
   chimes. Kept across restarts.
+- **Pomodoro** (in the timer): 25 minutes of work and a 5-minute break in
+  turn, every fourth break 15 minutes, until cancelled. Each change chimes
+  and slides out of the notch ("Pauza" in green, "Zpátky do práce"); the
+  ring and the countdown beside the notch turn green for a break.
+- **File shelf** (`Shelf.swift`): drag files onto the notch — it opens on the
+  shelf — and drag them off again later; click one to open it. Kept as
+  paths, not copies, across restarts. The panel window is the drag
+  destination (`@objc` methods on `NotchPanel`), and sits at main menu + 3:
+  at `.screenSaver` it was above the level dragged items are drawn at, and
+  macOS hands drags only to windows below that.
 - **Pages**: icons in the strip left of the cutout switch the open panel
-  between Music, Notes, Apps and Timer. Right of it: settings and the battery level.
+  between Music, Notes, Apps, Timer and Shelf; they shrink to fit beside the
+  cutout when the panel is narrow. Right of it: settings and the battery level.
 - **Calendar** (`CalendarStore.swift`, `CalendarView.swift`): beside the
   player, five days around today (today in the album colour) and the picked
   day's events. Read-only; macOS asks for calendar access only when you click
@@ -180,6 +191,14 @@ Accessibility permission), how long after a pause the notch shrinks,
 animation speed, lyrics on/off, the calendar on/off, and the wave's colour (album, white, or your
 own). Apple Music tracks get a heart button (`favorited` over AppleScript);
 Spotify has no way to like a song from the Mac short of its web API.
+
+## Keeping the open panel cheap
+
+Open, the panel used to cost ~8 % CPU, most of it SwiftUI layout: the
+progress bar redrew 30 times a second and the lyric line 10. Now the bar
+redraws as often as it moves a device pixel (about every 0.4 s for a
+four-minute song) and the lyric only when a line begins — measured 2.9 %,
+looking the same (`NotchView.progressInterval`, `LyricsView.lineStarts`).
 
 ## Mission Control
 

@@ -113,6 +113,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .sink { [weak self] running in self?.model.timerRunning = running }
             .store(in: &cancellables)
         timer.onFinish = { [weak self] minutes in self?.activityPeek.show(.timerDone(minutes: minutes)) }
+        timer.onPhase = { [weak self] phase, minutes in
+            self?.activityPeek.show(.pomodoro(rest: phase == .rest, minutes: minutes))
+        }
 
         // A new song gets a moment in the closed notch.
         model.$track
@@ -160,6 +163,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     default: nil
                     }
                     if let activity { self?.activityPeek.show(activity) }
+                }
+            }
+            // `com.local.resonata.pomodoro`: Pomodoro at 1/100 speed — 25 min
+            // of work in 15 s, a 5-minute break in 3 s.
+            center.addObserver(forName: Notification.Name("com.local.resonata.pomodoro"),
+                               object: nil, queue: .main) { _ in
+                MainActor.assumeIsolated {
+                    CountdownTimer.shared.testScale = 0.01
+                    CountdownTimer.shared.startPomodoro()
                 }
             }
             // `com.local.resonata.timer`: an 8-second timer, to watch it end.

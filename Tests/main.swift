@@ -406,6 +406,37 @@ check(CountdownTimer.format(59.2) == "1:00", "timer: rounds up, never shows 0:00
 check(CountdownTimer.format(9 * 60 + 5) == "9:05", "timer: 9:05")
 check(CountdownTimer.format(65 * 60) == "65 min", "timer: an hour and up in minutes")
 
+// MARK: - Redraw pacing
+
+check(approx(NotchView.progressInterval(duration: 240), 0.4), "progress: a 4-min song redraws every 0.4 s")
+check(approx(NotchView.progressInterval(duration: 5), 1.0 / 30), "progress: never faster than 30 fps")
+check(approx(NotchView.progressInterval(duration: 3600), 0.5), "progress: never slower than twice a second")
+check(approx(NotchView.progressInterval(duration: 0), 0.5), "progress: unknown length, twice a second")
+do {
+    let now = Date(timeIntervalSince1970: 1_000_000)
+    let lines = [LyricLine(time: 10, text: "a"), LyricLine(time: 20, text: "b"), LyricLine(time: 30, text: "c")]
+    let playing = Track(title: "T", artist: "A", album: "", duration: 60, sampledPosition: 15,
+                        sampledAt: now, isPlaying: true, artworkURL: nil, source: "Spotify")
+    let starts = LyricsView.lineStarts(lines, track: playing, after: now)
+    check(starts == [now, now.addingTimeInterval(5), now.addingTimeInterval(15)],
+          "lyrics: redraws now and as each coming line begins", "\(starts.map { $0.timeIntervalSince(now) })")
+    var paused = playing; paused.isPlaying = false
+    check(LyricsView.lineStarts(lines, track: paused, after: now) == [now], "lyrics: paused, just once")
+}
+
+// MARK: - Pomodoro
+
+do {
+    typealias T = CountdownTimer
+    let afterWork1 = T.next(after: .work, round: 1)
+    check(afterWork1.phase == .rest && afterWork1.minutes == 5 && afterWork1.round == 1, "pomodoro: work -> 5-min break")
+    let afterRest1 = T.next(after: .rest, round: 1)
+    check(afterRest1.phase == .work && afterRest1.minutes == 25 && afterRest1.round == 2, "pomodoro: break -> work, next round")
+    check(T.next(after: .work, round: 4).minutes == 15, "pomodoro: the fourth break is the long one")
+    check(T.next(after: .work, round: 5).minutes == 5, "pomodoro: then short again")
+    check(T.next(after: .work, round: 8).minutes == 15, "pomodoro: every fourth")
+}
+
 // MARK: - Swipes on the notch
 
 do {

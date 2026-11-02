@@ -8,6 +8,9 @@ struct TimerView: View {
 
     private let columns = Array(repeating: GridItem(.fixed(58), spacing: 8), count: 3)
 
+    /// Orange for work and a plain timer, green for a Pomodoro break.
+    private var tint: Color { timer.phase == .rest ? ActivityLook.green : accent }
+
     var body: some View {
         HStack(spacing: 28) {
             ring
@@ -36,6 +39,8 @@ struct TimerView: View {
                         control("play.fill", "Spustit \(timer.chosenMinutes) min") {
                             timer.start(minutes: timer.chosenMinutes)
                         }
+                        control("repeat", "Pomodoro") { timer.startPomodoro() }
+                            .help("25 min práce a 5 min pauza pořád dokola, každá čtvrtá pauza 15 min")
                     }
                 }
             }
@@ -52,14 +57,14 @@ struct TimerView: View {
                     .stroke(.white.opacity(0.12), lineWidth: 6)
                 Circle()
                     .trim(from: 0, to: 1 - timer.progress(at: now))
-                    .stroke(accent, style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                    .stroke(tint, style: StrokeStyle(lineWidth: 6, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                     .opacity(timer.isActive ? 1 : 0)
                 VStack(spacing: 2) {
                     Text(CountdownTimer.format(timer.remaining(at: now)))
                         .font(.system(size: 24, weight: .semibold).monospacedDigit())
                         .foregroundStyle(.white.opacity(timer.isPaused ? 0.5 : 1))
-                    Text(timer.isPaused ? "pozastaveno" : timer.isActive ? "zbývá" : "časovač")
+                    Text(caption)
                         .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(.white.opacity(0.45))
                 }
@@ -68,8 +73,17 @@ struct TimerView: View {
         }
     }
 
+    private var caption: String {
+        if timer.isPaused { return "pozastaveno" }
+        switch timer.phase {
+        case .work: return "práce · \(timer.round). kolo"
+        case .rest: return "pauza"
+        case nil: return timer.isActive ? "zbývá" : "časovač"
+        }
+    }
+
     private func isCurrent(_ minutes: Int) -> Bool {
-        timer.isActive && Int((timer.total / 60).rounded()) == minutes
+        timer.isActive && timer.phase == nil && Int((timer.total / 60).rounded()) == minutes
     }
 
     private func control(_ symbol: String, _ title: String,
