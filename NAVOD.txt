@@ -137,9 +137,11 @@ KROK 7 — Vyzkoušej ovládání
                                  „Připojeno“ (Bluetooth)
   - 5 min před událostí          vysune se její název a čas
                                  (jen s připojeným kalendářem)
-  - Pomodoro (stránka Časovač)   25 min práce, 5 min pauza
-                                 pořád dokola; každá změna
-                                 cinkne a vysune se z notche
+  - Pomodoro (stránka Časovač)   práce a pauza pořád dokola;
+                                 každá změna cinkne a vysune se
+                                 z notche. Délky si nastavíš v
+                                 Nastavení → Pomodoro (výchozí
+                                 25 + 5, dlouhá pauza 15 min)
   - Police (5. stránka)          přetáhni soubor na notch, otevře
                                  se police; soubor si pak odtáhneš
                                  kam potřebuješ (zkopíruje se),

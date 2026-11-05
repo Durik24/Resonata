@@ -29,11 +29,6 @@ final class CountdownTimer: ObservableObject {
 
     enum Phase: String { case work, rest }
 
-    nonisolated static let workMinutes = 25
-    nonisolated static let restMinutes = 5
-    nonisolated static let longRestMinutes = 15
-    /// Every fourth break is the long one.
-    nonisolated static let roundsBeforeLongRest = 4
 
     /// The Pomodoro phase running; nil for a plain timer.
     @Published private(set) var phase: Phase?
@@ -47,16 +42,18 @@ final class CountdownTimer: ObservableObject {
     func startPomodoro() {
         phase = .work
         round = 1
-        run(minutes: Self.workMinutes)
+        run(minutes: Preferences.pomodoroPlan.work)
     }
 
-    /// What comes after `phase` in round `round`.
-    nonisolated static func next(after phase: Phase, round: Int) -> (phase: Phase, minutes: Int, round: Int) {
+    /// What comes after `phase` in round `round`. The plan is read as each
+    /// phase begins, so a change in the settings counts from the next one.
+    nonisolated static func next(after phase: Phase, round: Int,
+                                 plan: PomodoroPlan) -> (phase: Phase, minutes: Int, round: Int) {
         switch phase {
         case .work:
-            return (.rest, round % roundsBeforeLongRest == 0 ? longRestMinutes : restMinutes, round)
+            return (.rest, round % plan.rounds == 0 ? plan.longRest : plan.rest, round)
         case .rest:
-            return (.work, workMinutes, round + 1)
+            return (.work, plan.work, round + 1)
         }
     }
 
@@ -155,7 +152,7 @@ final class CountdownTimer: ObservableObject {
         NSSound(named: NSSound.Name("Glass"))?.play()
         if let phase {
             // Straight on to the next phase: a break, or back to work.
-            let next = Self.next(after: phase, round: round)
+            let next = Self.next(after: phase, round: round, plan: Preferences.pomodoroPlan)
             self.phase = next.phase
             round = next.round
             run(minutes: next.minutes)
@@ -202,5 +199,24 @@ final class CountdownTimer: ObservableObject {
         } else if d.object(forKey: Key.end) != nil {
             d.removeObject(forKey: Key.end)
         }
+    }
+}
+
+/// The lengths of a Pomodoro, as set in the settings — any the user likes.
+struct PomodoroPlan: Equatable, Sendable {
+    /// Minutes of work, of a break, and of the long break.
+    var work: Int
+    var rest: Int
+    var longRest: Int
+    /// The long break comes after every this many rounds of work.
+    var rounds: Int
+
+    static let standard = PomodoroPlan(work: 25, rest: 5, longRest: 15, rounds: 4)
+
+    /// Kept to lengths a timer can sensibly run: 1 minute to 4 hours, and a
+    /// long break every 1 to 12 rounds (every 1 means every break is long).
+    var clamped: PomodoroPlan {
+        PomodoroPlan(work: min(max(work, 1), 240), rest: min(max(rest, 1), 240),
+                     longRest: min(max(longRest, 1), 240), rounds: min(max(rounds, 1), 12))
     }
 }

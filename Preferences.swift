@@ -20,6 +20,10 @@ enum Preferences {
         static let showChargingPeek = "showChargingPeek"
         static let showHeadphonesPeek = "showHeadphonesPeek"
         static let meetingReminder = "meetingReminder"
+        static let pomodoroWork = "pomodoroWork"
+        static let pomodoroRest = "pomodoroRest"
+        static let pomodoroLongRest = "pomodoroLongRest"
+        static let pomodoroRounds = "pomodoroRounds"
     }
 
     /// Call before anything reads a preference.
@@ -36,6 +40,10 @@ enum Preferences {
             Key.showChargingPeek: true,
             Key.showHeadphonesPeek: true,
             Key.meetingReminder: true,
+            Key.pomodoroWork: 25,
+            Key.pomodoroRest: 5,
+            Key.pomodoroLongRest: 15,
+            Key.pomodoroRounds: 4,
             Key.openMode: OpenMode.nook.rawValue,
             Key.quickApps: QuickApps.defaultPaths().joined(separator: "\n"),
         ])
@@ -59,6 +67,15 @@ enum Preferences {
     static var showHeadphonesPeek: Bool { UserDefaults.standard.bool(forKey: Key.showHeadphonesPeek) }
 
     static var meetingReminder: Bool { UserDefaults.standard.bool(forKey: Key.meetingReminder) }
+
+    /// The Pomodoro lengths the user has set — see `PomodoroPlan`.
+    static var pomodoroPlan: PomodoroPlan {
+        let d = UserDefaults.standard
+        return PomodoroPlan(work: d.integer(forKey: Key.pomodoroWork),
+                            rest: d.integer(forKey: Key.pomodoroRest),
+                            longRest: d.integer(forKey: Key.pomodoroLongRest),
+                            rounds: d.integer(forKey: Key.pomodoroRounds)).clamped
+    }
 
     static var openMode: OpenMode {
         OpenMode(rawValue: UserDefaults.standard.string(forKey: Key.openMode) ?? "") ?? .click

@@ -154,8 +154,10 @@ code or assets — keeping only what needs no permission:
   5 to 60 minutes in one tap, pause, cancel. While it runs the closed notch
   shows the time left in the bars' place; at the end it slides out and
   chimes. Kept across restarts.
-- **Pomodoro** (in the timer): 25 minutes of work and a 5-minute break in
-  turn, every fourth break 15 minutes, until cancelled. Each change chimes
+- **Pomodoro** (in the timer): work and breaks in turn until cancelled —
+  25 + 5 with a 15-minute break every fourth round by default, and any
+  lengths you like in Settings → Pomodoro (1 minute to 4 hours; the long
+  break every 1 to 12 rounds). A change counts from the next phase. Each change chimes
   and slides out of the notch ("Pauza" in green, "Zpátky do práce"); the
   ring and the countdown beside the notch turn green for a break.
 - **File shelf** (`Shelf.swift`): drag files onto the notch — it opens on the

@@ -38,6 +38,10 @@ struct SettingsView: View {
     @AppStorage(Preferences.Key.showChargingPeek) private var showChargingPeek = true
     @AppStorage(Preferences.Key.showHeadphonesPeek) private var showHeadphonesPeek = true
     @AppStorage(Preferences.Key.meetingReminder) private var meetingReminder = true
+    @AppStorage(Preferences.Key.pomodoroWork) private var pomodoroWork = 25
+    @AppStorage(Preferences.Key.pomodoroRest) private var pomodoroRest = 5
+    @AppStorage(Preferences.Key.pomodoroLongRest) private var pomodoroLongRest = 15
+    @AppStorage(Preferences.Key.pomodoroRounds) private var pomodoroRounds = 4
     @AppStorage(Preferences.Key.openMode) private var openMode = OpenMode.nook.rawValue
     @AppStorage(Preferences.Key.quickApps) private var quickApps = ""
 
@@ -101,6 +105,30 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            Section {
+                NumberRow(title: "Práce", unit: "min", value: $pomodoroWork, range: 1...240)
+                NumberRow(title: "Pauza", unit: "min", value: $pomodoroRest, range: 1...240)
+                NumberRow(title: "Dlouhá pauza", unit: "min", value: $pomodoroLongRest, range: 1...240)
+                NumberRow(title: "Dlouhá pauza po", unit: pomodoroRounds == 1 ? "kole" : "kolech",
+                          value: $pomodoroRounds, range: 1...12)
+                HStack {
+                    Spacer()
+                    Button("Výchozí (25 + 5)") {
+                        let plan = PomodoroPlan.standard
+                        pomodoroWork = plan.work
+                        pomodoroRest = plan.rest
+                        pomodoroLongRest = plan.longRest
+                        pomodoroRounds = plan.rounds
+                    }
+                }
+            } header: {
+                Text("Pomodoro")
+            } footer: {
+                Text("Práce a pauzy se střídají, dokud časovač nezrušíš. Změna platí od další fáze.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Aplikace v notchi") {
                 let apps = QuickApps.urls(from: quickApps)
                 ForEach(Array(apps.enumerated()), id: \.element) { index, url in
@@ -147,5 +175,39 @@ struct SettingsView: View {
     private var customColour: Binding<Color> {
         Binding(get: { Color(hex: customHex) ?? .white },
                 set: { customHex = $0.hex })
+    }
+}
+
+/// A number the user can type or step: "Práce   [ 25 ] min  ⌃⌄".
+/// Typed values are kept within `range`.
+private struct NumberRow: View {
+    var title: String
+    var unit: String
+    @Binding var value: Int
+    var range: ClosedRange<Int>
+
+    var body: some View {
+        // LabeledContent, not an HStack with a Text in it: a form lays out a
+        // bare text field as a row of its own, and while one was being typed
+        // in, a three-digit value pushed it onto a second line and the row
+        // grew — the button below moved out from under the pointer.
+        LabeledContent(title) {
+            HStack(spacing: 6) {
+                TextField(title, value: $value, format: .number)
+                    .labelsHidden()
+                    .textFieldStyle(.roundedBorder)
+                    .multilineTextAlignment(.trailing)
+                    .frame(width: 56)
+                    .onChange(of: value) { _, new in
+                        let kept = min(max(new, range.lowerBound), range.upperBound)
+                        if kept != new { value = kept }
+                    }
+                Text(unit)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 42, alignment: .leading)
+                Stepper(title, value: $value, in: range)
+                    .labelsHidden()
+            }
+        }
     }
 }

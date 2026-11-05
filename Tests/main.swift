@@ -428,13 +428,22 @@ do {
 
 do {
     typealias T = CountdownTimer
-    let afterWork1 = T.next(after: .work, round: 1)
+    let std = PomodoroPlan.standard
+    let afterWork1 = T.next(after: .work, round: 1, plan: std)
     check(afterWork1.phase == .rest && afterWork1.minutes == 5 && afterWork1.round == 1, "pomodoro: work -> 5-min break")
-    let afterRest1 = T.next(after: .rest, round: 1)
+    let afterRest1 = T.next(after: .rest, round: 1, plan: std)
     check(afterRest1.phase == .work && afterRest1.minutes == 25 && afterRest1.round == 2, "pomodoro: break -> work, next round")
-    check(T.next(after: .work, round: 4).minutes == 15, "pomodoro: the fourth break is the long one")
-    check(T.next(after: .work, round: 5).minutes == 5, "pomodoro: then short again")
-    check(T.next(after: .work, round: 8).minutes == 15, "pomodoro: every fourth")
+    check(T.next(after: .work, round: 4, plan: std).minutes == 15, "pomodoro: the fourth break is the long one")
+    check(T.next(after: .work, round: 5, plan: std).minutes == 5, "pomodoro: then short again")
+    // Anyone's own lengths.
+    let mine = PomodoroPlan(work: 50, rest: 10, longRest: 30, rounds: 2)
+    check(T.next(after: .rest, round: 1, plan: mine).minutes == 50, "pomodoro: custom work length")
+    check(T.next(after: .work, round: 1, plan: mine).minutes == 10, "pomodoro: custom break")
+    check(T.next(after: .work, round: 2, plan: mine).minutes == 30, "pomodoro: custom long break every 2nd")
+    check(T.next(after: .work, round: 3, plan: PomodoroPlan(work: 25, rest: 5, longRest: 20, rounds: 1)).minutes == 20,
+          "pomodoro: every break long when set to 1")
+    let wild = PomodoroPlan(work: 0, rest: -3, longRest: 999, rounds: 50).clamped
+    check(wild == PomodoroPlan(work: 1, rest: 1, longRest: 240, rounds: 12), "pomodoro: odd values kept in range", "\(wild)")
 }
 
 // MARK: - Swipes on the notch

@@ -6,6 +6,11 @@ struct TimerView: View {
     @ObservedObject var timer: CountdownTimer
     var accent: Color
 
+    // Read here so the Pomodoro button shows the lengths as soon as they
+    // change in the settings.
+    @AppStorage(Preferences.Key.pomodoroWork) private var pomodoroWork = 25
+    @AppStorage(Preferences.Key.pomodoroRest) private var pomodoroRest = 5
+
     private let columns = Array(repeating: GridItem(.fixed(58), spacing: 8), count: 3)
 
     /// Orange for work and a plain timer, green for a Pomodoro break.
@@ -39,8 +44,9 @@ struct TimerView: View {
                         control("play.fill", "Spustit \(timer.chosenMinutes) min") {
                             timer.start(minutes: timer.chosenMinutes)
                         }
-                        control("repeat", "Pomodoro") { timer.startPomodoro() }
-                            .help("25 min práce a 5 min pauza pořád dokola, každá čtvrtá pauza 15 min")
+                        let plan = Preferences.pomodoroPlan
+                        control("repeat", "Pomodoro \(pomodoroWork) + \(pomodoroRest)") { timer.startPomodoro() }
+                            .help("\(plan.work) min práce a \(plan.rest) min pauza pořád dokola, každá \(plan.rounds). pauza \(plan.longRest) min. Délky nastavíš v Nastavení → Pomodoro.")
                     }
                 }
             }
