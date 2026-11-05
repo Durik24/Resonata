@@ -429,6 +429,9 @@ do {
     check(SpotifyVolumeControl.symbol(for: 0) == "speaker.slash.fill"
           && SpotifyVolumeControl.symbol(for: 50) == "speaker.wave.2.fill"
           && SpotifyVolumeControl.symbol(for: 100) == "speaker.wave.3.fill", "spotify: speaker follows the level")
+    check(SpotifyVolumeControl.toggledMute(70, before: nil) == 0, "spotify: speaker click mutes")
+    check(SpotifyVolumeControl.toggledMute(0, before: 70) == 70, "spotify: second click brings the level back")
+    check(SpotifyVolumeControl.toggledMute(0, before: nil) == 50, "spotify: unmuting with nothing to go back to")
 }
 
 // MARK: - Pomodoro

@@ -197,7 +197,8 @@ animation speed, lyrics on/off, the lyric flash on/off, the calendar on/off, and
 own). Apple Music tracks get a heart button (`favorited` over AppleScript);
 Spotify has no way to like a song from the Mac short of its web API. Spotify
 tracks get a slider for Spotify's own volume instead (`sound volume` over
-AppleScript; no sign-in), leaving the rest of the Mac's sound where it is.
+AppleScript; no sign-in), leaving the rest of the Mac's sound where it is;
+its speaker mutes Spotify, and a second click brings the level back.
 
 ## Keeping the open panel cheap
 

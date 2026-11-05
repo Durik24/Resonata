@@ -63,20 +63,37 @@ struct SpotifyVolumeControl: View {
     /// — in place, not sliding in with the rest of it on a page turn.
     @State private var volume: Double? = SpotifyVolumeControl.lastKnown
     @MainActor static var lastKnown: Double?
+    /// The level to go back to when unmuting.
+    @MainActor static var beforeMute: Double?
+
+    private func setVolume(_ new: Double) {
+        if new < 1, let volume, volume >= 1 { Self.beforeMute = volume }
+        volume = new
+        Self.lastKnown = new
+        SpotifyVolume.set(Int(new.rounded()))
+    }
+
+    /// The speaker click: down to 0 from any level, and from 0 back to the
+    /// level before — or halfway, if it was never anything else here.
+    nonisolated static func toggledMute(_ volume: Double, before: Double?) -> Double {
+        volume >= 1 ? 0 : (before.flatMap { $0 >= 1 ? $0 : nil } ?? 50)
+    }
 
     var body: some View {
         Group {
             if let volume {
                 HStack(spacing: 6) {
-                    Image(systemName: Self.symbol(for: volume))
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.7))
-                        .frame(width: 16)
-                    Slider(value: Binding(get: { volume }, set: { new in
-                        self.volume = new
-                        Self.lastKnown = new
-                        SpotifyVolume.set(Int(new.rounded()))
-                    }), in: 0...100)
+                    // Click to mute Spotify; click again for the level before.
+                    Button { setVolume(Self.toggledMute(volume, before: Self.beforeMute)) } label: {
+                        Image(systemName: Self.symbol(for: volume))
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.7))
+                            .frame(width: 18, height: 22)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(TransportButtonStyle())
+                    .help(volume < 1 ? "Zapnout zvuk Spotify" : "Ztlumit Spotify")
+                    Slider(value: Binding(get: { volume }, set: { setVolume($0) }), in: 0...100)
                     .controlSize(.mini)
                     .tint(tint)
                     .frame(width: 96)

@@ -127,7 +127,9 @@ KROK 7 — Vyzkoušej ovládání
   - Hlasitost Spotify           když hraje Spotify, je vedle
                                  ovládání posuvník jen pro
                                  Spotify (zbytek zvuku Macu
-                                 zůstane). Poprvé se macOS
+                                 zůstane). Klik na reproduktor
+                                 Spotify ztlumí, další klik
+                                 vrátí hlasitost. Poprvé se macOS
                                  zeptá, jestli smí Resonata
                                  ovládat Spotify.
   - Text písně                   když ho LRCLIB zná, pod
