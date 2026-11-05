@@ -128,7 +128,7 @@ enum PageSwipe: String, CaseIterable, Identifiable {
 /// - hover: the boring.notch way — rest the pointer on it to open, leave
 ///   to close.
 /// - nook: the NotchNook way — hovering only previews the song; swipes on
-///   the notch open, close and skip, in place of scrolling the volume.
+///   the notch open, close and skip.
 enum OpenMode: String, CaseIterable, Identifiable {
     case click, hover, nook
 

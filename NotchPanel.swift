@@ -98,7 +98,7 @@ final class NotchPanel: NSPanel {
     var onMouseDown: ((NSPoint) -> Void)?
     /// Right-click, or control-click: the app's menu.
     var onContextMenu: ((NSEvent) -> Void)?
-    /// Scrolling over the notch: the volume, or swipes.
+    /// Scrolling over the notch: swipes and page turns.
     var onScroll: ((NSEvent) -> Void)?
     /// Whether a scroll is the notch's (`onScroll`) or the page's under the
     /// pointer — a list of to-dos has to scroll like any list.
@@ -263,9 +263,6 @@ final class NotchPanelController {
     /// because NSScreen instances are replaced on every display change.
     private var pinnedScreenID: CGDirectDisplayID?
 
-    /// Hides the volume meter a moment after the last scroll.
-    private var volumeHide: DispatchWorkItem?
-
     /// Hover state — see `pointerMoved(to:)`.
     private var pointerInside = false
     private var hoverTask: Task<Void, Never>?
@@ -381,9 +378,9 @@ final class NotchPanelController {
                     self.turnPage(event)
                 } else if Preferences.openMode == .nook {
                     self.swipe(event)
-                } else {
-                    self.scrollVolume(event)
                 }
+                // Otherwise a scroll on the notch does nothing: it used to
+                // set the Mac's volume, and that went, by request.
             }
         }
         self.panel = panel
@@ -404,12 +401,11 @@ final class NotchPanelController {
         // by a whole shrink interval.
         // Sizing follows "is there something to show", which idle turns off —
         // so the pill shrinks back to the cutout when the music stops.
-        // The volume meter shows in the pill's wing, so it widens the pill
-        // too — even an idle one. Mirrors `NotchModel.showsCollapsedContent`.
         // Things that put content in the pill whatever the music is doing.
-        let extras = model.$volumeLevel.map { $0 != nil }
-            .combineLatest(model.$activity.map { $0 != nil }, model.$timerRunning)
-            .map { $0 || $1 || $2 }
+        // Mirrors `NotchModel.showsCollapsedContent`.
+        let extras = model.$activity.map { $0 != nil }
+            .combineLatest(model.$timerRunning)
+            .map { $0 || $1 }
         let collapsedContentVisible = model.$track.map { $0 != nil }
             .combineLatest(model.$isIdle, extras)
             .map { hasTrack, idle, extra in (hasTrack && !idle) || extra }
@@ -621,7 +617,7 @@ final class NotchPanelController {
         return NSScreen.preferred
     }
 
-    // MARK: Menu and volume
+    // MARK: Menu
 
     /// Right-click menu: the only way to quit an app with no Dock icon and
     /// no menu bar, plus the two settings that otherwise live elsewhere.
@@ -645,32 +641,6 @@ final class NotchPanelController {
         menu.addItem(ClosureMenuItem("Ukončit Resonata") { NSApp.terminate(nil) })
 
         NSMenu.popUpContextMenu(menu, with: event, for: view)
-    }
-
-    private func scrollVolume(_ event: NSEvent) {
-        // A trackpad keeps sending "momentum" events after the fingers lift.
-        // Following them sends the volume coasting on for a second after you
-        // stopped, so only the fingers' own movement counts.
-        guard event.momentumPhase.isEmpty else { return }
-        let delta = SystemVolume.scrollDelta(deltaY: Double(event.scrollingDeltaY),
-                                             precise: event.hasPreciseScrollingDeltas,
-                                             inverted: event.isDirectionInvertedFromDevice)
-        guard delta != 0, let level = SystemVolume.change(by: Float(delta)) else { return }
-
-        // Published on the next pass, never from inside the event dispatch —
-        // see `setExpanded`.
-        DispatchQueue.main.async { [weak self] in
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                self.model.volumeLevel = level
-                self.volumeHide?.cancel()
-                let hide = DispatchWorkItem { [weak self] in
-                    MainActor.assumeIsolated { self?.model.volumeLevel = nil }
-                }
-                self.volumeHide = hide
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2, execute: hide)
-            }
-        }
     }
 
     /// Opens the panel if closed, closes it if open — the keyboard shortcut.
@@ -835,7 +805,7 @@ final class NotchPanelController {
         }
     }
 
-    /// Scrolls the notch keeps for itself — volume, or swipes in `.nook` mode
+    /// Scrolls the notch keeps for itself — page turns, or swipes in `.nook` mode
     /// — and the ones it passes on to the page under the pointer.
     ///
     /// Closed, and on the music page, every scroll is the notch's: there's
@@ -908,7 +878,7 @@ final class NotchPanelController {
     }
 
     /// Swipes on the notch, in `.nook` mode — NotchNook's gestures, in place
-    /// of scrolling the volume:
+    /// of a scroll doing nothing:
     /// - down opens, up closes;
     /// - right skips to the next song, left goes back — closed only; open,
     ///   sideways turns the page (`turnPage`), in every mode.

@@ -181,8 +181,7 @@ KROK 7 — Vyzkoušej ovládání
                                  jde přepnout na „Najetím myší“
                                  — otevře se samo po 0,3 s a
                                  zavře, když myš odjede — nebo
-                                 jen na kliknutí. Hlasitost
-                                 kolečkem funguje v těch dvou.)
+                                 jen na kliknutí.)
   - Klikni kamkoliv mimo panel   zase se sbalí
   - Nová skladba                 zavřený notch se na 3,5 s
                                  vysune doprava, vlnka odjede
@@ -222,10 +221,6 @@ KROK 7 — Vyzkoušej ovládání
   - Srdíčko                      u skladeb z Apple Music: přidat
                                  do oblíbených. Spotify to z Macu
                                  neumožňuje, proto tam není.
-  - Scroll nad notchem           hlasitost: nahoru = hlasitěji
-                                 (kolečko i trackpad). Zvýšení
-                                 zruší ztlumení. V notchi se na
-                                 chvíli ukáže úroveň.
   - Tlačítka                     předchozí / pauza / další
   - Posuvník                     dá se chytit a táhnout;
                                  kliknutí kamkoliv na lištu

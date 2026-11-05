@@ -76,7 +76,7 @@ keychain; `build.sh` uses it when present.
 | `Lyrics.swift` | Synced lyrics from LRCLIB, LRC parsing, on-disk cache |
 | `MediaRemote.swift` | System-wide now-playing via the vendored adapter; transport and seek for any player; AppleScript fallback |
 | `Vendor/mediaremote-adapter/` | BSD-3 sources of the adapter, built into the bundle by `build.sh` |
-| `NotchModel.swift` | Everything the views show: track, state, lyrics, volume level |
+| `NotchModel.swift` | Everything the views show: track, state, lyrics, page |
 | `NotchView.swift` | The notch itself: size, colour wash, collapsed pill, open/close |
 | `NotchView+Expanded.swift` | The open panel: top bar, player column, calendar column |
 | `CalendarStore.swift`, `CalendarView.swift` | Five days around today and their events (EventKit, read-only) |
@@ -94,8 +94,7 @@ keychain; `build.sh` uses it when present.
 | `LyricsView.swift` | The lyric line being sung, scrolling up to the next |
 | `SpotifyVolume.swift` | Spotify's own volume over AppleScript, and its slider |
 | `ArtworkAccent.swift` | Picks the accent colour out of the album art |
-| `Controls.swift` | Transport button press style and the volume meter |
-| `Volume.swift` | Output volume via Core Audio, and the scroll-to-volume mapping |
+| `Controls.swift` | Transport button press style |
 | `ResonataApp.swift` | Wires it together, sets `.accessory` activation policy |
 | `setup-signing.sh` | One-time: creates the "Resonata Dev" signing identity |
 
@@ -219,8 +218,8 @@ opening Mission Control: hidden within 0.6 s, back once it closes.
 
 ## Scrolling
 
-Closed, and on the music page, scrolling is the notch's: the volume, or the
-swipes in the NotchNook mode. On the notes and apps pages the page scrolls
+Closed, and on the music page, scrolling is the notch's: the swipes in the
+NotchNook mode, and otherwise nothing — it no longer sets the Mac's volume. On the notes and apps pages the page scrolls
 like any page, except along the top strip beside the cutout, which still
 works the notch (`NotchPanelController.takesScroll`).
 
@@ -246,9 +245,8 @@ a minute at a time (held, they repeat), or click the number and type it,
   on the notch for 0.3 s slides the song out (the song peek) until the
   pointer leaves. Swipes on the notch: down opens, up closes; closed, right
   skips to the next song, left goes back (open, sideways turns the page).
-  Swipes take the place of scrolling the volume in this mode.
 - **Najetím myší (jako boring.notch)**, below.
-- **Kliknutím** — click only, scroll for volume.
+- **Kliknutím** — click only.
 
 In the click and hover modes the closed pill swells a little (8×2 pt, no
 overshoot) while the pointer is on it — not in the NotchNook mode, where the
@@ -273,13 +271,10 @@ opens at once. Tracked with one `NSTrackingArea` on Resonata's own window, so
 nothing watches the mouse anywhere else and no permission is involved
 (`NotchPanelController.pointerMoved(to:)`).
 
-## Menu and volume
+## Menu
 
 Right-click (or control-click) the notch: switch display, open at login,
-quit. Scroll over it to change the output volume — up is louder whatever the
-natural-scrolling setting, turning it up unmutes, and the level shows in the
-notch for a moment. Volume goes through Core Audio directly, so no permission
-is needed.
+quit.
 
 ## Starts at login
 

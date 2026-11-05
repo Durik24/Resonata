@@ -530,8 +530,6 @@ struct NotchView: View {
                     // snapshots draw battery symbols white; the screen doesn't.)
                     .symbolRenderingMode(.monochrome)
                     .foregroundStyle(look.tint)
-            } else if let level = model.volumeLevel {
-                VolumeMeter(level: level, compact: true)
             } else if model.timerRunning {
                 timerBadge
             } else {

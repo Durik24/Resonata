@@ -250,10 +250,6 @@ extension NotchView {
                             // again — Spotify's own slider may have moved.
                             .id(model.track?.title)
                     }
-                    if let level = model.volumeLevel {
-                        VolumeMeter(level: level, compact: false)
-                            .transition(.opacity)
-                    }
                     if let favorite = model.isFavorite {
                         button(favorite ? "heart.fill" : "heart") {
                             MusicFavorite.toggle { value in
@@ -263,7 +259,6 @@ extension NotchView {
                         .help(favorite ? "Odebrat z oblíbených" : "Přidat do oblíbených")
                     }
                 }
-                .animation(fade, value: model.volumeLevel == nil)
                 // The buttons' hit areas are wider than their glyphs; this
                 // lines the first glyph up with the start of the bar.
                 .padding(.leading, -7)

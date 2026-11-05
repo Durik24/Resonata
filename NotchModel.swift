@@ -118,15 +118,11 @@ final class NotchModel: ObservableObject {
     /// live. Idle, it shrinks back to the bare cutout — but `track` is still
     /// there, so a click brings up the last song and its play button.
     var showsCollapsedContent: Bool {
-        (track != nil && !isIdle) || volumeLevel != nil || activity != nil || timerRunning
+        (track != nil && !isIdle) || activity != nil || timerRunning
     }
 
     /// The timer is running or paused: the closed notch shows the time left.
     @Published var timerRunning = false
-
-    /// Set for a moment after the volume is scrolled, so the notch can show
-    /// the new level. Nil the rest of the time.
-    @Published var volumeLevel: Float?
 
     /// `RESONATA_DEBUG_FORCE_LIVE=1`: animate the pill as if music were
     /// playing, so the cost of playback can be measured on a silent machine.
