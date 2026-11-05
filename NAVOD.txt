@@ -156,7 +156,11 @@ KROK 7 — Vyzkoušej ovládání
                                  když myš odjede, zasune se
   - Přejeď dvěma prsty na notchi dolů = otevřít, nahoru = zavřít,
                                  doprava = další skladba,
-                                 doleva = předchozí
+                                 doleva = předchozí (na zavřeném)
+  - Otevřený panel: dva prsty    zprava doleva = další stránka,
+    do strany                    zleva doprava = předchozí
+                                 (Hudba → Poznámky → Aplikace →
+                                 Časovač → Police), v každém režimu
                                  (V nastavení „Otevírat notch“
                                  jde přepnout na „Najetím myší“
                                  — otevře se samo po 0,3 s a
@@ -172,7 +176,9 @@ KROK 7 — Vyzkoušej ovládání
                                  (vypnout jde v nastavení)
   - Ikony vlevo nahoře           v otevřeném panelu přepínají
     (vedle notche)               stránky: Hudba, Poznámky
-                                 a úkoly, Aplikace. Vpravo
+                                 a úkoly, Aplikace, Časovač,
+                                 Police (nebo dva prsty do
+                                 strany). Vpravo
                                  nahoře je ozubené kolečko
                                  (nastavení) a baterie.
   - Kalendář                     vpravo vedle přehrávače: pět

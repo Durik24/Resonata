@@ -218,15 +218,22 @@ swipes in the NotchNook mode. On the notes and apps pages the page scrolls
 like any page, except along the top strip beside the cutout, which still
 works the notch (`NotchPanelController.takesScroll`).
 
+Two fingers sideways on the open panel turn the page, in every mode and
+wherever the pointer is: right to left goes to the next page along the
+strip, left to right to the previous one, one page per swipe, no wrapping
+round. Each gesture is classed sideways or up-and-down from its first few
+points of travel and stays that way, momentum included, so turning a page
+never scrolls a list as well (`pageSwipeAxis`, `turnPage`).
+
 ## Opening: click, hover, gestures
 
 "Otevírat notch" has three modes; a click opens the panel in all of them.
 
 - **Kliknutím a gesty (jako NotchNook)** — the default. Resting the pointer
   on the notch for 0.3 s slides the song out (the song peek) until the
-  pointer leaves. Swipes on the notch: down opens, up closes, right skips
-  to the next song, left goes back. Swipes take the place of scrolling the
-  volume in this mode.
+  pointer leaves. Swipes on the notch: down opens, up closes; closed, right
+  skips to the next song, left goes back (open, sideways turns the page).
+  Swipes take the place of scrolling the volume in this mode.
 - **Najetím myší (jako boring.notch)**, below.
 - **Kliknutím** — click only, scroll for volume.
 

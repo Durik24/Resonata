@@ -27,8 +27,27 @@ extension NotchView {
         .frame(width: model.expandedWidth - 40, alignment: .leading)
     }
 
-    @ViewBuilder
+    /// The page, sliding in a little from the side it was turned to — the
+    /// right for a page further along the strip — as the old one fades out.
+    /// A short nudge rather than a whole page width: two pages sliding
+    /// across each other in a panel this small is a blur. Its own quick
+    /// curve, not the panel's unhurried spring, so a swipe feels answered.
     private var page: some View {
+        ZStack(alignment: .top) {
+            pageContent
+                .id(model.tab)
+                // The old page is gone in a blink, before the new one has
+                // much to show: crossfaded at length, two layouts overlap.
+                .transition(.asymmetric(
+                    insertion: .offset(x: model.tabForward ? 36 : -36).combined(with: .opacity)
+                        .animation(.easeOut(duration: 0.24).delay(0.05)),
+                    removal: .opacity.animation(.easeOut(duration: 0.07))))
+        }
+        .animation(.easeOut(duration: 0.2), value: model.tab)
+    }
+
+    @ViewBuilder
+    private var pageContent: some View {
         switch model.tab {
         case .music:
             musicPage

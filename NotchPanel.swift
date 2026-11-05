@@ -280,6 +280,13 @@ final class NotchPanelController {
     private var swipeTravel = CGSize.zero
     private var swipeDone = false
 
+    /// The two-finger gesture in progress on the open panel — see
+    /// `pageSwipeAxis(of:)`.
+    private var pageTravel = CGSize.zero
+    private var pageAxis: PageAxis?
+    private var pageTurned = false
+    enum PageAxis { case horizontal, vertical }
+
     /// How long the pointer has to rest on the notch before it opens, so
     /// passing over it on the way to the menu bar doesn't.
     static let hoverDwell: Duration = .milliseconds(300)
@@ -370,7 +377,9 @@ final class NotchPanelController {
         panel.onScroll = { [weak self] event in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                if Preferences.openMode == .nook {
+                if self.model.isExpanded, self.pageAxis == .horizontal {
+                    self.turnPage(event)
+                } else if Preferences.openMode == .nook {
                     self.swipe(event)
                 } else {
                     self.scrollVolume(event)
@@ -835,15 +844,70 @@ final class NotchPanelController {
     /// to-do list couldn't be scrolled at all — except along the top strip
     /// beside the cutout, which still works the notch.
     private func takesScroll(_ event: NSEvent) -> Bool {
+        // Sideways on the open panel turns the page, wherever the fingers are
+        // — over a list of to-dos too, which only scrolls up and down.
+        if model.isExpanded, pageSwipeAxis(of: event) == .horizontal { return true }
         guard model.isExpanded, model.tab != .music,
               let notch = targetScreen?.notchSize else { return true }
         return event.locationInWindow.y >= expandedShapeRect.maxY - notch.height
     }
 
+    /// Which way the two-finger gesture this event belongs to is going, on
+    /// the open panel: decided from its first few points of travel, then
+    /// kept for the rest of it and its momentum — so a swipe that turns the
+    /// page never scrolls the list under it as well, nor the other way round.
+    /// Nil until it's clear.
+    ///
+    /// Called once per scroll event, from `takesScroll`, before `onScroll`.
+    private func pageSwipeAxis(of event: NSEvent) -> PageAxis? {
+        // Momentum belongs to the gesture before it.
+        guard event.momentumPhase.isEmpty else { return pageAxis }
+        // A mouse wheel has no phases: each click is a gesture of its own.
+        if event.phase == .began || event.phase == .mayBegin || event.phase.isEmpty {
+            pageTravel = .zero
+            pageAxis = nil
+            pageTurned = false
+        }
+        let finger: CGFloat = event.isDirectionInvertedFromDevice ? 1 : -1
+        pageTravel.width += event.scrollingDeltaX * finger
+        pageTravel.height += event.scrollingDeltaY * finger
+        if pageAxis == nil {
+            pageAxis = Self.pageAxis(travel: pageTravel, precise: event.hasPreciseScrollingDeltas)
+        }
+        return pageAxis
+    }
+
+    /// Clearly more sideways than up or down, past a few points: horizontal.
+    nonisolated static func pageAxis(travel: CGSize, precise: Bool) -> PageAxis? {
+        let x = abs(travel.width), y = abs(travel.height)
+        guard max(x, y) >= (precise ? 6 : 0.5) else { return nil }
+        return x > y * 1.2 ? .horizontal : .vertical
+    }
+
+    /// The page a sideways swipe of `travel` (fingers, right positive) turns
+    /// to from `tab`, once it's gone far enough: fingers moving left bring
+    /// the next page in from the right, as on a phone.
+    nonisolated static func pageTurn(from tab: PanelTab, travel: CGFloat,
+                                     precise: Bool) -> PanelTab? {
+        guard abs(travel) >= (precise ? 40 : 0.5) else { return nil }
+        return tab.neighbour(travel < 0 ? 1 : -1)
+    }
+
+    /// One page per swipe; the rest of it and its momentum do nothing.
+    private func turnPage(_ event: NSEvent) {
+        guard event.momentumPhase.isEmpty, !pageTurned,
+              let next = Self.pageTurn(from: model.tab, travel: pageTravel.width,
+                                       precise: event.hasPreciseScrollingDeltas) else { return }
+        pageTurned = true
+        if NotchPanel.debugClick { NSLog("click: page \(next.rawValue)") }
+        model.tab = next
+    }
+
     /// Swipes on the notch, in `.nook` mode — NotchNook's gestures, in place
     /// of scrolling the volume:
     /// - down opens, up closes;
-    /// - right skips to the next song, left goes back.
+    /// - right skips to the next song, left goes back — closed only; open,
+    ///   sideways turns the page (`turnPage`), in every mode.
     /// One action per swipe, decided once the fingers have travelled far
     /// enough in one direction; the rest of the swipe and its momentum are
     /// ignored, so a long swipe doesn't skip three songs.
@@ -870,7 +934,7 @@ final class NotchPanelController {
         switch action {
         case .down where !model.isExpanded: setExpanded(true)
         case .up where model.isExpanded: setExpanded(false)
-        case .left, .right:
+        case .left where !model.isExpanded, .right where !model.isExpanded:
             guard let source = model.track?.source else { return }
             transport(action == .right ? .next : .previous, in: source)
         default: break

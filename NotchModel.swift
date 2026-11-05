@@ -89,7 +89,12 @@ final class NotchModel: ObservableObject {
     @Published var hovering = false
 
     /// Which page the open panel shows.
-    @Published var tab: PanelTab = .music
+    @Published var tab: PanelTab = .music {
+        willSet { tabForward = newValue.index >= tab.index }
+    }
+    /// The last page change went right along the strip — the new page
+    /// slides in from that side.
+    @Published private(set) var tabForward = true
 
     /// The collapsed pill carries artwork and waveform only while playback is
     /// live. Idle, it shrinks back to the bare cutout — but `track` is still
@@ -116,6 +121,18 @@ enum PanelTab: String, CaseIterable, Identifiable {
     case music, notes, apps, timer, shelf
 
     var id: String { rawValue }
+
+    /// Its place in the strip, from 0.
+    var index: Int { Self.allCases.firstIndex(of: self) ?? 0 }
+
+    /// The page `step` places along the strip — one to the right for 1, to
+    /// the left for -1 — or nil past either end. No wrapping round: swiping
+    /// on past the last page stopping there says where you are.
+    func neighbour(_ step: Int) -> PanelTab? {
+        let all = Self.allCases
+        let i = index + step
+        return all.indices.contains(i) ? all[i] : nil
+    }
 
     var symbol: String {
         switch self {

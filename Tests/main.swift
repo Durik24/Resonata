@@ -453,6 +453,17 @@ do {
     check(C.swipeAction(travel: CGSize(width: 0, height: 40), precise: true) == .down, "swipe: down opens")
     check(C.swipeAction(travel: CGSize(width: 0, height: -40), precise: true) == .up, "swipe: up closes")
     check(C.swipeAction(travel: CGSize(width: 0, height: 20), precise: true) == nil, "swipe: too short does nothing")
+    // Pages: two fingers sideways on the open panel.
+    check(C.pageAxis(travel: CGSize(width: 3, height: 1), precise: true) == nil, "page: undecided at first")
+    check(C.pageAxis(travel: CGSize(width: 10, height: 2), precise: true) == .horizontal, "page: sideways locks horizontal")
+    check(C.pageAxis(travel: CGSize(width: 4, height: 9), precise: true) == .vertical, "page: up/down stays the list's")
+    check(C.pageAxis(travel: CGSize(width: 7, height: 7), precise: true) == .vertical, "page: diagonal is not a page turn")
+    check(C.pageTurn(from: .music, travel: -50, precise: true) == .notes, "page: right to left is the next page")
+    check(C.pageTurn(from: .notes, travel: 50, precise: true) == .music, "page: left to right is the previous page")
+    check(C.pageTurn(from: .music, travel: 50, precise: true) == nil, "page: nothing before the first")
+    check(C.pageTurn(from: .shelf, travel: -50, precise: true) == nil, "page: nothing after the last")
+    check(C.pageTurn(from: .music, travel: -20, precise: true) == nil, "page: too short turns nothing")
+    check(PanelTab.timer.neighbour(1) == .shelf && PanelTab.timer.neighbour(-1) == .apps, "page: neighbours follow the strip")
     check(C.swipeAction(travel: CGSize(width: 60, height: 5), precise: true) == .right, "swipe: right is next")
     check(C.swipeAction(travel: CGSize(width: -60, height: 0), precise: true) == .left, "swipe: left is previous")
     check(C.swipeAction(travel: CGSize(width: 40, height: 0), precise: true) == nil,
