@@ -132,9 +132,8 @@ KROK 7 — Vyzkoušej ovládání
                                  ovládat Spotify.
   - Text písně                   když ho LRCLIB zná, pod
                                  interpretem je právě zpívaný
-                                 řádek a slabě pod ním další;
-                                 s každým veršem se text posune
-                                 o řádek nahoru. Bliknutí
+                                 řádek; s každým veršem odjede
+                                 nahoru a zespodu přijede další. Bliknutí
                                  barvou na nový řádek jde
                                  zapnout v nastavení.
                                  Stahuje se jednou, pak z cache

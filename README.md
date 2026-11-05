@@ -12,8 +12,8 @@ Click anywhere else to close it.
 recording permission of any kind. It knows what's playing from macOS's own
 "now playing" information, the same thing Control Center shows. The bars and
 the wave move with a calm made-up motion while something plays and rest when
-it's paused. The lyrics scroll up a line as each new line begins, the next
-one waiting dimly below, so the panel stays in time with the song without
+it's paused. The lyric line scrolls up as each new line begins, the next
+rising in from below, so the panel stays in time with the song without
 hearing it. (The colour can also flash on each new line; that's off unless
 switched on in the settings.)
 
@@ -91,7 +91,7 @@ keychain; `build.sh` uses it when present.
 | `SongPeek.swift` | Decides when a new song gets a moment in the closed notch |
 | `Notes.swift`, `NotesView.swift` | The notes page and its local storage |
 | `QuickApps.swift`, `QuickAppsView.swift` | The app shortcuts page and its list |
-| `LyricsView.swift` | The lyric being sung and the next, scrolling up a line at a time |
+| `LyricsView.swift` | The lyric line being sung, scrolling up to the next |
 | `SpotifyVolume.swift` | Spotify's own volume over AppleScript, and its slider |
 | `ArtworkAccent.swift` | Picks the accent colour out of the album art |
 | `Controls.swift` | Transport button press style and the volume meter |

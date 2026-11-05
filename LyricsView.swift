@@ -1,11 +1,10 @@
 import AppKit
 import SwiftUI
 
-/// The lyric being sung under the artist, with the next line waiting dimly
-/// below it. As the song moves on the whole column scrolls up a line: the
-/// sung line slides off the top as it fades, the waiting one brightens into
-/// its place, and the one after rises in from below — the text moves on to
-/// the next line rather than being swapped for it.
+/// The lyric being sung, one line under the artist. As the song moves on
+/// the column of lines scrolls up by one: the sung line slides off the top
+/// as it fades and the next rises into its place from below — the text
+/// moves on to the next line rather than being swapped for it.
 struct LyricsView: View {
     var lines: [LyricLine]?
     /// A lookup is still running for this track.
@@ -14,7 +13,7 @@ struct LyricsView: View {
     /// Centred under a centred title, leading under a leading one.
     var alignment: Alignment = .center
 
-    /// One line's height; the view shows two.
+    /// One line's height, and the view's.
     static let lineHeight: CGFloat = 15
 
     var body: some View {
@@ -34,18 +33,18 @@ struct LyricsView: View {
                 line("Text nenalezen", opacity: 0.35)
             }
         }
-        .frame(height: Self.lineHeight * 2, alignment: .top)
+        .frame(height: Self.lineHeight, alignment: .top)
         .frame(maxWidth: .infinity, alignment: alignment)
         .clipped()
     }
 
-    /// Every line, stacked, slid up so `current` is at the top. Only the
-    /// current line and the next are visible; the rest are transparent, so
-    /// a line fades as it scrolls out and appears as it scrolls in.
+    /// Every line, stacked, slid up so `current` is in view. Only the
+    /// current line is opaque, so a line fades as it scrolls out and appears
+    /// as it scrolls in.
     private func column(_ rows: [String], current: Int) -> some View {
         VStack(alignment: alignment.horizontal, spacing: 0) {
             ForEach(rows.indices, id: \.self) { i in
-                line(rows[i], opacity: i == current ? 0.85 : i == current + 1 ? 0.3 : 0)
+                line(rows[i], opacity: i == current ? 0.85 : 0)
                     .frame(height: Self.lineHeight)
             }
         }
