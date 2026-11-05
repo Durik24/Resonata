@@ -49,6 +49,21 @@ final class NotchPanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
 
+    /// Set by the controller around its own resizes; see `setFrame`.
+    var controllerResizing = false
+
+    /// Only the controller sizes this window.
+    ///
+    /// `sizingOptions = []` stops NSHostingView sizing the window to its
+    /// content, but not every path: from `windowDidLayout` it still set a
+    /// frame of its own, a point wider than asked — 304 for a 303 pill. The
+    /// extra point all went on the right, so the window's centre moved off
+    /// the cutout's by half a point and the pill with it.
+    override func setFrame(_ frameRect: NSRect, display flag: Bool) {
+        guard controllerResizing || frameRect == frame else { return }
+        super.setFrame(frameRect, display: flag)
+    }
+
     /// ⌘X, ⌘C, ⌘V, ⌘A, ⌘Z and ⇧⌘Z in the notes.
     ///
     /// In a normal app these come from the Edit menu's key equivalents.
@@ -1061,7 +1076,9 @@ final class NotchPanelController {
         // began the spring: a visible jump from below. Leaving the display to
         // SwiftUI's own pass, a moment later, draws the first frame of the new
         // state straight into the new frame.
+        panel.controllerResizing = true
         panel.setFrame(rect, display: false)
+        panel.controllerResizing = false
         // ...and lay SwiftUI out at the new size *now*, in the same pass, so
         // the next frame drawn is the new layout in the new frame — never the
         // old layout, anchored at the window's corner, in a frame of another
