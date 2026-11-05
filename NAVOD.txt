@@ -270,8 +270,6 @@ ScreenGeometry.swift, blok NotchMetrics:
     collapsedExtraHeight   posun spodní hrany (záporné = výš)
     collapsedInset         odsazení obalu a vlnky od krajů
     waveformNudge          posun vlnky do stran
-    flashBloom             o kolik zjasní barva obalu na novém
-                           řádku textu
 
 Motion.swift: jak se sloupce a vlnka hýbou (rychlost a rozkmit).
 
@@ -365,7 +363,6 @@ CO JE V KTERÉM SOUBORU
 
 ResonataApp.swift      start aplikace, skrytí ikony z Docku
 Motion.swift           vymyšlený pohyb sloupců a vlnky
-LyricPulse.swift       záblesk barvy na začátku každého řádku textu
 SongPeek.swift         krátké ukázání nové skladby v zavřeném notchi
 SpotifyVolume.swift    hlasitost samotného Spotify (posuvník u ovládání)
 Notes.swift            ukládání poznámky a úkolů

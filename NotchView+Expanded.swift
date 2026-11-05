@@ -246,6 +246,7 @@ extension NotchView {
                     Spacer(minLength: 0)
                     if isSpotify {
                         SpotifyVolumeControl(tint: accentText ?? .white)
+                            .layoutPriority(-1)
                             // A new view for each song, so the level is read
                             // again — Spotify's own slider may have moved.
                             .id(model.track?.title)

@@ -66,10 +66,6 @@ enum NotchMetrics {
     /// Shifts the waveform further left, on its own. Applied as trailing
     /// padding, so it moves the wave without touching the artwork opposite it.
     static let waveformNudge: CGFloat = 0
-
-    /// How much brighter the artwork colour wash flashes as each new lyric
-    /// line begins, as a multiplier on its opacity. 1.0 would double it.
-    static let flashBloom: Double = 0.5
 }
 
 extension NSScreen {

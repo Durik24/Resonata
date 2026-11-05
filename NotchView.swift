@@ -226,13 +226,6 @@ struct NotchView: View {
                         // pass for the bezel, and a gradient that bottoms out
                         // anywhere above black would give the illusion away.
                         shape.fill(accentWash)
-                        // The same wash, brighter, flashing and fading as
-                        // each new lyric line begins. Core Animation runs the
-                        // fade, so a flash costs this app nothing per frame.
-                        GlowFlash(shape: shape,
-                                  color: colourable ? accent : nil,
-                                  expanded: model.isExpanded,
-                                  pulse: model.pulse)
                     })
                 }
             ))

@@ -96,7 +96,11 @@ struct SpotifyVolumeControl: View {
                     Slider(value: Binding(get: { volume }, set: { setVolume($0) }), in: 0...100)
                     .controlSize(.mini)
                     .tint(tint)
-                    .frame(width: 96)
+                    // Shorter when room is short: beside the calendar the
+                    // player column is narrow, and a fixed 96 pushed the
+                    // whole panel wider than itself — the calendar and the
+                    // battery came off the right-hand side.
+                    .frame(minWidth: 40, maxWidth: 96)
                 }
                 .help("Hlasitost Spotify — jen Spotify, ne celého Macu")
                 .transition(.opacity)

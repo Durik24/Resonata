@@ -33,10 +33,6 @@ final class NotchModel: ObservableObject {
     /// from the "Aplikace" page, say.
     var close: (() -> Void)?
 
-    /// Counts up once as each new line of synced lyrics begins — see
-    /// `LyricPulse`. Each change flashes the colour wash.
-    @Published var pulse = 0
-
     /// The current track's artwork, decoded once per URL.
     ///
     /// The collapsed pill and the expanded panel are different views, and

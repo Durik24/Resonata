@@ -25,7 +25,6 @@ enum Preferences {
         static let pomodoroLongRest = "pomodoroLongRest"
         static let pomodoroRounds = "pomodoroRounds"
         static let pageSwipe = "pageSwipe"
-        static let lyricFlash = "lyricFlash"
     }
 
     /// Call before anything reads a preference.
@@ -47,7 +46,6 @@ enum Preferences {
             Key.pomodoroLongRest: 15,
             Key.pomodoroRounds: 4,
             Key.pageSwipe: PageSwipe.withFingers.rawValue,
-            Key.lyricFlash: false,
             Key.openMode: OpenMode.nook.rawValue,
             Key.quickApps: QuickApps.defaultPaths().joined(separator: "\n"),
         ])
@@ -63,10 +61,6 @@ enum Preferences {
         let value = UserDefaults.standard.double(forKey: Key.idleTimeout)
         return value > 0 ? value : 10
     }
-
-    /// The colour wash flashing as each lyric line begins. Off unless asked
-    /// for: lines often start on the beat, and it read as flickering.
-    static var lyricFlash: Bool { UserDefaults.standard.bool(forKey: Key.lyricFlash) }
 
     static var showLyrics: Bool { UserDefaults.standard.bool(forKey: Key.showLyrics) }
 

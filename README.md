@@ -14,8 +14,7 @@ recording permission of any kind. It knows what's playing from macOS's own
 the wave move with a calm made-up motion while something plays and rest when
 it's paused. The lyric line scrolls up as each new line begins, the next
 rising in from below, so the panel stays in time with the song without
-hearing it. (The colour can also flash on each new line; that's off unless
-switched on in the settings.)
+hearing it.
 
 macOS 14+, Swift 6, no Xcode project needed. See `NAVOD.txt` for the
 step-by-step (Czech).
@@ -29,10 +28,13 @@ to the right with the title and artist:
 ![The closed notch](docs/closed.png)
 ![The song sliding out of the notch](docs/peek.png)
 
-Two more pages: a note with a to-do list, and app shortcuts.
+More pages — two fingers sideways on the trackpad turn them: a note with a
+to-do list, app shortcuts, a timer (any length, or Pomodoro) and a shelf for
+files.
 
 ![Notes and to-dos](docs/notes.png)
 ![App shortcuts](docs/apps.png)
+![The timer](docs/timer.png)
 
 The song, cover, lyrics and events in these pictures are made up: they come
 from the app's demo mode (`RESONATA_DEMO=1`, see `Demo.swift`), not from
@@ -86,8 +88,6 @@ keychain; `build.sh` uses it when present.
 | `Motion.swift` | The made-up motion behind the bars and the wave |
 | `MusicBars.swift` | The pill's bars, as Core Animation layers on a display link |
 | `MusicWave.swift` | The open panel's wave: Catmull-Rom curve, gradient fill |
-| `LyricPulse.swift` | Fires as each lyric line begins: one timer, set for the next line |
-| `GlowFlash.swift` | The colour flash, a render-server animation masked to the notch |
 | `SongPeek.swift` | Decides when a new song gets a moment in the closed notch |
 | `Notes.swift`, `NotesView.swift` | The notes page and its local storage |
 | `QuickApps.swift`, `QuickAppsView.swift` | The app shortcuts page and its list |
@@ -101,16 +101,12 @@ keychain; `build.sh` uses it when present.
 ## Cost
 
 About 1.2% CPU on an M4 while something plays (the bars' display link), and
-nothing at rest: the display links stop when playback does, and the lyric
-flash is a single timer set for the next line rather than a poll.
+nothing at rest: the display links stop when playback does.
 
-The bars and the flash used to be SwiftUI animations, which re-ran the view
-graph and re-rasterised every frame (4.5%, 8.7% with flashes). They are
-`CALayer`s moved by a display link and a `CABasicAnimation` that runs in the
-render server.
+The bars used to be a SwiftUI animation, which re-ran the view graph and
+re-rasterised every frame (4.5%). They are `CALayer`s moved by a display link.
 
-Measure with `RESONATA_DEBUG_FORCE_LIVE=1` (animate as if playing) and
-`RESONATA_DEBUG_FAKE_PULSES=1` (a flash every 0.5 s).
+Measure with `RESONATA_DEBUG_FORCE_LIVE=1` (animate as if playing).
 
 ## No listening
 
@@ -192,7 +188,7 @@ Right-click → Nastavení… opens a settings window: open at login, how the
 notch opens (click, hover or gestures — see below), a global
 shortcut to open the notch (⇧⌘Space by default; Carbon hot keys, so no
 Accessibility permission), how long after a pause the notch shrinks,
-animation speed, lyrics on/off, the lyric flash on/off, the calendar on/off, and the wave's colour (album, white, or your
+animation speed, lyrics on/off, the calendar on/off, and the wave's colour (album, white, or your
 own). Apple Music tracks get a heart button (`favorited` over AppleScript);
 Spotify has no way to like a song from the Mac short of its web API. Spotify
 tracks get a slider for Spotify's own volume instead (`sound volume` over
@@ -304,8 +300,8 @@ into the app.
 
 Builds `Tests/main.swift` against the logic files with plain `swiftc` (no
 Xcode project, no XCTest) and runs it: the interpolated playhead, the LRC
-parser and line lookup, the made-up motion and the wave's curve, when the
-lyric flash fires, and the MediaRemote stream parser fed
+parser and line lookup, the made-up motion and the wave's curve, and the
+MediaRemote stream parser fed
 recorded `stream --micros` output — including a track change where the new
 artwork arrives in a later diff than the new title. Exits non-zero on any
 failure.
@@ -394,8 +390,6 @@ as before. Verified on macOS 26.5.
 
 - Live progress bar interpolated between syncs — `Track.position(at:)`
 - Click-and-drag scrubbing
-- Synced lyric flash in place of beat detection (the audio visualiser was
-  removed on purpose — no listening)
 - Synced lyrics: LRCLIB `/get` with an exact match, falling back to `/search`
   on title and artist; the line being sung shows under the artist. Cached under `~/Library/Caches/com.local.resonata/lyrics/`.
 

@@ -185,18 +185,6 @@ check(waveRect.insetBy(dx: -0.5, dy: -0.5).contains(waveFill.boundingBoxOfPath),
       "wave: the curve never leaves its strip", "\(waveFill.boundingBoxOfPath)")
 check(abs(waveLine.boundingBoxOfPath.width - waveRect.width) < 0.5, "wave: spans the full width")
 
-// MARK: - Lyric pulse
-
-let pulseLines = [LyricLine(time: 10, text: "a"), LyricLine(time: 15, text: ""),
-                  LyricLine(time: 20, text: "b"), LyricLine(time: 30, text: "c")]
-check(LyricPulse.nextLineTime(in: pulseLines, after: 0) == 10, "pulse: the first line, from the start")
-check(LyricPulse.nextLineTime(in: pulseLines, after: 10) == 20,
-      "pulse: skips an instrumental break (empty line)")
-check(LyricPulse.nextLineTime(in: pulseLines, after: 9.97) == 20,
-      "pulse: a line starting this instant doesn't fire twice")
-check(LyricPulse.nextLineTime(in: pulseLines, after: 31) == nil, "pulse: nothing after the last line")
-check(LyricPulse.nextLineTime(in: [], after: 0) == nil, "pulse: no lyrics, no pulse")
-
 // MARK: - Next features
 
 check(HotKeyChoice.off.combo == nil, "shortcut: off registers nothing")

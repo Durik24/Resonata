@@ -31,7 +31,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Flashes the notch as each new lyric line begins. Resonata doesn't
     /// listen to the computer's sound, so the lyrics' timing is the music's
     /// timing it shows.
-    private let lyricPulse = LyricPulse()
 
     private var cancellables = Set<AnyCancellable>()
 
@@ -76,14 +75,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         HotKey.shared.action = { [weak self] in self?.controller.toggle() }
         HotKey.shared.apply(Preferences.hotKey)
 
-        // A flash as each lyric line begins, re-armed on every change to the
-        // track (play, pause, seek, new song) or to its lyrics — if it's
-        // switched on in the settings; it's off unless asked for.
-        lyricPulse.onPulse = { [weak self] in
-            guard Preferences.lyricFlash else { return }
-            self?.model.pulse &+= 1
-        }
-
         // Plugging in the charger gets a moment in the closed notch too.
         PowerWatcher.shared.onPlugIn = { [weak self] battery in
             guard Preferences.showChargingPeek else { return }
@@ -124,10 +115,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // A new song gets a moment in the closed notch.
         model.$track
             .sink { [weak self] track in self?.songPeek.trackChanged(to: track) }
-            .store(in: &cancellables)
-        model.$track
-            .combineLatest(model.$lyrics)
-            .sink { [weak self] track, lines in self?.lyricPulse.update(track: track, lines: lines) }
             .store(in: &cancellables)
 
         // Apple Music's heart, read once per song.
@@ -196,14 +183,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 MainActor.assumeIsolated {
                     if let tab = PanelTab(rawValue: name ?? "") { self?.model.tab = tab }
                 }
-            }
-        }
-
-        // `RESONATA_DEBUG_FAKE_PULSES=1`: a flash twice a second, so the cost
-        // of the flash can be measured without music.
-        if ProcessInfo.processInfo.environment["RESONATA_DEBUG_FAKE_PULSES"] == "1" {
-            Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
-                MainActor.assumeIsolated { self?.model.pulse &+= 1 }
             }
         }
 
@@ -338,6 +317,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NotesStore.shared.saveIfPending()
         mediaRemote.stop()
         appleScript?.stop()
-        lyricPulse.stop()
     }
 }

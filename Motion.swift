@@ -7,9 +7,7 @@ import Foundation
 /// follow the music's frequencies. What it can be is calm and organic rather
 /// than mechanical: each point is a sum of three slow sines at unrelated
 /// speeds and phases, so neighbouring points move differently and the whole
-/// never visibly repeats. It runs only while something is playing, and the
-/// glow on each new lyric line (`LyricPulse`) supplies the timing the music
-/// actually has.
+/// never visibly repeats. It runs only while something is playing.
 enum Motion {
 
     /// Height of point `index` at time `time`, 0...1, centred on 0.5.
