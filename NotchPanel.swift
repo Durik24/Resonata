@@ -885,12 +885,13 @@ final class NotchPanelController {
     }
 
     /// The page a sideways swipe of `travel` (fingers, right positive) turns
-    /// to from `tab`, once it's gone far enough: fingers moving left bring
-    /// the next page in from the right, as on a phone.
+    /// to from `tab`, once it's gone far enough: the way the fingers go,
+    /// along the strip of page icons — right to the next page, left to the
+    /// previous. The same way round as skipping songs on the closed notch.
     nonisolated static func pageTurn(from tab: PanelTab, travel: CGFloat,
                                      precise: Bool) -> PanelTab? {
         guard abs(travel) >= (precise ? 40 : 0.5) else { return nil }
-        return tab.neighbour(travel < 0 ? 1 : -1)
+        return tab.neighbour(travel > 0 ? 1 : -1)
     }
 
     /// One page per swipe; the rest of it and its momentum do nothing.

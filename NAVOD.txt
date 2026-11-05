@@ -157,8 +157,8 @@ KROK 7 — Vyzkoušej ovládání
   - Přejeď dvěma prsty na notchi dolů = otevřít, nahoru = zavřít,
                                  doprava = další skladba,
                                  doleva = předchozí (na zavřeném)
-  - Otevřený panel: dva prsty    zprava doleva = další stránka,
-    do strany                    zleva doprava = předchozí
+  - Otevřený panel: dva prsty    doprava = další stránka,
+    do strany                    doleva = předchozí
                                  (Hudba → Poznámky → Aplikace →
                                  Časovač → Police), v každém režimu
                                  (V nastavení „Otevírat notch“

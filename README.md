@@ -219,8 +219,8 @@ like any page, except along the top strip beside the cutout, which still
 works the notch (`NotchPanelController.takesScroll`).
 
 Two fingers sideways on the open panel turn the page, in every mode and
-wherever the pointer is: right to left goes to the next page along the
-strip, left to right to the previous one, one page per swipe, no wrapping
+wherever the pointer is: the way the fingers go along the strip — right to
+the next page, left to the previous one, one page per swipe, no wrapping
 round. Each gesture is classed sideways or up-and-down from its first few
 points of travel and stays that way, momentum included, so turning a page
 never scrolls a list as well (`pageSwipeAxis`, `turnPage`).
