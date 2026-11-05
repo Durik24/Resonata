@@ -12,8 +12,10 @@ Click anywhere else to close it.
 recording permission of any kind. It knows what's playing from macOS's own
 "now playing" information, the same thing Control Center shows. The bars and
 the wave move with a calm made-up motion while something plays and rest when
-it's paused. The colour flashes as each new line of the lyrics begins, so it
-stays in time with the song without hearing it.
+it's paused. The lyrics scroll up a line as each new line begins, the next
+one waiting dimly below, so the panel stays in time with the song without
+hearing it. (The colour can also flash on each new line; that's off unless
+switched on in the settings.)
 
 macOS 14+, Swift 6, no Xcode project needed. See `NAVOD.txt` for the
 step-by-step (Czech).
@@ -89,7 +91,8 @@ keychain; `build.sh` uses it when present.
 | `SongPeek.swift` | Decides when a new song gets a moment in the closed notch |
 | `Notes.swift`, `NotesView.swift` | The notes page and its local storage |
 | `QuickApps.swift`, `QuickAppsView.swift` | The app shortcuts page and its list |
-| `LyricsView.swift` | The lyric line being sung, under the artist |
+| `LyricsView.swift` | The lyric being sung and the next, scrolling up a line at a time |
+| `SpotifyVolume.swift` | Spotify's own volume over AppleScript, and its slider |
 | `ArtworkAccent.swift` | Picks the accent colour out of the album art |
 | `Controls.swift` | Transport button press style and the volume meter |
 | `Volume.swift` | Output volume via Core Audio, and the scroll-to-volume mapping |
@@ -190,9 +193,11 @@ Right-click → Nastavení… opens a settings window: open at login, how the
 notch opens (click, hover or gestures — see below), a global
 shortcut to open the notch (⇧⌘Space by default; Carbon hot keys, so no
 Accessibility permission), how long after a pause the notch shrinks,
-animation speed, lyrics on/off, the calendar on/off, and the wave's colour (album, white, or your
+animation speed, lyrics on/off, the lyric flash on/off, the calendar on/off, and the wave's colour (album, white, or your
 own). Apple Music tracks get a heart button (`favorited` over AppleScript);
-Spotify has no way to like a song from the Mac short of its web API.
+Spotify has no way to like a song from the Mac short of its web API. Spotify
+tracks get a slider for Spotify's own volume instead (`sound volume` over
+AppleScript; no sign-in), leaving the rest of the Mac's sound where it is.
 
 ## Keeping the open panel cheap
 
@@ -223,7 +228,9 @@ wherever the pointer is: the way the fingers go along the strip — right to
 the next page, left to the previous one, one page per swipe, no wrapping
 round. Each gesture is classed sideways or up-and-down from its first few
 points of travel and stays that way, momentum included, so turning a page
-never scrolls a list as well (`pageSwipeAxis`, `turnPage`). Settings →
+never scrolls a list as well (`pageSwipeAxis`, `turnPage`). Pages slide like
+a phone's — the old one out one side as the new one comes in from the other
+— and the highlight in the strip glides to the new icon. Settings →
 Otevřený panel can turn it the other way round, as on a phone, or off.
 
 The timer page's ring sets any length while the timer is stopped: − and +

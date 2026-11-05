@@ -22,6 +22,9 @@ struct NotchView: View {
     // from it too.
     @State var accent: Color?
 
+    /// The page strip's highlight, gliding from icon to icon.
+    @Namespace var pageHighlight
+
     // Settings, read here so a change in the settings window re-renders.
     @AppStorage(Preferences.Key.animationSpeed) private var speedSetting = AnimationSpeed.normal.rawValue
     @AppStorage(Preferences.Key.waveColour) private var waveColourSetting = WaveColour.album.rawValue
@@ -192,7 +195,7 @@ struct NotchView: View {
                 // A soft wave along the bottom edge, in the album's colour.
                 // It has the bottom strip to itself — the content stops above
                 // it (see `expanded`) — so it never runs through the lyrics.
-                if model.isExpanded && model.tab == .music {
+                if model.isExpanded && model.shownTab == .music {
                     MusicWave(color: waveColour,
                               isAnimating: isLive)
                         .frame(height: Self.waveHeight)

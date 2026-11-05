@@ -90,11 +90,29 @@ final class NotchModel: ObservableObject {
 
     /// Which page the open panel shows.
     @Published var tab: PanelTab = .music {
-        willSet { tabForward = newValue.index >= tab.index }
+        willSet {
+            let forward = newValue.index >= tab.index
+            if forward != tabForward { tabForward = forward }
+        }
+        didSet {
+            guard tab != oldValue else { return }
+            // The page follows a run-loop pass later — see `shownTab`.
+            DispatchQueue.main.async { [weak self] in
+                MainActor.assumeIsolated {
+                    guard let self, self.shownTab != self.tab else { return }
+                    self.shownTab = self.tab
+                }
+            }
+        }
     }
-    /// The last page change went right along the strip — the new page
-    /// slides in from that side.
+    /// The last page change went right along the strip: the new page slides
+    /// in from the right and the old one out to the left.
     @Published private(set) var tabForward = true
+    /// The page drawn, a pass behind `tab`. The old page leaves by the
+    /// transition it had at its last render, so the direction has to be in
+    /// place a render *before* the page changes — otherwise turning back the
+    /// other way slid the old page out on the wrong side.
+    @Published private(set) var shownTab: PanelTab = .music
 
     /// The collapsed pill carries artwork and waveform only while playback is
     /// live. Idle, it shrinks back to the bare cutout — but `track` is still

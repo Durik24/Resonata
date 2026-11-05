@@ -124,9 +124,19 @@ KROK 7 — Vyzkoušej ovládání
   - Klikni na notch              rozbalí se velký panel, dole
                                  se vlní vlnka v barvě obalu,
                                  pozadí má barvu obalu taky
+  - Hlasitost Spotify           když hraje Spotify, je vedle
+                                 ovládání posuvník jen pro
+                                 Spotify (zbytek zvuku Macu
+                                 zůstane). Poprvé se macOS
+                                 zeptá, jestli smí Resonata
+                                 ovládat Spotify.
   - Text písně                   když ho LRCLIB zná, pod
-                                 interpretem běží právě zpívaný
-                                 řádek, podle času skladby.
+                                 interpretem je právě zpívaný
+                                 řádek a slabě pod ním další;
+                                 s každým veršem se text posune
+                                 o řádek nahoru. Bliknutí
+                                 barvou na nový řádek jde
+                                 zapnout v nastavení.
                                  Stahuje se jednou, pak z cache
                                  (~/Library/Caches/com.local.resonata)
   - Připoj nabíječku             zavřený notch se na 3 s vysune
@@ -361,6 +371,7 @@ ResonataApp.swift      start aplikace, skrytí ikony z Docku
 Motion.swift           vymyšlený pohyb sloupců a vlnky
 LyricPulse.swift       záblesk barvy na začátku každého řádku textu
 SongPeek.swift         krátké ukázání nové skladby v zavřeném notchi
+SpotifyVolume.swift    hlasitost samotného Spotify (posuvník u ovládání)
 Notes.swift            ukládání poznámky a úkolů
 NotesView.swift        stránka Poznámky a úkoly
 QuickApps.swift        seznam aplikací, otevírání, přidávání

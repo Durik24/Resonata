@@ -422,6 +422,13 @@ do {
           "lyrics: redraws now and as each coming line begins", "\(starts.map { $0.timeIntervalSince(now) })")
     var paused = playing; paused.isPlaying = false
     check(LyricsView.lineStarts(lines, track: paused, after: now) == [now], "lyrics: paused, just once")
+    check(LyricsView.rows([LyricLine(time: 1, text: "a"), LyricLine(time: 2, text: "")]) == ["\u{266A}", "a", "\u{266A}"],
+          "lyrics: a note for the intro and for empty lines")
+    check(LyricsView.row(for: nil) == 0 && LyricsView.row(for: 0) == 1 && LyricsView.row(for: 4) == 5,
+          "lyrics: before the first line is the intro row")
+    check(SpotifyVolumeControl.symbol(for: 0) == "speaker.slash.fill"
+          && SpotifyVolumeControl.symbol(for: 50) == "speaker.wave.2.fill"
+          && SpotifyVolumeControl.symbol(for: 100) == "speaker.wave.3.fill", "spotify: speaker follows the level")
 }
 
 // MARK: - Pomodoro

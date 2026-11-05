@@ -20,35 +20,36 @@ extension NotchView {
                 // simply doesn't exist. Start below it.
                 .padding(.top, notchSize.height + 8)
                 // The music page leaves the bottom strip to the wave.
-                .padding(.bottom, model.tab == .music ? Self.waveHeight + 10 : 18)
+                .padding(.bottom, model.shownTab == .music ? Self.waveHeight + 10 : 18)
             topBar
         }
         // Laid out at the final width from frame one — see `clipShape` above.
         .frame(width: model.expandedWidth - 40, alignment: .leading)
     }
 
-    /// The page, sliding in a little from the side it was turned to — the
-    /// right for a page further along the strip — as the old one fades out.
-    /// A short nudge rather than a whole page width: two pages sliding
-    /// across each other in a panel this small is a blur. Its own quick
-    /// curve, not the panel's unhurried spring, so a swipe feels answered.
+    /// The page, sliding sideways like a phone's: the new one in from the
+    /// side it was turned to — the right for a page further along the strip
+    /// — as the old one slides out the other way, both clipped by the panel.
     private var page: some View {
         ZStack(alignment: .top) {
             pageContent
-                .id(model.tab)
-                // The old page is gone in a blink, before the new one has
-                // much to show: crossfaded at length, two layouts overlap.
+                .id(model.shownTab)
                 .transition(.asymmetric(
-                    insertion: .offset(x: model.tabForward ? 36 : -36).combined(with: .opacity)
-                        .animation(.easeOut(duration: 0.24).delay(0.05)),
-                    removal: .opacity.animation(.easeOut(duration: 0.07))))
+                    insertion: .move(edge: model.tabForward ? .trailing : .leading)
+                        .combined(with: .opacity),
+                    removal: .move(edge: model.tabForward ? .leading : .trailing)
+                        .combined(with: .opacity)))
         }
-        .animation(.easeOut(duration: 0.2), value: model.tab)
+        .animation(Self.pageTurn, value: model.shownTab)
     }
+
+    /// Quick, and settling without a bounce: a page that overshoots and
+    /// swings back reads as the panel wobbling.
+    static let pageTurn = Animation.spring(response: 0.36, dampingFraction: 0.92)
 
     @ViewBuilder
     private var pageContent: some View {
-        switch model.tab {
+        switch model.shownTab {
         case .music:
             musicPage
         case .notes:
@@ -96,13 +97,21 @@ extension NotchView {
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.white.opacity(model.tab == tab ? 0.95 : 0.4))
                         .frame(width: iconWidth, height: 20)
-                        .background(Capsule().fill(.white.opacity(model.tab == tab ? 0.14 : 0)))
+                        // One highlight that glides to the page chosen,
+                        // rather than one fading out as another fades in.
+                        .background {
+                            if model.tab == tab {
+                                Capsule().fill(.white.opacity(0.14))
+                                    .matchedGeometryEffect(id: "page", in: pageHighlight)
+                            }
+                        }
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .help(tab.title)
             }
         }
+        .animation(Self.pageTurn, value: model.tab)
     }
 
     private var statusItems: some View {
@@ -235,6 +244,12 @@ extension NotchView {
                     }
                     button("forward.fill") { send(.next) }
                     Spacer(minLength: 0)
+                    if isSpotify {
+                        SpotifyVolumeControl(tint: accentText ?? .white)
+                            // A new view for each song, so the level is read
+                            // again — Spotify's own slider may have moved.
+                            .id(model.track?.title)
+                    }
                     if let level = model.volumeLevel {
                         VolumeMeter(level: level, compact: false)
                             .transition(.opacity)
@@ -286,6 +301,12 @@ extension NotchView {
             .buttonStyle(TransportButtonStyle())
             .help("Otevřít \(model.track?.source ?? "")")
         }
+    }
+
+    /// Spotify is the player — the slider for its own volume shows.
+    private var isSpotify: Bool {
+        guard let track = model.track else { return false }
+        return track.bundleID == SpotifyVolume.bundleID || track.source == "Spotify"
     }
 
     private var sourceApp: URL? {

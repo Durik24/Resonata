@@ -77,8 +77,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         HotKey.shared.apply(Preferences.hotKey)
 
         // A flash as each lyric line begins, re-armed on every change to the
-        // track (play, pause, seek, new song) or to its lyrics.
-        lyricPulse.onPulse = { [weak self] in self?.model.pulse &+= 1 }
+        // track (play, pause, seek, new song) or to its lyrics — if it's
+        // switched on in the settings; it's off unless asked for.
+        lyricPulse.onPulse = { [weak self] in
+            guard Preferences.lyricFlash else { return }
+            self?.model.pulse &+= 1
+        }
 
         // Plugging in the charger gets a moment in the closed notch too.
         PowerWatcher.shared.onPlugIn = { [weak self] battery in
