@@ -24,6 +24,7 @@ enum Preferences {
         static let pomodoroRest = "pomodoroRest"
         static let pomodoroLongRest = "pomodoroLongRest"
         static let pomodoroRounds = "pomodoroRounds"
+        static let pageSwipe = "pageSwipe"
     }
 
     /// Call before anything reads a preference.
@@ -44,9 +45,14 @@ enum Preferences {
             Key.pomodoroRest: 5,
             Key.pomodoroLongRest: 15,
             Key.pomodoroRounds: 4,
+            Key.pageSwipe: PageSwipe.withFingers.rawValue,
             Key.openMode: OpenMode.nook.rawValue,
             Key.quickApps: QuickApps.defaultPaths().joined(separator: "\n"),
         ])
+    }
+
+    static var pageSwipe: PageSwipe {
+        PageSwipe(rawValue: UserDefaults.standard.string(forKey: Key.pageSwipe) ?? "") ?? .withFingers
     }
 
     /// Seconds after a pause before the pill goes idle — and audio capture
@@ -93,7 +99,25 @@ enum Preferences {
     static let idleChoices: [TimeInterval] = [5, 10, 20, 30, 60]
 }
 
-/// How unhurried the notch's springs and fades are.
+/// Two fingers sideways on the open panel.
+enum PageSwipe: String, CaseIterable, Identifiable {
+    /// The way the fingers go along the strip: right to the next page.
+    case withFingers
+    /// The other way round, as on a phone: left to the next page.
+    case reversed
+    case off
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .withFingers: "Doprava = další"
+        case .reversed: "Doleva = další (jako telefon)"
+        case .off: "Vypnuto"
+        }
+    }
+}
+
 /// How the closed notch opens. A click always works.
 /// - hover: the boring.notch way — rest the pointer on it to open, leave
 ///   to close.

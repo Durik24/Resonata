@@ -43,6 +43,7 @@ struct SettingsView: View {
     @AppStorage(Preferences.Key.pomodoroLongRest) private var pomodoroLongRest = 15
     @AppStorage(Preferences.Key.pomodoroRounds) private var pomodoroRounds = 4
     @AppStorage(Preferences.Key.openMode) private var openMode = OpenMode.nook.rawValue
+    @AppStorage(Preferences.Key.pageSwipe) private var pageSwipe = PageSwipe.withFingers.rawValue
     @AppStorage(Preferences.Key.quickApps) private var quickApps = ""
 
     @State private var openAtLogin = LoginItem.isEnabled
@@ -82,6 +83,9 @@ struct SettingsView: View {
             }
 
             Section("Otevřený panel") {
+                Picker("Swipe mezi stránkami", selection: $pageSwipe) {
+                    ForEach(PageSwipe.allCases) { Text($0.title).tag($0.rawValue) }
+                }
                 Toggle("Texty písní", isOn: $showLyrics)
                 Toggle("Kalendář vedle přehrávače", isOn: $showCalendar)
                 Picker("Barva vlny", selection: $waveColour) {

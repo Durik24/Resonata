@@ -11,6 +11,9 @@ struct TimerView: View {
     @AppStorage(Preferences.Key.pomodoroWork) private var pomodoroWork = 25
     @AppStorage(Preferences.Key.pomodoroRest) private var pomodoroRest = 5
 
+    /// What's in the ring's minutes field while it's typed in.
+    @State private var typed = ""
+
     private let columns = Array(repeating: GridItem(.fixed(58), spacing: 8), count: 3)
 
     /// Orange for work and a plain timer, green for a Pomodoro break.
@@ -55,28 +58,85 @@ struct TimerView: View {
     }
 
     private var ring: some View {
-        // Once a second while it runs; paused or stopped, nothing ticks.
-        TimelineView(.periodic(from: .now, by: 1)) { context in
-            let now = timer.end == nil ? Date() : context.date
-            ZStack {
-                Circle()
-                    .stroke(.white.opacity(0.12), lineWidth: 6)
-                Circle()
-                    .trim(from: 0, to: 1 - timer.progress(at: now))
-                    .stroke(tint, style: StrokeStyle(lineWidth: 6, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                    .opacity(timer.isActive ? 1 : 0)
-                VStack(spacing: 2) {
-                    Text(CountdownTimer.format(timer.remaining(at: now)))
-                        .font(.system(size: 24, weight: .semibold).monospacedDigit())
-                        .foregroundStyle(.white.opacity(timer.isPaused ? 0.5 : 1))
-                    Text(caption)
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.45))
+        ZStack {
+            Circle()
+                .stroke(.white.opacity(0.12), lineWidth: 6)
+            if timer.isActive {
+                // Once a second while it runs; paused, nothing ticks.
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    let now = timer.end == nil ? Date() : context.date
+                    ZStack {
+                        Circle()
+                            .trim(from: 0, to: 1 - timer.progress(at: now))
+                            .stroke(tint, style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                            .rotationEffect(.degrees(-90))
+                        VStack(spacing: 2) {
+                            Text(CountdownTimer.format(timer.remaining(at: now)))
+                                .font(.system(size: 24, weight: .semibold).monospacedDigit())
+                                .foregroundStyle(.white.opacity(timer.isPaused ? 0.5 : 1))
+                            Text(caption)
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.45))
+                        }
+                    }
                 }
+            } else {
+                dial
             }
-            .frame(width: 112, height: 112)
         }
+        .frame(width: 112, height: 112)
+    }
+
+    /// Stopped, the ring is where the length is set — any length, not just
+    /// the buttons': − and + a minute at a time (hold to keep going), or
+    /// click the number and type it.
+    private var dial: some View {
+        VStack(spacing: 4) {
+            // Text, read as it's typed, rather than a number field: that
+            // only takes the value on Return, so typing 37 and clicking
+            // "Spustit" started the old length.
+            TextField("Minuty", text: $typed)
+                .textFieldStyle(.plain)
+                .multilineTextAlignment(.center)
+                .font(.system(size: 26, weight: .semibold).monospacedDigit())
+                .foregroundStyle(.white)
+                .frame(width: 70)
+                .help("Klikni a napiš počet minut")
+                .onAppear { typed = "\(timer.chosenMinutes)" }
+                .onChange(of: typed) { _, text in
+                    let digits = String(text.filter(\.isWholeNumber).prefix(3))
+                    if digits != text { typed = digits; return }
+                    if let value = Int(digits), value > 0 { timer.choose(minutes: value) }
+                }
+                // − and +, and a typed 999 kept to 240, show here at once.
+                .onChange(of: timer.chosenMinutes) { _, value in
+                    if Int(typed) != value { typed = "\(value)" }
+                }
+                // Left empty or at 0, it goes back to the length that counts.
+                .onSubmit { typed = "\(timer.chosenMinutes)" }
+            HStack(spacing: 10) {
+                step("minus", by: -1)
+                Text("min")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.45))
+                step("plus", by: 1)
+            }
+        }
+    }
+
+
+    private func step(_ symbol: String, by delta: Int) -> some View {
+        Button { timer.choose(minutes: timer.chosenMinutes + delta) } label: {
+            Image(systemName: symbol)
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(.white.opacity(0.85))
+                .frame(width: 22, height: 22)
+                .background(Circle().fill(.white.opacity(0.12)))
+                .contentShape(Circle())
+        }
+        .buttonStyle(TransportButtonStyle())
+        .buttonRepeatBehavior(.enabled)
+        .help(delta > 0 ? "O minutu víc" : "O minutu míň")
     }
 
     private var caption: String {

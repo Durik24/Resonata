@@ -146,7 +146,11 @@ KROK 7 — Vyzkoušej ovládání
                                  se police; soubor si pak odtáhneš
                                  kam potřebuješ (zkopíruje se),
                                  kliknutím ho otevřeš
-  - Časovač (4. stránka panelu)  5–60 min jedním klepnutím;
+  - Časovač (4. stránka panelu)  5–60 min jedním klepnutím,
+                                 nebo libovolná délka v kruhu:
+                                 − a + po minutě (podržením
+                                 rychle), nebo klikni na číslo
+                                 a napiš ho (1–240 min);
                                  zbývající čas je vidět v
                                  zavřeném notchi, na konci se
                                  vysune „Čas vypršel“ a cinkne
@@ -161,6 +165,7 @@ KROK 7 — Vyzkoušej ovládání
     do strany                    doleva = předchozí
                                  (Hudba → Poznámky → Aplikace →
                                  Časovač → Police), v každém režimu
+                                 (směr nebo vypnutí v nastavení)
                                  (V nastavení „Otevírat notch“
                                  jde přepnout na „Najetím myší“
                                  — otevře se samo po 0,3 s a

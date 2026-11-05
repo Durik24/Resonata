@@ -463,6 +463,10 @@ do {
     check(C.pageTurn(from: .music, travel: -50, precise: true) == nil, "page: nothing before the first")
     check(C.pageTurn(from: .shelf, travel: 50, precise: true) == nil, "page: nothing after the last")
     check(C.pageTurn(from: .music, travel: 20, precise: true) == nil, "page: too short turns nothing")
+    check(C.pageTurn(from: .music, travel: -50, precise: true, reversed: true) == .notes, "page: reversed, swiping left is the next page")
+    check(C.pageTurn(from: .notes, travel: 50, precise: true, reversed: true) == .music, "page: reversed, swiping right is the previous page")
+    check(CountdownTimer.clampMinutes(0) == 1 && CountdownTimer.clampMinutes(999) == 240
+          && CountdownTimer.clampMinutes(37) == 37, "timer: button lengths kept to 1–240 min")
     check(PanelTab.timer.neighbour(1) == .shelf && PanelTab.timer.neighbour(-1) == .apps, "page: neighbours follow the strip")
     check(C.swipeAction(travel: CGSize(width: 60, height: 5), precise: true) == .right, "swipe: right is next")
     check(C.swipeAction(travel: CGSize(width: -60, height: 0), precise: true) == .left, "swipe: left is previous")

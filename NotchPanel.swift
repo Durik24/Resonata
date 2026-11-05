@@ -377,7 +377,7 @@ final class NotchPanelController {
         panel.onScroll = { [weak self] event in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                if self.model.isExpanded, self.pageAxis == .horizontal {
+                if self.model.isExpanded, Preferences.pageSwipe != .off, self.pageAxis == .horizontal {
                     self.turnPage(event)
                 } else if Preferences.openMode == .nook {
                     self.swipe(event)
@@ -846,7 +846,8 @@ final class NotchPanelController {
     private func takesScroll(_ event: NSEvent) -> Bool {
         // Sideways on the open panel turns the page, wherever the fingers are
         // — over a list of to-dos too, which only scrolls up and down.
-        if model.isExpanded, pageSwipeAxis(of: event) == .horizontal { return true }
+        if model.isExpanded, Preferences.pageSwipe != .off,
+           pageSwipeAxis(of: event) == .horizontal { return true }
         guard model.isExpanded, model.tab != .music,
               let notch = targetScreen?.notchSize else { return true }
         return event.locationInWindow.y >= expandedShapeRect.maxY - notch.height
@@ -885,20 +886,22 @@ final class NotchPanelController {
     }
 
     /// The page a sideways swipe of `travel` (fingers, right positive) turns
-    /// to from `tab`, once it's gone far enough: the way the fingers go,
-    /// along the strip of page icons — right to the next page, left to the
-    /// previous. The same way round as skipping songs on the closed notch.
-    nonisolated static func pageTurn(from tab: PanelTab, travel: CGFloat,
-                                     precise: Bool) -> PanelTab? {
+    /// to from `tab`, once it's gone far enough. By default the way the
+    /// fingers go, along the strip of page icons — right to the next page,
+    /// left to the previous, the same way round as skipping songs on the
+    /// closed notch; `reversed`, the other way, as on a phone.
+    nonisolated static func pageTurn(from tab: PanelTab, travel: CGFloat, precise: Bool,
+                                     reversed: Bool = false) -> PanelTab? {
         guard abs(travel) >= (precise ? 40 : 0.5) else { return nil }
-        return tab.neighbour(travel > 0 ? 1 : -1)
+        return tab.neighbour((travel > 0) != reversed ? 1 : -1)
     }
 
     /// One page per swipe; the rest of it and its momentum do nothing.
     private func turnPage(_ event: NSEvent) {
         guard event.momentumPhase.isEmpty, !pageTurned,
               let next = Self.pageTurn(from: model.tab, travel: pageTravel.width,
-                                       precise: event.hasPreciseScrollingDeltas) else { return }
+                                       precise: event.hasPreciseScrollingDeltas,
+                                       reversed: Preferences.pageSwipe == .reversed) else { return }
         pageTurned = true
         if NotchPanel.debugClick { NSLog("click: page \(next.rawValue)") }
         model.tab = next

@@ -13,6 +13,10 @@ final class CountdownTimer: ObservableObject {
     /// The buttons on the page, in minutes.
     static let presets = [5, 10, 15, 25, 45, 60]
 
+    /// Any length from a minute to four hours, like the Pomodoro's; 0 or
+    /// nonsense comes back as a minute.
+    nonisolated static func clampMinutes(_ minutes: Int) -> Int { min(max(minutes, 1), 240) }
+
     /// When it runs out; nil when stopped or paused.
     @Published private(set) var end: Date?
     /// Time left while paused; nil otherwise.
@@ -83,6 +87,13 @@ final class CountdownTimer: ObservableObject {
     func progress(at now: Date) -> Double {
         guard isActive, total > 0 else { return 0 }
         return min(max(1 - remaining(at: now) / total, 0), 1)
+    }
+
+    /// Sets the length the start button offers — from the − and + in the
+    /// ring, or typed into it.
+    func choose(minutes: Int) {
+        chosenMinutes = Self.clampMinutes(minutes)
+        save()
     }
 
     func start(minutes: Int) {

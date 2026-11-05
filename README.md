@@ -223,7 +223,12 @@ wherever the pointer is: the way the fingers go along the strip — right to
 the next page, left to the previous one, one page per swipe, no wrapping
 round. Each gesture is classed sideways or up-and-down from its first few
 points of travel and stays that way, momentum included, so turning a page
-never scrolls a list as well (`pageSwipeAxis`, `turnPage`).
+never scrolls a list as well (`pageSwipeAxis`, `turnPage`). Settings →
+Otevřený panel can turn it the other way round, as on a phone, or off.
+
+The timer page's ring sets any length while the timer is stopped: − and +
+a minute at a time (held, they repeat), or click the number and type it,
+1–240 minutes. The six buttons start their lengths at once.
 
 ## Opening: click, hover, gestures
 
