@@ -214,6 +214,19 @@ extension NSScreen {
         CGSize(width: notchWidth, height: notchHeight)
     }
 
+    /// Where the middle of the cutout is, in global screen coordinates.
+    ///
+    /// Not `frame.midX`: the cutout isn't always dead centre in points. At
+    /// 1710x1112 ("More Space" on a 13" Air) macOS puts it at 751…960 of
+    /// 1710 — half a point right of centre — and other scalings round other
+    /// ways. Centred on the screen, the pill sat that much off the hardware.
+    var notchMidX: CGFloat {
+        guard let left = auxiliaryTopLeftArea, let right = auxiliaryTopRightArea else {
+            return frame.midX
+        }
+        return (left.maxX + right.minX) / 2
+    }
+
     /// Stable identifier for this display. `NSScreen` objects are recreated on
     /// every configuration change, so a pinned choice has to be remembered by
     /// id rather than by holding on to the screen itself.

@@ -552,6 +552,28 @@ final class NotchPanelController {
     /// geometry has to be refreshed before repositioning. Collapse first: a
     /// panel left expanded across a display switch strands itself at the old
     /// size on a screen that may not even have a notch.
+    /// Catches a change of display scaling that `screensChanged` read too
+    /// early. The notification can arrive before the screen reports the
+    /// cutout at its new size, and the pill then kept the old one — too big
+    /// or too small for the hardware, and off its centre. Checked on the
+    /// visibility tick, it costs two property reads and puts itself right
+    /// within a quarter of a second.
+    private func refreshGeometryIfStale(_ screen: NSScreen?) {
+        guard let screen, let panel else { return }
+        // The window is always centred on the cutout and pinned to the top,
+        // in every state and mid-animation alike, so either drifting means
+        // the screen has changed under it.
+        let moved = abs(panel.frame.midX - screen.notchMidX) > 0.5
+            || abs(panel.frame.maxY - screen.frame.maxY) > 0.5
+        guard model.notchSize != screen.notchSize || moved else { return }
+        adoptGeometry(of: screen)
+        // Straight to the new frame, not through `apply`: its union with the
+        // old, off-centre frame would still be off centre, so the next tick
+        // would see drift again and cancel the shrink, forever.
+        shrink?.cancel()
+        reposition()
+    }
+
     private func screensChanged() {
         guard let screen = targetScreen else { return }
         model.isExpanded = false
@@ -863,7 +885,7 @@ final class NotchPanelController {
     /// the screen's top edge, so this follows from the screen alone.
     private var shapeOnScreen: NSRect? {
         guard let screen = targetScreen else { return nil }
-        let top = screen.frame.maxY, mid = screen.frame.midX
+        let top = screen.frame.maxY, mid = screen.notchMidX
         if model.isExpanded {
             let width = model.expandedWidth, height = model.expandedHeight
             return NSRect(x: mid - width / 2, y: top - height, width: width, height: height)
@@ -959,8 +981,11 @@ final class NotchPanelController {
     private var expandedShapeRect: NSRect {
         let width = model.expandedWidth
         let height = model.expandedHeight
-        return NSRect(x: (Self.canvasWidth - width) / 2,
-                      y: Self.canvasHeight - height,
+        // The window's own size, not the canvas constant: it can be a point
+        // wider to stay centred on the cutout (see `frame(for:)`).
+        let window = panel?.frame.size ?? CGSize(width: Self.canvasWidth, height: Self.canvasHeight)
+        return NSRect(x: (window.width - width) / 2,
+                      y: window.height - height,
                       width: width, height: height)
     }
 
@@ -973,6 +998,7 @@ final class NotchPanelController {
     private func updateVisibility() {
         guard let panel else { return }
         let screen = targetScreen
+        refreshGeometryIfStale(screen)
         fullScreenCovered = screen?.isShowingFullScreenApp ?? false
         let missionControl = screen?.isShowingMissionControl ?? false
         // In a full-screen app the menu bar slides down when the pointer
@@ -1022,7 +1048,8 @@ final class NotchPanelController {
     private func reposition() {
         guard let screen = targetScreen else { return }
         setPanelFrame(frame(for: screen, expanded: model.isExpanded,
-                            hasTrack: model.showsCollapsedContent, peeking: model.peeking))
+                            hasTrack: model.showsCollapsedContent, peeking: model.peeking,
+                            hovering: model.hovering))
     }
 
     private func setPanelFrame(_ rect: NSRect) {
@@ -1067,10 +1094,20 @@ final class NotchPanelController {
 
         // NSScreen coordinates are global and bottom-left origin, so "top of the
         // screen" is maxY and we subtract the panel height to get the origin.
+        //
+        // Window origins land on whole points: AppKit floors 515.5 to 515. So
+        // where the cutout's centre is on a half point — 855.5 at 1710x1112 —
+        // a window centred on it ends up half a point left, and the pill with
+        // it: a sliver of black past one side of the hardware, none on the
+        // other. Start on the whole point below instead and widen the window
+        // to keep its centre on the cutout's. Everything is drawn centred in
+        // the window at its own size, so the extra point is just transparent.
+        let mid = screen.notchMidX
+        let x = (mid - size.width / 2).rounded(.down)
         return NSRect(
-            x: screen.frame.midX - size.width / 2,
+            x: x,
             y: screen.frame.maxY - size.height,
-            width: size.width,
+            width: (2 * (mid - x)).rounded(.up),
             height: size.height
         )
     }
