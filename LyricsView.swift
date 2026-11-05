@@ -14,9 +14,6 @@ struct LyricsView: View {
     var body: some View {
         Group {
             if let lines {
-                // Ten times a second is plenty for something that changes
-                // every few seconds, and it is only built while the panel is
-                // open.
                 // Redrawn exactly when a line begins, not ten times a second:
                 // the line only changes every few seconds, and each redraw is
                 // a layout pass. Paused, there's nothing to schedule at all.
