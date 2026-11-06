@@ -10,12 +10,18 @@ struct QuickAppsView: View {
     /// Called after an app is opened.
     var onLaunch: () -> Void
 
-    private let columns = Array(repeating: GridItem(.fixed(62), spacing: 6), count: 6)
+    /// One place in the grid: an app, or the tile that adds one.
+    enum Tile: Hashable { case app(URL), add }
+
+    private func tiles(_ apps: [URL]) -> [Tile] {
+        apps.map(Tile.app) + (apps.count < QuickApps.limit ? [.add] : [])
+    }
 
     var body: some View {
         let apps = QuickApps.urls(from: stored)
-        LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
-            ForEach(apps, id: \.self) { url in
+        EagerGrid(items: tiles(apps), columns: 6, spacing: 6, rowSpacing: 8) { item in
+            switch item {
+            case .app(let url):
                 Button {
                     QuickApps.launch(url)
                     onLaunch()
@@ -26,8 +32,7 @@ struct QuickAppsView: View {
                 }
                 .buttonStyle(TransportButtonStyle())
                 .help(QuickApps.name(of: url))
-            }
-            if apps.count < QuickApps.limit {
+            case .add:
                 Button { QuickApps.chooseAndAdd() } label: {
                     tile(icon: Image(systemName: "plus")
                                 .font(.system(size: 15, weight: .medium))

@@ -60,9 +60,12 @@ final class ShelfStore: ObservableObject {
 /// The open panel's "Police" page.
 struct ShelfView: View {
     @ObservedObject var shelf: ShelfStore
+    /// The page's width, for how many tiles fit in a row.
+    var width: CGFloat
     @State private var targeted = false
 
-    private let columns = [GridItem(.adaptive(minimum: 72), spacing: 8)]
+    /// 72-point tiles 8 apart.
+    private var columns: Int { max(1, Int((width + 8) / 80)) }
 
     var body: some View {
         Group {
@@ -71,9 +74,10 @@ struct ShelfView: View {
             } else {
                 VStack(alignment: .leading, spacing: 8) {
                     ScrollView {
-                        LazyVGrid(columns: columns, alignment: .leading, spacing: 10) {
-                            ForEach(shelf.items, id: \.self) { tile($0) }
+                        EagerGrid(items: shelf.items, columns: columns, spacing: 8, rowSpacing: 10) {
+                            tile($0)
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .scrollIndicators(.never)
                     HStack {

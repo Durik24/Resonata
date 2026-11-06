@@ -442,6 +442,9 @@ do {
     check(C.pageTurn(from: .notes, travel: 50, precise: true, reversed: true) == .music, "page: reversed, swiping right is the previous page")
     check(CountdownTimer.clampMinutes(0) == 1 && CountdownTimer.clampMinutes(999) == 240
           && CountdownTimer.clampMinutes(37) == 37, "timer: button lengths kept to 1–240 min")
+    check(EagerGrid<Int, EmptyView>.rows([1, 2, 3, 4, 5, 6, 7], columns: 3) == [[1, 2, 3], [4, 5, 6], [7]],
+          "grid: rows of three, the last one short")
+    check(EagerGrid<Int, EmptyView>.rows([], columns: 3).isEmpty, "grid: nothing, no rows")
     check(PanelTab.timer.neighbour(1) == .shelf && PanelTab.timer.neighbour(-1) == .apps, "page: neighbours follow the strip")
     check(C.swipeAction(travel: CGSize(width: 60, height: 5), precise: true) == .right, "swipe: right is next")
     check(C.swipeAction(travel: CGSize(width: -60, height: 0), precise: true) == .left, "swipe: left is previous")

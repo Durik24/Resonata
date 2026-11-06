@@ -14,7 +14,6 @@ struct TimerView: View {
     /// What's in the ring's minutes field while it's typed in.
     @State private var typed = ""
 
-    private let columns = Array(repeating: GridItem(.fixed(58), spacing: 8), count: 3)
 
     /// Orange for work and a plain timer, green for a Pomodoro break.
     private var tint: Color { timer.phase == .rest ? ActivityLook.green : accent }
@@ -23,8 +22,7 @@ struct TimerView: View {
         HStack(spacing: 28) {
             ring
             VStack(alignment: .leading, spacing: 12) {
-                LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
-                    ForEach(CountdownTimer.presets, id: \.self) { minutes in
+                EagerGrid(items: CountdownTimer.presets, columns: 3, spacing: 8, rowSpacing: 8) { minutes in
                         Button { timer.start(minutes: minutes) } label: {
                             Text("\(minutes) min")
                                 .font(.system(size: 12, weight: .semibold))
@@ -34,7 +32,6 @@ struct TimerView: View {
                                 .contentShape(Capsule())
                         }
                         .buttonStyle(TransportButtonStyle())
-                    }
                 }
                 HStack(spacing: 8) {
                     if timer.isActive {

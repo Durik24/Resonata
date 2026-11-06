@@ -30,22 +30,28 @@ extension NotchView {
     /// The page, sliding sideways like a phone's: the new one in from the
     /// side it was turned to — the right for a page further along the strip
     /// — as the old one slides out the other way, both clipped by the panel.
+    ///
+    /// Both move by the same fixed distance, a page width and a gap, so they
+    /// travel side by side. `.move(edge:)` moved each by its own width, and
+    /// the pages differ: the old one fell behind the new, and for a moment
+    /// the timer's ring lay across the app icons.
     private var page: some View {
-        ZStack(alignment: .top) {
+        let distance = model.expandedWidth - 40 + 24
+        let forward = model.tabForward
+        return ZStack(alignment: .top) {
             pageContent
                 .id(model.shownTab)
                 .transition(.asymmetric(
-                    insertion: .move(edge: model.tabForward ? .trailing : .leading)
-                        .combined(with: .opacity),
-                    removal: .move(edge: model.tabForward ? .leading : .trailing)
-                        .combined(with: .opacity)))
+                    insertion: .offset(x: forward ? distance : -distance),
+                    removal: .offset(x: forward ? -distance : distance)))
         }
         .animation(Self.pageTurn, value: model.shownTab)
     }
 
-    /// Quick, and settling without a bounce: a page that overshoots and
-    /// swings back reads as the panel wobbling.
-    static let pageTurn = Animation.spring(response: 0.36, dampingFraction: 0.92)
+    /// Quick off the mark and settling without a crawl: a spring left the
+    /// last few points creeping in for a third of a second, which read as
+    /// the page not quite arriving.
+    static let pageTurn = Animation.timingCurve(0.2, 0.75, 0.25, 1, duration: 0.34)
 
     @ViewBuilder
     private var pageContent: some View {
@@ -59,7 +65,7 @@ extension NotchView {
         case .timer:
             TimerView(timer: .shared, accent: ActivityLook.orange)
         case .shelf:
-            ShelfView(shelf: .shared)
+            ShelfView(shelf: .shared, width: model.expandedWidth - 40)
         }
     }
 
