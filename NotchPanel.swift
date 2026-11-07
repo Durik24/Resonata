@@ -1150,6 +1150,13 @@ final class NotchPanelController {
         // NSScreen coordinates are global and bottom-left origin, so "top of the
         // screen" is maxY and we subtract the panel height to get the origin.
         //
+        // Whole points high: the cutout can be a fraction (32.7 pt at
+        // 1470x956), and AppKit floors window origins, so a fractional
+        // height would drop the window's top edge below the screen's. The
+        // shape is drawn at its own height from the top, so the spare
+        // fraction at the bottom is transparent.
+        let height = size.height.rounded(.up)
+        //
         // Window origins land on whole points: AppKit floors 515.5 to 515. So
         // where the cutout's centre is on a half point — 855.5 at 1710x1112 —
         // a window centred on it ends up half a point left, and the pill with
@@ -1161,9 +1168,9 @@ final class NotchPanelController {
         let x = (mid - size.width / 2).rounded(.down)
         return NSRect(
             x: x,
-            y: screen.frame.maxY - size.height,
+            y: screen.frame.maxY - height,
             width: (2 * (mid - x)).rounded(.up),
-            height: size.height
+            height: height
         )
     }
 }

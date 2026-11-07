@@ -206,8 +206,19 @@ extension NSScreen {
         }
     }
 
+    /// The cutout's size in points — as near the hardware as can be had.
+    ///
+    /// macOS reports it in whole points, rounded up so the menu bar covers
+    /// it. At 1710x1112 on the 13" Air that's exact (38 pt is 56.9 pixels of
+    /// panel), but at 1470x956 the cutout is 32.7 pt and reported as 33, and
+    /// at 1280x832 it's 28.4 reported as 29: the pill came out half a pixel
+    /// to a pixel bigger than the hardware. See `NotchCalibration`.
+    @MainActor
     var notchSize: CGSize {
-        CGSize(width: notchWidth, height: notchHeight)
+        let reported = CGSize(width: notchWidth, height: notchHeight)
+        guard hasNotch, let id = displayID,
+              let scale = NotchCalibration.pixelsPerPoint(of: self, id: id) else { return reported }
+        return NotchCalibration.fitted(reported, pixelsPerPoint: scale, display: id)
     }
 
     /// Where the middle of the cutout is, in global screen coordinates.
@@ -257,4 +268,59 @@ extension NSScreen {
             ?? screens.first
             ?? main
     }
+}
+
+/// The cutout's true size, learnt from the scalings Resonata has seen.
+///
+/// Every reported size is rounded *up* to whole points — the menu bar and
+/// the strips beside the cutout must clear the hardware — so in physical
+/// pixels each one is the cutout or a little more. The smallest seen is the
+/// closest, and it's never smaller than the hardware: kept per display, it
+/// sizes the pill at every scaling from the scaling that rounded least.
+enum NotchCalibration {
+
+    /// Physical pixels per point on `screen` at its current scaling: the
+    /// panel's native width over the width in points. Read from the mode
+    /// list, which is slow, so once per display and scaling.
+    @MainActor
+    static func pixelsPerPoint(of screen: NSScreen, id: CGDirectDisplayID) -> CGFloat? {
+        let key = "\(id)-\(screen.frame.width)"
+        if let known = scales[key] { return known }
+        guard let modes = CGDisplayCopyAllDisplayModes(id, nil) as? [CGDisplayMode],
+              let native = modes.first(where: { $0.ioFlags & UInt32(kDisplayModeNativeFlag) != 0 }),
+              screen.frame.width > 0 else { return nil }
+        let scale = CGFloat(native.pixelWidth) / screen.frame.width
+        scales[key] = scale
+        return scale
+    }
+
+    /// `reported` brought down to the smallest size, in pixels, this display
+    /// has ever reported — remembering this one if it's smaller still.
+    @MainActor
+    static func fitted(_ reported: CGSize, pixelsPerPoint scale: CGFloat,
+                       display id: CGDirectDisplayID) -> CGSize {
+        let key = "notchPixels-\(id)"
+        let stored = smallest[id] ?? (UserDefaults.standard.array(forKey: key) as? [Double])
+            .flatMap { $0.count == 2 ? CGSize(width: $0[0], height: $0[1]) : nil }
+        let result = fit(reported, pixelsPerPoint: scale, smallestPixels: stored)
+        if result.smallestPixels != stored {
+            UserDefaults.standard.set([result.smallestPixels.width, result.smallestPixels.height],
+                                      forKey: key)
+        }
+        smallest[id] = result.smallestPixels
+        return result.size
+    }
+
+    /// The arithmetic, apart for the tests: the smallest size in pixels so
+    /// far, and that in points at this scaling. Never bigger than reported.
+    nonisolated static func fit(_ reported: CGSize, pixelsPerPoint scale: CGFloat,
+                                smallestPixels: CGSize?) -> (size: CGSize, smallestPixels: CGSize) {
+        let here = CGSize(width: reported.width * scale, height: reported.height * scale)
+        let least = CGSize(width: min(here.width, smallestPixels?.width ?? .infinity),
+                           height: min(here.height, smallestPixels?.height ?? .infinity))
+        return (CGSize(width: least.width / scale, height: least.height / scale), least)
+    }
+
+    @MainActor private static var scales: [String: CGFloat] = [:]
+    @MainActor private static var smallest: [CGDirectDisplayID: CGSize] = [:]
 }
