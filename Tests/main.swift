@@ -445,17 +445,18 @@ do {
     check(EagerGrid<Int, EmptyView>.rows([1, 2, 3, 4, 5, 6, 7], columns: 3) == [[1, 2, 3], [4, 5, 6], [7]],
           "grid: rows of three, the last one short")
     check(EagerGrid<Int, EmptyView>.rows([], columns: 3).isEmpty, "grid: nothing, no rows")
-    // The cutout from the 13" Air: 209 x 38 pt at 1710 wide is exact.
-    let air1710 = NotchCalibration.fit(CGSize(width: 209, height: 38), pixelsPerPoint: 2560.0 / 1710, smallestPixels: nil)
-    check(abs(air1710.smallestPixels.height - 56.89) < 0.01, "notch: 38 pt at 1710 is 56.9 px")
-    // At 1470 it's reported 33 pt high; the 1710 reading brings it to 32.7.
-    let air1470 = NotchCalibration.fit(CGSize(width: 180, height: 33), pixelsPerPoint: 2560.0 / 1470,
-                                       smallestPixels: air1710.smallestPixels)
-    check(abs(air1470.size.height - 32.67) < 0.01 && abs(air1470.size.width - 179.7) < 0.05,
-          "notch: at 1470 the pill is the hardware's 32.7 pt, not the reported 33", "\(air1470.size)")
-    check(air1470.smallestPixels == air1710.smallestPixels, "notch: a bigger reading doesn't replace a smaller one")
-    let first = NotchCalibration.fit(CGSize(width: 180, height: 33), pixelsPerPoint: 2560.0 / 1470, smallestPixels: nil)
-    check(first.size == CGSize(width: 180, height: 33), "notch: with nothing better, the reported size")
+    // The cutout from the 13" Air, as macOS reported it: 209 x 38 pt at
+    // 1710 wide (56.9 px high, which matches the hardware) and 179 x 32 at
+    // 1470 (55.7 px, a pixel short).
+    let air1710 = NotchCalibration.fit(CGSize(width: 209, height: 38), pixelsPerPoint: 2560.0 / 1710, largestPixels: nil)
+    check(abs(air1710.largestPixels.height - 56.89) < 0.01, "notch: 38 pt at 1710 is 56.9 px")
+    let air1470 = NotchCalibration.fit(CGSize(width: 179, height: 32), pixelsPerPoint: 2560.0 / 1470,
+                                       largestPixels: air1710.largestPixels)
+    check(abs(air1470.size.height - 32.67) < 0.01 && abs(air1470.size.width - 179.67) < 0.01,
+          "notch: at 1470 the pill is 32.7 pt, the 1710 size, not the reported 32", "\(air1470.size)")
+    check(air1470.largestPixels == air1710.largestPixels, "notch: a smaller reading doesn't replace a larger one")
+    let first = NotchCalibration.fit(CGSize(width: 179, height: 32), pixelsPerPoint: 2560.0 / 1470, largestPixels: nil)
+    check(first.size == CGSize(width: 179, height: 32), "notch: with nothing better, the reported size")
     check(PanelTab.timer.neighbour(1) == .shelf && PanelTab.timer.neighbour(-1) == .apps, "page: neighbours follow the strip")
     check(C.swipeAction(travel: CGSize(width: 60, height: 5), precise: true) == .right, "swipe: right is next")
     check(C.swipeAction(travel: CGSize(width: -60, height: 0), precise: true) == .left, "swipe: left is previous")
