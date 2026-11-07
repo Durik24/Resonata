@@ -37,7 +37,7 @@ final class LyricsStore: ObservableObject {
     private static let endpoint = URL(string: "https://lrclib.net/api")!
 
     /// LRCLIB asks for one. It's how they tell clients apart in their logs.
-    private static let userAgent = "Resonata/1.0 (https://github.com/local/resonata)"
+    private static let userAgent = "Resonata/1.0 (https://github.com/Durik24/Resonata)"
 
     /// On-disk cache: one `.lrc` per song under Caches. Lyrics don't change,
     /// and refetching them on every launch would be rude to a free service.
@@ -75,16 +75,35 @@ final class LyricsStore: ObservableObject {
 
         isFetching = true
         task = Task { [weak self] in
-            let result = await Self.fetch(track)
-            guard !Task.isCancelled, let self, self.current == key else { return }
-            self.isFetching = false
-            if let result, !result.isEmpty {
-                self.lines = result
-                Self.writeCache(key, lines: result)
-                NSLog("Resonata: lyrics loaded for \"%@\" (%d lines)", track.title, result.count)
-            } else {
-                self.misses.insert(key)
-                NSLog("Resonata: no synced lyrics for \"%@\"", track.title)
+            // No answer at all — offline, say, just after waking — isn't
+            // LRCLIB saying no. Remembered as a miss, the song never got its
+            // lyrics until Resonata restarted; it's asked again instead, less
+            // and less often, for as long as the song is the current one.
+            var wait: Duration = .seconds(15)
+            while true {
+                let outcome = await Self.fetch(track)
+                guard !Task.isCancelled, let self, self.current == key else { return }
+                switch outcome {
+                case .lines(let result):
+                    self.isFetching = false
+                    self.lines = result
+                    Self.writeCache(key, lines: result)
+                    NSLog("Resonata: lyrics loaded for \"%@\" (%d lines)", track.title, result.count)
+                    return
+                case .none:
+                    self.isFetching = false
+                    self.misses.insert(key)
+                    NSLog("Resonata: no synced lyrics for \"%@\"", track.title)
+                    return
+                case .failed:
+                    self.isFetching = false
+                    NSLog("Resonata: lyrics lookup failed for \"%@\"; again in %@",
+                          track.title, "\(wait)")
+                }
+                try? await Task.sleep(for: wait)
+                guard !Task.isCancelled, self.current == key else { return }
+                wait = min(wait * 2, .seconds(240))
+                self.isFetching = true
             }
         }
     }
@@ -106,14 +125,35 @@ final class LyricsStore: ObservableObject {
         var syncedLyrics: String?
     }
 
+    /// What a lookup came to: lyrics, a clear "none", or no answer at all.
+    enum Outcome { case lines([LyricLine]), none, failed }
+
+    /// One request's answer: the body, LRCLIB's 404, or nothing usable.
+    private enum Answer { case data(Data), notFound, failed }
+
     /// Exact match first; a looser search if that misses.
     ///
     /// `/get` wants title, artist, album and duration to all line up, and a
     /// Spotify album title with "(Deluxe Edition)" on the end is enough to miss.
     /// `/search` on title and artist alone is forgiving, and the first result
     /// that actually has synced lyrics is almost always the right song.
-    private static func fetch(_ track: Track) async -> [LyricLine]? {
-        if let exact = await get(track), let lines = parse(exact) { return lines }
+    private static func fetch(_ track: Track) async -> Outcome {
+        var exact = URLComponents(url: endpoint.appendingPathComponent("get"),
+                                  resolvingAgainstBaseURL: false)!
+        exact.queryItems = [
+            URLQueryItem(name: "track_name", value: track.title),
+            URLQueryItem(name: "artist_name", value: track.artist),
+            URLQueryItem(name: "album_name", value: track.album),
+            URLQueryItem(name: "duration", value: String(Int(track.duration.rounded()))),
+        ]
+        guard let exactURL = exact.url else { return .failed }
+        switch await request(exactURL) {
+        case .failed: return .failed
+        case .notFound: break
+        case .data(let data):
+            if let synced = (try? JSONDecoder().decode(Record.self, from: data))?.syncedLyrics,
+               let lines = parse(synced) { return .lines(lines) }
+        }
 
         var search = URLComponents(url: endpoint.appendingPathComponent("search"),
                                    resolvingAgainstBaseURL: false)!
@@ -121,38 +161,31 @@ final class LyricsStore: ObservableObject {
             URLQueryItem(name: "track_name", value: track.title),
             URLQueryItem(name: "artist_name", value: track.artist),
         ]
-        guard let url = search.url,
-              let data = await request(url),
-              let records = try? JSONDecoder().decode([Record].self, from: data)
-        else { return nil }
-
-        for record in records {
-            if let synced = record.syncedLyrics, let lines = parse(synced) { return lines }
+        guard let searchURL = search.url else { return .failed }
+        switch await request(searchURL) {
+        case .failed: return .failed
+        case .notFound: return .none
+        case .data(let data):
+            let records = (try? JSONDecoder().decode([Record].self, from: data)) ?? []
+            for record in records {
+                if let synced = record.syncedLyrics, let lines = parse(synced) { return .lines(lines) }
+            }
+            return .none
         }
-        return nil
     }
 
-    private static func get(_ track: Track) async -> String? {
-        var components = URLComponents(url: endpoint.appendingPathComponent("get"),
-                                       resolvingAgainstBaseURL: false)!
-        components.queryItems = [
-            URLQueryItem(name: "track_name", value: track.title),
-            URLQueryItem(name: "artist_name", value: track.artist),
-            URLQueryItem(name: "album_name", value: track.album),
-            URLQueryItem(name: "duration", value: String(Int(track.duration.rounded()))),
-        ]
-        guard let url = components.url, let data = await request(url) else { return nil }
-        return (try? JSONDecoder().decode(Record.self, from: data))?.syncedLyrics
-    }
-
-    private static func request(_ url: URL) async -> Data? {
+    private static func request(_ url: URL) async -> Answer {
         var request = URLRequest(url: url)
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
         request.timeoutInterval = 8
         guard let (data, response) = try? await URLSession.shared.data(for: request),
-              let http = response as? HTTPURLResponse, http.statusCode == 200
-        else { return nil }
-        return data
+              let http = response as? HTTPURLResponse
+        else { return .failed }
+        switch http.statusCode {
+        case 200: return .data(data)
+        case 404: return .notFound
+        default: return .failed
+        }
     }
 
     // MARK: LRC

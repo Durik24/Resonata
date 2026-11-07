@@ -59,10 +59,30 @@ final class NotesStore: ObservableObject {
     private func load() {
         loading = true
         defer { loading = false }
-        guard let data = try? Data(contentsOf: url),
-              let saved = try? JSONDecoder().decode(Saved.self, from: data) else { return }
+        guard let data = try? Data(contentsOf: url) else { return }
+        guard let saved = try? JSONDecoder().decode(Saved.self, from: data) else {
+            // There, but unreadable. Starting empty is right; overwriting it
+            // with the first keystroke isn't — the notes would be gone for
+            // good. Set aside next to it first, where they can be found.
+            Self.setAside(url)
+            return
+        }
         note = saved.note
         todos = saved.todos
+    }
+
+    /// Renames an unreadable notes file to `notes-unreadable-<date>.json`.
+    nonisolated static func setAside(_ url: URL) {
+        let stamp = ISO8601DateFormatter().string(from: Date())
+            .replacingOccurrences(of: ":", with: "-")
+        let kept = url.deletingLastPathComponent()
+            .appendingPathComponent("notes-unreadable-\(stamp).json")
+        do {
+            try FileManager.default.moveItem(at: url, to: kept)
+            NSLog("Resonata: notes file unreadable, kept as %@", kept.path)
+        } catch {
+            NSLog("Resonata: notes file unreadable and could not be kept: \(error)")
+        }
     }
 
     /// Typing changes the note on every keystroke; writing the file each time

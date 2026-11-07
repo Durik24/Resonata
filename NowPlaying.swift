@@ -17,7 +17,7 @@ struct Track: Equatable {
     var isPlaying: Bool
     var artworkURL: URL?
     var source: String   // "Spotify" / "Music"
-    /// The playing app's bundle ID, when known — what the audio tap aims at.
+    /// The playing app's bundle ID, when known.
     var bundleID: String? = nil
 }
 
@@ -82,7 +82,14 @@ final class AppleScriptNowPlaying: ObservableObject, NowPlayingSource {
     @Published private(set) var track: Track?
 
     private var timer: Timer?
-    private let apps = ["Spotify", "Music"]
+    /// The players asked, by the name their scripting dictionary answers to
+    /// and their bundle ID. Found by the ID, never by the name shown: on a
+    /// Czech Mac, Music is "Hudba", and looking for "Music" never found it.
+    private let apps = [("Spotify", "com.spotify.client"), ("Music", "com.apple.Music")]
+
+    nonisolated static func isRunning(bundleID: String) -> Bool {
+        !NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).isEmpty
+    }
 
     /// Identity of the track whose Music artwork we've already extracted, so a
     /// once-a-second poll doesn't re-dump the same image to disk 60 times a
@@ -181,10 +188,8 @@ final class AppleScriptNowPlaying: ObservableObject, NowPlayingSource {
     private func poll() {
         Self.scriptQueue.async { [weak self, apps] in
             var found: Track?
-            for app in apps {
-                guard NSWorkspace.shared.runningApplications.contains(where: {
-                    $0.localizedName == app
-                }) else { continue }
+            for (app, bundleID) in apps {
+                guard Self.isRunning(bundleID: bundleID) else { continue }
                 if let t = Self.query(app: app) {
                     found = t
                     if t.isPlaying { break }   // prefer whichever is actually playing
@@ -228,9 +233,7 @@ final class AppleScriptNowPlaying: ObservableObject, NowPlayingSource {
         // open, hold on to the last song rather than forgetting it: the whole
         // point of the expanded view here is to press play again.
         if track == nil, var previous = self.track,
-           NSWorkspace.shared.runningApplications.contains(where: {
-               $0.localizedName == previous.source
-           }) {
+           let bundleID = previous.bundleID, Self.isRunning(bundleID: bundleID) {
             previous.isPlaying = false
             track = previous
         }

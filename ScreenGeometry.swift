@@ -343,13 +343,31 @@ enum NotchCalibration {
 
     /// The arithmetic, apart for the tests: the largest size in pixels so
     /// far, and that in points at this scaling. Never smaller than reported.
+    ///
+    /// Only readings that agree with this one are counted: rounding to whole
+    /// points puts two honest readings within about a point of each other,
+    /// so anything further off is a bad one — read mid-change of scaling,
+    /// the new width in points against the old cutout height, say. Kept, it
+    /// would have made the pill half as big again at every scaling, for good;
+    /// this way the next honest reading replaces it.
     nonisolated static func fit(_ reported: CGSize, pixelsPerPoint scale: CGFloat,
                                 largestPixels: CGSize?) -> (size: CGSize, largestPixels: CGSize) {
         let here = CGSize(width: reported.width * scale, height: reported.height * scale)
-        let most = CGSize(width: max(here.width, largestPixels?.width ?? 0),
-                          height: max(here.height, largestPixels?.height ?? 0))
+        let agree = largestPixels.map {
+            abs($0.width - here.width) <= agreement * scale
+                && abs($0.height - here.height) <= agreement * scale
+        } ?? false
+        let most = agree
+            ? CGSize(width: max(here.width, largestPixels!.width),
+                     height: max(here.height, largestPixels!.height))
+            : here
         return (CGSize(width: most.width / scale, height: most.height / scale), most)
     }
+
+    /// How far, in points at the current scaling, two readings may be apart
+    /// and still be the same cutout: half a point of rounding in each, the
+    /// other one's in its own, larger points at most.
+    nonisolated static let agreement: CGFloat = 1.5
 
     @MainActor private static var scales: [String: CGFloat] = [:]
     @MainActor private static var largest: [CGDirectDisplayID: CGSize] = [:]

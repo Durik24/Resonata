@@ -339,6 +339,26 @@ MainActor.assumeIsolated {
     check(again.todos.isEmpty, "notes: ticked to-dos cleared")
 }
 
+MainActor.assumeIsolated {
+    let dir = FileManager.default.temporaryDirectory
+        .appendingPathComponent("resonata-notes-bad-\(UUID().uuidString)", isDirectory: true)
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let url = dir.appendingPathComponent("notes.json")
+    try? Data("{\"note\": \"rozepsan".utf8).write(to: url)
+    let store = NotesStore(url: url)
+    store.note = "nová"
+    store.save()
+    let kept = (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []
+    let aside = kept.first { $0.hasPrefix("notes-unreadable-") }
+    check(store.note == "nová" && aside != nil,
+          "notes: an unreadable file is kept aside, not overwritten", "\(kept)")
+    if let aside {
+        let text = (try? String(contentsOf: dir.appendingPathComponent(aside), encoding: .utf8)) ?? ""
+        check(text.contains("rozepsan"), "notes: the kept file is the old one")
+    }
+}
+
 // MARK: - Activities
 
 check(PowerWatcher.crossesWarning(from: 21, to: 20), "low battery: 21 -> 20 warns")
@@ -457,6 +477,18 @@ do {
     check(air1470.largestPixels == air1710.largestPixels, "notch: a smaller reading doesn't replace a larger one")
     let first = NotchCalibration.fit(CGSize(width: 179, height: 32), pixelsPerPoint: 2560.0 / 1470, largestPixels: nil)
     check(first.size == CGSize(width: 179, height: 32), "notch: with nothing better, the reported size")
+    // Read mid-change from 1710 to 1280: the new width in points, the old
+    // 38 pt height — 87 px against the cutout's 57. It mustn't stick.
+    let torn = NotchCalibration.fit(CGSize(width: 209, height: 38), pixelsPerPoint: 2560.0 / 1280,
+                                    largestPixels: air1710.largestPixels)
+    let after = NotchCalibration.fit(CGSize(width: 156, height: 28), pixelsPerPoint: 2560.0 / 1280,
+                                     largestPixels: torn.largestPixels)
+    check(abs(after.size.height - 28) < 0.01,
+          "notch: a reading far off the others is replaced by the next one", "\(after.size)")
+    let air1280 = NotchCalibration.fit(CGSize(width: 156, height: 28), pixelsPerPoint: 2560.0 / 1280,
+                                       largestPixels: air1710.largestPixels)
+    check(abs(air1280.size.height - 28.44) < 0.01,
+          "notch: at 1280 the 1710 size still counts", "\(air1280.size)")
     // At 1470 the cutout is 32.5 pt high: the wings scale with it, so they
     // cover the same pixels as 94 pt at 1710 (38 pt high).
     let k1470 = NotchMetrics.scale(notchHeight: 32.5, real: true)

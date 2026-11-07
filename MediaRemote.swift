@@ -32,7 +32,8 @@ final class MediaRemoteNowPlaying: ObservableObject, NowPlayingSource {
         /// AppleScript meanwhile, and this still turns into `.streaming` the
         /// moment the first payload arrives.
         case silent
-        /// The helper is gone. Final.
+        /// The helper is gone — for now: it is started again a few times
+        /// (see `scheduleRestart`), back to `.starting` each time.
         case failed
     }
 
@@ -70,13 +71,34 @@ final class MediaRemoteNowPlaying: ObservableObject, NowPlayingSource {
     }
 
     func start() {
-        guard let script = Self.scriptURL, let framework = Self.frameworkURL else {
+        guard let script = Self.scriptURL, Self.frameworkURL != nil else {
             status = .failed
             return
         }
 
         Self.reapOrphans(of: script)
         Self.removeStaleArtwork()
+        stopped = false
+        launch()
+    }
+
+    /// Set by `stop()`: the helper ending then is meant, not a failure.
+    private var stopped = false
+    /// Helpers started again after one ended on its own, for the back-off.
+    private var restarts = 0
+    private var restartTimer: Timer?
+    /// Enough tries to ride out a crash or a wake; a helper that ends every
+    /// time is MediaRemote not answering on this macOS, and AppleScript
+    /// carries on alone.
+    private static let maxRestarts = 5
+
+    private func launch() {
+        guard let script = Self.scriptURL, let framework = Self.frameworkURL else {
+            status = .failed
+            return
+        }
+        // Whatever the last helper left half-said is no use to this one.
+        buffer = Data()
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/perl")
@@ -90,7 +112,9 @@ final class MediaRemoteNowPlaying: ObservableObject, NowPlayingSource {
 
         pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
-            guard !data.isEmpty else { return }
+            // End of the stream: the helper has gone. Left in place, the
+            // handler is called again and again with nothing, a busy loop.
+            guard !data.isEmpty else { handle.readabilityHandler = nil; return }
             DispatchQueue.main.async {
                 MainActor.assumeIsolated { self?.ingest(data) }
             }
@@ -103,6 +127,7 @@ final class MediaRemoteNowPlaying: ObservableObject, NowPlayingSource {
                     self.process = nil
                     if Self.active === self { Self.active = nil }
                     self.status = .failed
+                    self.scheduleRestart()
                 }
             }
         }
@@ -115,6 +140,7 @@ final class MediaRemoteNowPlaying: ObservableObject, NowPlayingSource {
             return
         }
         self.process = process
+        startupTimer?.invalidate()
 
         // The stream prints an empty payload when nothing is playing, so
         // silence means MediaRemote hasn't answered — not that nothing plays.
@@ -130,7 +156,29 @@ final class MediaRemoteNowPlaying: ObservableObject, NowPlayingSource {
         }
     }
 
+    /// A helper that ended on its own — a crash, killed across a sleep —
+    /// is started again, after 5 s, then 10, 20…: until then AppleScript
+    /// covers, and the first payload hands back to MediaRemote. It used to
+    /// stay on AppleScript, Spotify and Music only, until the next launch.
+    private func scheduleRestart() {
+        guard !stopped, restarts < Self.maxRestarts else { return }
+        let delay = 5 * pow(2, Double(restarts))
+        restarts += 1
+        restartTimer?.invalidate()
+        restartTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, !self.stopped, self.process == nil else { return }
+                NSLog("Resonata: starting the MediaRemote adapter again (%d)", self.restarts)
+                self.status = .starting
+                self.launch()
+            }
+        }
+    }
+
     func stop() {
+        stopped = true
+        restartTimer?.invalidate()
+        restartTimer = nil
         startupTimer?.invalidate()
         startupTimer = nil
         idleTimer?.invalidate()
@@ -188,6 +236,8 @@ final class MediaRemoteNowPlaying: ObservableObject, NowPlayingSource {
             status = .streaming
             startupTimer?.invalidate()
             Self.active = self
+            // Streaming again: a later crash gets its full set of tries.
+            restarts = 0
         }
 
         let diff = (object["diff"] as? Bool) ?? false
