@@ -253,12 +253,13 @@ struct NotchView: View {
         // Keyed on the artwork URL, so it runs once per track rather than on
         // every one-second poll.
         .task(id: model.track?.artworkURL) {
-            let url = model.track?.artworkURL
-            async let colour = ArtworkAccent.color(from: url)
-            async let image = Self.loadArtwork(url)
-            let (c, i) = await (colour, image)
-            accent = c
-            model.artwork = i
+            let (image, colour) = await ArtworkAccent.load(model.track?.artworkURL)
+            // Skipped on meanwhile: the next song's task has the picture.
+            // Without this, a skip's cancelled load could finish last and
+            // put back nothing over the new song's cover.
+            guard !Task.isCancelled else { return }
+            accent = colour
+            model.artwork = image
         }
         .animation(.easeInOut(duration: 0.5), value: accent)
     }

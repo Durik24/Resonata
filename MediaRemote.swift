@@ -80,6 +80,15 @@ final class MediaRemoteNowPlaying: ObservableObject, NowPlayingSource {
         Self.removeStaleArtwork()
         stopped = false
         launch()
+
+        // A seek from the scrubber: check where the player landed.
+        if commandObserver == nil {
+            commandObserver = NotificationCenter.default.addObserver(
+                forName: .resonataDidCommandPlayer, object: nil, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.schedulePlayheadCheck(after: 0.5) }
+            }
+        }
     }
 
     /// Set by `stop()`: the helper ending then is meant, not a failure.
@@ -179,6 +188,9 @@ final class MediaRemoteNowPlaying: ObservableObject, NowPlayingSource {
         stopped = true
         restartTimer?.invalidate()
         restartTimer = nil
+        playheadTimer?.invalidate()
+        playheadTimer = nil
+        pendingPlayheadCheck?.cancel()
         startupTimer?.invalidate()
         startupTimer = nil
         idleTimer?.invalidate()
@@ -310,16 +322,124 @@ final class MediaRemoteNowPlaying: ObservableObject, NowPlayingSource {
         }
 
         // Keep the interpolation anchor unless the player really jumped —
-        // the same drift rule the AppleScript source applies.
+        // the same drift rule the AppleScript source applies. One the player
+        // itself confirmed (`checkPlayhead`) is kept over whatever the
+        // payload says: Spotify's Now Playing position can be minutes out,
+        // and a real seek is caught by the check each payload brings on.
         if var t = track, let previous = self.track, t.isSameTrack(as: previous),
            t.isPlaying == previous.isPlaying,
-           abs(previous.position(at: t.sampledAt) - t.sampledPosition) < 1.5 {
+           playheadConfirmed || abs(previous.position(at: t.sampledAt) - t.sampledPosition) < 1.5 {
             t.sampledPosition = previous.sampledPosition
             t.sampledAt = previous.sampledAt
             track = t
+        } else {
+            playheadConfirmed = false
         }
 
         if self.track != track { self.track = track }
+        updatePlayheadChecks()
+    }
+
+    // MARK: Playhead, from the player itself
+
+    // What Spotify tells Now Playing about the playhead isn't always so:
+    // measured, it said 0:00 a minute ago with the song at 2:58 — after a
+    // seek or a pause, it seems — and even when right it ran 0.6 s behind.
+    // The notch showed a different time from Spotify's own, and the lyrics
+    // were off with it. Spotify and Music answer `player position` over
+    // AppleScript, as the volume and the heart already ask them, so for
+    // those two the player's own answer sets the playhead.
+
+    /// The players that can be asked, by bundle ID, with their script name.
+    nonisolated static let scriptablePlayers = ["com.spotify.client": "Spotify",
+                                                "com.apple.Music": "Music"]
+    /// How far off the player may be before the playhead is moved: less
+    /// than a lyric line's worth, more than an AppleScript round trip.
+    nonisolated static let playheadTolerance: TimeInterval = 0.25
+    /// While playing, asked this often as well as after every payload.
+    private static let playheadInterval: TimeInterval = 5
+
+    /// The current anchor came from the player, not from Now Playing.
+    private var playheadConfirmed = false
+    private var playheadTimer: Timer?
+    private var pendingPlayheadCheck: DispatchWorkItem?
+    private var commandObserver: NSObjectProtocol?
+    private nonisolated static let playheadQueue = DispatchQueue(
+        label: "com.local.resonata.playhead", qos: .userInitiated)
+
+    /// After a payload, and steadily while a scriptable player plays.
+    private func updatePlayheadChecks() {
+        guard let track, let bundle = track.bundleID, Self.scriptablePlayers[bundle] != nil else {
+            playheadTimer?.invalidate()
+            playheadTimer = nil
+            return
+        }
+        // A moment after, so a seek or a skip has settled in the player.
+        schedulePlayheadCheck(after: 0.3)
+        if track.isPlaying, playheadTimer == nil {
+            let timer = Timer.scheduledTimer(withTimeInterval: Self.playheadInterval,
+                                             repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated { self?.checkPlayhead() }
+            }
+            timer.tolerance = 1
+            playheadTimer = timer
+        } else if !track.isPlaying {
+            playheadTimer?.invalidate()
+            playheadTimer = nil
+        }
+    }
+
+    private func schedulePlayheadCheck(after delay: TimeInterval) {
+        pendingPlayheadCheck?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            MainActor.assumeIsolated { self?.checkPlayhead() }
+        }
+        pendingPlayheadCheck = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    /// Asks the player where it is, off the main thread, and moves the
+    /// playhead there if it's off. Only while the player is running —
+    /// `tell application` would otherwise launch it.
+    private func checkPlayhead() {
+        guard let track, let bundle = track.bundleID, let app = Self.scriptablePlayers[bundle],
+              !NSRunningApplication.runningApplications(withBundleIdentifier: bundle).isEmpty
+        else { return }
+        let title = track.title
+        Self.playheadQueue.async { [weak self] in
+            let before = Date()
+            var error: NSDictionary?
+            let answer = NSAppleScript(source: "tell application \"\(app)\" to get player position")?
+                .executeAndReturnError(&error)
+            let after = Date()
+            guard error == nil, let answer, answer.descriptorType != typeNull else { return }
+            let position = answer.doubleValue
+            // Halfway through the round trip is when the player answered,
+            // as near as can be told.
+            let at = before.addingTimeInterval(after.timeIntervalSince(before) / 2)
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated { self?.correctPlayhead(to: position, at: at, title: title) }
+            }
+        }
+    }
+
+    private func correctPlayhead(to position: TimeInterval, at date: Date, title: String) {
+        guard var t = track, t.title == title, position.isFinite, position >= 0 else { return }
+        playheadConfirmed = true
+        guard let moved = Self.correctedAnchor(of: t, playerPosition: position, at: date) else { return }
+        NSLog("Resonata: playhead %.2f s off %@'s own; moved", t.position(at: date) - position,
+              t.source)
+        t.sampledPosition = moved.position
+        t.sampledAt = moved.at
+        track = t
+    }
+
+    /// The new anchor when the player's own position at `date` is further
+    /// from the predicted one than `playheadTolerance`; nil to keep it.
+    nonisolated static func correctedAnchor(of track: Track, playerPosition: TimeInterval,
+                                            at date: Date) -> (position: TimeInterval, at: Date)? {
+        guard abs(track.position(at: date) - playerPosition) > playheadTolerance else { return nil }
+        return (playerPosition, date)
     }
 
     private static let iso = ISO8601DateFormatter()

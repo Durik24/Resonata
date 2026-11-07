@@ -120,7 +120,15 @@ extension NSScreen {
     ///
     /// Only bounds and layer are read, so this needs no Screen Recording
     /// permission — that's required for window *titles*.
-    var isShowingFullScreenApp: Bool {
+    /// The window server's list of on-screen windows, read once per check
+    /// and handed to both questions below — each used to read its own, two
+    /// copies of the whole list four times a second. Bounds, layers and
+    /// owner names only, which need no permission.
+    static func onScreenWindows() -> [[String: Any]] {
+        CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] ?? []
+    }
+
+    func isShowingFullScreenApp(in windows: [[String: Any]]) -> Bool {
         guard let primary = NSScreen.screens.first else { return false }
 
         // CGWindow bounds are top-left origin, anchored to the primary display;
@@ -144,10 +152,6 @@ extension NSScreen {
             height: whole.height - safeAreaInsets.top
         )
         let targets = safeAreaInsets.top > 0 ? [whole, belowNotch] : [whole]
-
-        guard let windows = CGWindowListCopyWindowInfo(
-            [.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID
-        ) as? [[String: Any]] else { return false }
 
         // A window that fills the area below the notch is *also* exactly what
         // a maximised window on an ordinary desktop looks like, because the
@@ -204,10 +208,8 @@ extension NSScreen {
     /// desktop and the Dock's level — measured at layer 18, against the
     /// Dock's usual 20, and none at all at other times. Owner names and
     /// bounds need no permission.
-    var isShowingMissionControl: Bool {
-        guard let primary = NSScreen.screens.first,
-              let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID)
-                as? [[String: Any]] else { return false }
+    func isShowingMissionControl(in windows: [[String: Any]]) -> Bool {
+        guard let primary = NSScreen.screens.first else { return false }
         let whole = CGRect(x: frame.minX, y: primary.frame.maxY - frame.maxY,
                            width: frame.width, height: frame.height)
         let dockLevel = Int(CGWindowLevelForKey(.dockWindow))

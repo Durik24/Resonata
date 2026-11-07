@@ -14,10 +14,16 @@ enum ArtworkAccent {
     /// intermediates that aren't in the artwork at all.
     private static let grid = 32
 
-    static func color(from url: URL?) async -> Color? {
-        guard let url, let data = await load(url), let image = CIImage(data: data),
-              let pixels = downsample(image) else { return nil }
-        return dominantColour(in: pixels)
+    /// The artwork at `url` and its accent, from one read of it.
+    ///
+    /// Off the main thread: this type has no actor, so its async functions
+    /// run on the shared pool. The picture and the colour each used to fetch
+    /// the file themselves — two downloads of every Spotify cover — and the
+    /// picture's, a static on the view, ran on the main thread.
+    static func load(_ url: URL?) async -> (image: NSImage?, accent: Color?) {
+        guard let url, let data = await bytes(url) else { return (nil, nil) }
+        let accent = CIImage(data: data).flatMap(downsample).flatMap(dominantColour)
+        return (NSImage(data: data), accent)
     }
 
     private static func downsample(_ image: CIImage) -> [UInt8]? {
@@ -61,7 +67,7 @@ enum ArtworkAccent {
     /// If they all abstain the cover really has no colour (a black-and-white
     /// sleeve, say) and this returns nil so the panel stays black, rather than
     /// inventing a tint.
-    private static func dominantColour(in pixels: [UInt8]) -> Color? {
+    private static func dominantColour(_ pixels: [UInt8]) -> Color? {
         struct Bin {
             var weight = 0.0
             var r = 0.0, g = 0.0, b = 0.0
@@ -122,7 +128,7 @@ enum ArtworkAccent {
         return Color(.sRGB, red: r, green: g, blue: b, opacity: 1)
     }
 
-    private static func load(_ url: URL) async -> Data? {
+    private static func bytes(_ url: URL) async -> Data? {
         // Music's artwork is a file we wrote ourselves; Spotify's is remote.
         if url.isFileURL { return try? Data(contentsOf: url) }
         return try? await URLSession.shared.data(from: url).0

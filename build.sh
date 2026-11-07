@@ -55,8 +55,8 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <key>CFBundleName</key>              <string>Resonata</string>
     <key>CFBundleExecutable</key>        <string>Resonata</string>
     <key>CFBundleIdentifier</key>        <string>com.local.resonata</string>
-    <key>CFBundleVersion</key>           <string>7</string>
-    <key>CFBundleShortVersionString</key><string>1.0.6</string>
+    <key>CFBundleVersion</key>           <string>8</string>
+    <key>CFBundleShortVersionString</key><string>1.0.7</string>
     <key>CFBundlePackageType</key>       <string>APPL</string>
     <key>CFBundleIconFile</key>          <string>AppIcon</string>
     <key>LSMinimumSystemVersion</key>    <string>14.0</string>

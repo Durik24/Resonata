@@ -28,10 +28,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private let lyrics = LyricsStore()
 
-    /// Flashes the notch as each new lyric line begins. Resonata doesn't
-    /// listen to the computer's sound, so the lyrics' timing is the music's
-    /// timing it shows.
-
     private var cancellables = Set<AnyCancellable>()
 
     /// Keeps the process out of App Nap for as long as it lives.

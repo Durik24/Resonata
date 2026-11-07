@@ -238,6 +238,26 @@ check(abs(peekLeft - pillLeft) < 0.01, "peek: the left edge (artwork) doesn't mo
 check(peek.width / 2 + NotchView.peekShift <= peekWindow.width / 2 + 0.01,
       "peek: the shifted shape fits in its window")
 
+// MARK: - Playhead from the player
+
+do {
+    let t0 = Date(timeIntervalSince1970: 1_000)
+    let track = Track(title: "Píseň", artist: "A", album: "B", duration: 197, sampledPosition: 0.126,
+                      sampledAt: t0, isPlaying: true, artworkURL: nil, source: "Spotify",
+                      bundleID: "com.spotify.client")
+    // Now Playing said 0:00 a minute ago; Spotify itself is at 2:58.
+    let now = t0.addingTimeInterval(58)
+    let moved = MediaRemoteNowPlaying.correctedAnchor(of: track, playerPosition: 178.5, at: now)
+    check(moved?.position == 178.5 && moved?.at == now, "playhead: the player's own position wins")
+    var after = track
+    if let moved { after.sampledPosition = moved.position; after.sampledAt = moved.at }
+    check(abs(after.position(at: now.addingTimeInterval(2)) - 180.5) < 1e-6, "playhead: and runs on from there")
+    check(MediaRemoteNowPlaying.correctedAnchor(of: track, playerPosition: 58.2, at: now) == nil,
+          "playhead: within a quarter second, left alone — no twitch")
+    check(MediaRemoteNowPlaying.correctedAnchor(of: track, playerPosition: 58.7, at: now) != nil,
+          "playhead: 0.6 s behind is put right")
+}
+
 // MARK: - Notes and to-dos
 
 MainActor.assumeIsolated {

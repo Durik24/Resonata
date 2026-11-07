@@ -981,7 +981,7 @@ final class NotchPanelController {
     }
 
     /// Debug: the panel's own layer tree rendered to a PNG — the SwiftUI
-    /// content and the Core Animation layers (bars, wave, flash) alike, which
+    /// content and the Core Animation layers (bars, wave) alike, which
     /// `cacheDisplay` misses. Developer-only (`RESONATA_DEBUG_CLICK=1`), and
     /// it draws this app's own window from the inside: no screen capture, no
     /// permission, nothing outside the app.
@@ -1053,8 +1053,11 @@ final class NotchPanelController {
         guard let panel else { return }
         let screen = targetScreen
         refreshGeometryIfStale(screen)
-        fullScreenCovered = screen?.isShowingFullScreenApp ?? false
-        let missionControl = screen?.isShowingMissionControl ?? false
+        // Desktop elements included, unlike before: they sit far below
+        // layer 0 and the status level, the only layers either check reads.
+        let windows = screen == nil ? [] : NSScreen.onScreenWindows()
+        fullScreenCovered = screen?.isShowingFullScreenApp(in: windows) ?? false
+        let missionControl = screen?.isShowingMissionControl(in: windows) ?? false
         // In a full-screen app the menu bar slides down when the pointer
         // reaches the top edge — the status items are back, so the notch
         // shows — and slides away again as the pointer moves down. Hiding

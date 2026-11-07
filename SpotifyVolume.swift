@@ -65,8 +65,13 @@ struct SpotifyVolumeControl: View {
     @MainActor static var lastKnown: Double?
     /// The level to go back to when unmuting.
     @MainActor static var beforeMute: Double?
+    /// Moved here since the panel opened. The level read on opening is
+    /// then out of date by the time it comes back — Spotify can take a
+    /// moment — and putting it in snapped the knob back mid-drag.
+    @State private var moved = false
 
     private func setVolume(_ new: Double) {
+        moved = true
         if new < 1, let volume, volume >= 1 { Self.beforeMute = volume }
         volume = new
         Self.lastKnown = new
@@ -111,7 +116,9 @@ struct SpotifyVolumeControl: View {
             }
         }
         .onAppear {
+            moved = false
             SpotifyVolume.read { value in
+                guard !moved else { return }
                 volume = value.map(Double.init)
                 Self.lastKnown = volume
             }

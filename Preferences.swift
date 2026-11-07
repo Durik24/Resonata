@@ -55,8 +55,7 @@ enum Preferences {
         PageSwipe(rawValue: UserDefaults.standard.string(forKey: Key.pageSwipe) ?? "") ?? .withFingers
     }
 
-    /// Seconds after a pause before the pill goes idle — and audio capture
-    /// stops with it.
+    /// Seconds after a pause before the pill goes idle.
     static var idleTimeout: TimeInterval {
         let value = UserDefaults.standard.double(forKey: Key.idleTimeout)
         return value > 0 ? value : 10

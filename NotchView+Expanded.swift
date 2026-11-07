@@ -6,7 +6,7 @@ import SwiftUI
 
 extension NotchView {
 
-    // `expanded`, `artwork(size:)` and `loadArtwork` aren't private: the main
+    // `expanded` and `artwork(size:)` aren't private: the main
     // view in NotchView.swift uses them.
 
     // MARK: Expanded — artwork, metadata, scrubber, transport
@@ -463,18 +463,6 @@ extension NotchView {
         return String(format: "%d:%02d", total / 60, total % 60)
     }
 
-    /// Fetches and decodes the artwork off the main thread.
-    static func loadArtwork(_ url: URL?) async -> NSImage? {
-        guard let url else { return nil }
-        let data: Data?
-        if url.isFileURL {
-            data = try? Data(contentsOf: url)
-        } else {
-            data = try? await URLSession.shared.data(from: url).0
-        }
-        guard let data else { return nil }
-        return NSImage(data: data)
-    }
 
     func artwork(size: CGFloat) -> some View {
         Group {
