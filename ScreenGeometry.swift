@@ -27,6 +27,23 @@ enum NotchMetrics {
     /// of the screen, so extra height only ever grows downward.
     static let fakeHeight: CGFloat = 32
 
+    /// The cutout height the pill's sizes below were drawn for: 13" Air at
+    /// 1710x1112. At other scalings a point is a different size on the
+    /// panel, so on a real cutout the pill's own sizes scale with its height
+    /// — the cutout is the same physical size at every scaling, so this keeps
+    /// the whole pill the same physical size too. At 1470x956 the wings at a
+    /// fixed 94 pt came out 23 pixels wider than at 1710.
+    static let referenceNotchHeight: CGFloat = 38
+
+    /// How much the pill's sizes scale for this cutout; 1 on a display with
+    /// no cutout, whose fake one is sized on its own (`fakeWidth`).
+    static func scale(notchHeight: CGFloat, real: Bool) -> CGFloat {
+        real && notchHeight > 0 ? notchHeight / referenceNotchHeight : 1
+    }
+
+    /// `collapsedContentWidth` at a scale.
+    static func contentWidth(scale: CGFloat) -> CGFloat { collapsedContentWidth * scale }
+
     /// Extra collapsed width claimed for the artwork and the waveform.
     ///
     /// Sized so that once padding and inset come out, each strip beside the
@@ -227,6 +244,11 @@ extension NSScreen {
         return CGSize(width: (fitted.width * grid).rounded() / grid,
                       height: (fitted.height * grid).rounded() / grid)
     }
+
+    /// How much the pill's sizes scale on this display — see
+    /// `NotchMetrics.referenceNotchHeight`.
+    @MainActor
+    var pillScale: CGFloat { NotchMetrics.scale(notchHeight: notchSize.height, real: hasNotch) }
 
     /// Where the middle of the cutout is, in global screen coordinates.
     ///

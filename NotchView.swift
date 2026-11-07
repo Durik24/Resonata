@@ -51,15 +51,15 @@ struct NotchView: View {
     /// The peek's shape — shared with `NotchPanelController` so the window,
     /// the shape and the click target agree. Same height as the pill: it
     /// grows sideways only.
-    static func peekSize(notch: CGSize) -> CGSize {
-        CGSize(width: notch.width + NotchMetrics.collapsedContentWidth + peekExtraWidth,
+    static func peekSize(notch: CGSize, scale: CGFloat) -> CGSize {
+        CGSize(width: notch.width + NotchMetrics.contentWidth(scale: scale) + peekExtraWidth,
                height: notch.height + NotchMetrics.collapsedExtraHeight)
     }
 
     /// The window during a peek: symmetric about the notch, so the notch
     /// stays at its centre, and wide enough for the shape shifted right.
-    static func peekWindowSize(notch: CGSize) -> CGSize {
-        let shape = peekSize(notch: notch)
+    static func peekWindowSize(notch: CGSize, scale: CGFloat) -> CGSize {
+        let shape = peekSize(notch: notch, scale: scale)
         return CGSize(width: shape.width + peekExtraWidth, height: shape.height)
     }
 
@@ -130,7 +130,7 @@ struct NotchView: View {
     static func collapsedSize(model: NotchModel, grown: Bool) -> CGSize {
         let base = CGSize(
             width: model.notchSize.width
-                + (model.showsCollapsedContent ? NotchMetrics.collapsedContentWidth : 0),
+                + (model.showsCollapsedContent ? NotchMetrics.contentWidth(scale: model.pillScale) : 0),
             height: model.notchSize.height + NotchMetrics.collapsedExtraHeight)
         guard grown else { return base }
         return CGSize(width: base.width + NotchMetrics.hoverGrowth.width,
@@ -155,7 +155,7 @@ struct NotchView: View {
     private var size: CGSize {
         if !model.isExpanded, model.peeking {
             // The swell stays on through a hover peek — the pointer is still there.
-            let peek = Self.peekSize(notch: notchSize)
+            let peek = Self.peekSize(notch: notchSize, scale: model.pillScale)
             guard model.hovering else { return peek }
             return CGSize(width: peek.width + NotchMetrics.hoverGrowth.width,
                           height: peek.height + NotchMetrics.hoverGrowth.height)
@@ -167,7 +167,7 @@ struct NotchView: View {
             // out — an idle pill that keeps the full playing width stays
             // visibly longer than the hardware notch.
             : CGSize(width: notchSize.width
-                        + (model.showsCollapsedContent ? NotchMetrics.collapsedContentWidth : 0),
+                        + (model.showsCollapsedContent ? NotchMetrics.contentWidth(scale: model.pillScale) : 0),
                      // Height offset applies in every collapsed state, playing
                      // or not — otherwise the pill changes height when the
                      // music stops, which is visible as a twitch.
@@ -185,7 +185,7 @@ struct NotchView: View {
         // nothing is held back either.
         NotchShape(
             topRadius: model.isExpanded ? 12 : 0,
-            bottomRadius: model.isExpanded ? 24 : 7
+            bottomRadius: model.isExpanded ? 24 : 7 * model.pillScale
         )
     }
 
@@ -216,7 +216,7 @@ struct NotchView: View {
             .modifier(NotchFrame(
                 size: size,
                 topRadius: model.isExpanded ? 12 : 0,
-                bottomRadius: model.isExpanded ? 24 : 7,
+                bottomRadius: model.isExpanded ? 24 : 7 * model.pillScale,
                 xOffset: !model.isExpanded && model.peeking ? Self.peekShift : 0,
                 background: { shape in
                     AnyView(ZStack {
@@ -392,7 +392,7 @@ struct NotchView: View {
         // the pill's own right edge less the inset — the same margin the
         // artwork keeps on the left, closed or peeking.
         .overlay(alignment: .trailing) { waveform }
-        .padding(.horizontal, NotchMetrics.collapsedInset)
+        .padding(.horizontal, NotchMetrics.collapsedInset * model.pillScale)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .opacity(model.showsCollapsedContent ? 1 : 0)
         .animation(fade, value: model.showsCollapsedContent)
@@ -496,7 +496,7 @@ struct NotchView: View {
 
     /// The artwork's square and the bars' slot opposite it — the same width,
     /// so the outer margins and the gaps to the cutout both match.
-    private var collapsedSlot: CGFloat { notchSize.height - 8 }
+    private var collapsedSlot: CGFloat { notchSize.height - 8 * model.pillScale }
 
     /// The closed row between the artwork and the bars: the cutout plus a
     /// small gap either side of it.
@@ -507,8 +507,9 @@ struct NotchView: View {
     /// Usable width inside the collapsed pill, once the padding and the inset
     /// are taken out.
     private var collapsedContentWidth: CGFloat {
-        notchSize.width + NotchMetrics.collapsedContentWidth - 12
-            - (2 * NotchMetrics.collapsedInset)
+        let scale = model.pillScale
+        return notchSize.width + NotchMetrics.contentWidth(scale: scale) - 12 * scale
+            - (2 * NotchMetrics.collapsedInset * scale)
     }
 
     /// Always rendered, so the right-hand side never collapses to nothing when

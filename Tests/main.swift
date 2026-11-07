@@ -225,12 +225,12 @@ check(!SongPeek.shouldPeek(from: songA, to: songB, expanded: true, enabled: true
 check(!SongPeek.shouldPeek(from: songA, to: songB, expanded: false, enabled: false),
       "peek: not when switched off in settings")
 let notch = CGSize(width: 209, height: 38)
-let peek = NotchView.peekSize(notch: notch)
+let peek = NotchView.peekSize(notch: notch, scale: 1)
 check(peek.width == notch.width + NotchMetrics.collapsedContentWidth + NotchView.peekExtraWidth
       && peek.height == notch.height + NotchMetrics.collapsedExtraHeight,
       "peek: slides out sideways — wider than the playing pill, same height", "\(peek)")
 // Left edge stays put: shape centred in the window, then shifted right.
-let peekWindow = NotchView.peekWindowSize(notch: notch)
+let peekWindow = NotchView.peekWindowSize(notch: notch, scale: 1)
 let pillLeft = -(notch.width + NotchMetrics.collapsedContentWidth) / 2
 let peekLeft = -peek.width / 2 + NotchView.peekShift
 check(abs(peekLeft - pillLeft) < 0.01, "peek: the left edge (artwork) doesn't move",
@@ -457,6 +457,12 @@ do {
     check(air1470.largestPixels == air1710.largestPixels, "notch: a smaller reading doesn't replace a larger one")
     let first = NotchCalibration.fit(CGSize(width: 179, height: 32), pixelsPerPoint: 2560.0 / 1470, largestPixels: nil)
     check(first.size == CGSize(width: 179, height: 32), "notch: with nothing better, the reported size")
+    // At 1470 the cutout is 32.5 pt high: the wings scale with it, so they
+    // cover the same pixels as 94 pt at 1710 (38 pt high).
+    let k1470 = NotchMetrics.scale(notchHeight: 32.5, real: true)
+    check(abs(NotchMetrics.contentWidth(scale: k1470) * 2560 / 1470 - 94 * 2560 / 1710) < 1.5,
+          "pill: the wings are the same width in pixels at 1470 as at 1710")
+    check(NotchMetrics.scale(notchHeight: 32, real: false) == 1, "pill: no cutout, no scaling")
     check(PanelTab.timer.neighbour(1) == .shelf && PanelTab.timer.neighbour(-1) == .apps, "page: neighbours follow the strip")
     check(C.swipeAction(travel: CGSize(width: 60, height: 5), precise: true) == .right, "swipe: right is next")
     check(C.swipeAction(travel: CGSize(width: -60, height: 0), precise: true) == .left, "swipe: left is previous")

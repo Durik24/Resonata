@@ -1014,10 +1014,11 @@ final class NotchPanelController {
         let window = panel.frame.size
         let notch = screen.notchSize
         var height = notch.height + NotchMetrics.collapsedExtraHeight
-        var width = notch.width + (model.showsCollapsedContent ? NotchMetrics.collapsedContentWidth : 0)
+        let scale = screen.pillScale
+        var width = notch.width + (model.showsCollapsedContent ? NotchMetrics.contentWidth(scale: scale) : 0)
         var shift: CGFloat = 0
         if model.peeking {
-            width = NotchView.peekSize(notch: notch).width
+            width = NotchView.peekSize(notch: notch, scale: scale).width
             shift = NotchView.peekShift
         }
         // The swell stays on through a hover peek — the pointer is still there.
@@ -1136,12 +1137,12 @@ final class NotchPanelController {
         if expanded {
             size = CGSize(width: Self.canvasWidth, height: Self.canvasHeight)
         } else if peeking {
-            let peek = NotchView.peekWindowSize(notch: screen.notchSize)
+            let peek = NotchView.peekWindowSize(notch: screen.notchSize, scale: screen.pillScale)
             size = CGSize(width: peek.width + (hovering ? NotchMetrics.hoverGrowth.width : 0),
                           height: peek.height + (hovering ? NotchMetrics.hoverGrowth.height : 0))
         } else {
             size = CGSize(width: screen.notchSize.width
-                            + (hasTrack ? NotchMetrics.collapsedContentWidth : 0)
+                            + (hasTrack ? NotchMetrics.contentWidth(scale: screen.pillScale) : 0)
                             + (hovering ? NotchMetrics.hoverGrowth.width : 0),
                           height: screen.notchSize.height + NotchMetrics.collapsedExtraHeight
                             + (hovering ? NotchMetrics.hoverGrowth.height : 0))

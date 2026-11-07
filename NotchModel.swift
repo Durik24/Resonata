@@ -51,6 +51,10 @@ final class NotchModel: ObservableObject {
 
     /// The open panel's size. Lives on the model so the panel controller
     /// and the view size from one number. Narrower without the calendar.
+    /// How much the closed pill's sizes scale for this cutout — see
+    /// `NotchMetrics.referenceNotchHeight`.
+    var pillScale: CGFloat { NotchMetrics.scale(notchHeight: notchSize.height, real: hasRealNotch) }
+
     var expandedWidth: CGFloat {
         Preferences.showCalendar ? NotchView.expandedWidth : NotchView.expandedWidthWithoutCalendar
     }
