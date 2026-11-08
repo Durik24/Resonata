@@ -25,6 +25,7 @@ enum Preferences {
         static let pomodoroLongRest = "pomodoroLongRest"
         static let pomodoroRounds = "pomodoroRounds"
         static let pageSwipe = "pageSwipe"
+        static let checkForUpdates = "checkForUpdates"
     }
 
     /// Call before anything reads a preference.
@@ -46,6 +47,7 @@ enum Preferences {
             Key.pomodoroLongRest: 15,
             Key.pomodoroRounds: 4,
             Key.pageSwipe: PageSwipe.withFingers.rawValue,
+            Key.checkForUpdates: true,
             Key.openMode: OpenMode.nook.rawValue,
             Key.quickApps: QuickApps.defaultPaths().joined(separator: "\n"),
         ])
@@ -60,6 +62,9 @@ enum Preferences {
         let value = UserDefaults.standard.double(forKey: Key.idleTimeout)
         return value > 0 ? value : 10
     }
+
+    /// Whether to look for a new version on GitHub once a day.
+    static var checkForUpdates: Bool { UserDefaults.standard.bool(forKey: Key.checkForUpdates) }
 
     static var showLyrics: Bool { UserDefaults.standard.bool(forKey: Key.showLyrics) }
 

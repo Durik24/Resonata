@@ -95,6 +95,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         meetingReminder.start()
 
+        // A new version on GitHub, said once in the notch.
+        Updater.shared.onFound = { [weak self] release in
+            self?.activityPeek.show(.update(version: release.version))
+        }
+        Updater.shared.start()
+
         // The timer: its state shows in the closed notch, and its end is an
         // activity of its own.
         let timer = CountdownTimer.shared
@@ -147,6 +153,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     case "headphones": .headphones(name: OutputWatcher.currentName ?? "Sluchátka")
                     case "meeting": .meeting(title: "Schůzka", start: Date().addingTimeInterval(300))
                     case "timer": .timerDone(minutes: 25)
+                    case "update": .update(version: "1.0.8")
                     default: nil
                     }
                     if let activity { self?.activityPeek.show(activity) }

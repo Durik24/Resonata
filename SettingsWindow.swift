@@ -45,6 +45,8 @@ struct SettingsView: View {
     @AppStorage(Preferences.Key.openMode) private var openMode = OpenMode.nook.rawValue
     @AppStorage(Preferences.Key.pageSwipe) private var pageSwipe = PageSwipe.withFingers.rawValue
     @AppStorage(Preferences.Key.quickApps) private var quickApps = ""
+    @AppStorage(Preferences.Key.checkForUpdates) private var checkForUpdates = true
+    @ObservedObject private var updater = Updater.shared
 
     @State private var openAtLogin = LoginItem.isEnabled
     @State private var hotKeyTaken = false
@@ -67,6 +69,13 @@ struct SettingsView: View {
                     Text("Tuhle zkratku už používá jiná aplikace. Vyber jinou.")
                         .font(.caption)
                         .foregroundStyle(.red)
+                }
+            }
+
+            Section("Aktualizace") {
+                Toggle("Hledat nové verze automaticky", isOn: $checkForUpdates)
+                LabeledContent("Verze \(Updater.currentVersion)") {
+                    updateStatus
                 }
             }
 
@@ -166,6 +175,42 @@ struct SettingsView: View {
         // A fixed height that scrolls, rather than a window that grows past
         // the bottom of the screen as settings are added.
         .frame(width: 440, height: 640)
+    }
+
+    /// What the updater is up to, and the one button that fits it.
+    @ViewBuilder private var updateStatus: some View {
+        switch updater.state {
+        case .idle:
+            Button("Zkontrolovat") { updater.check() }
+        case .checking:
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.small)
+                Text("Hledám…").foregroundStyle(.secondary)
+            }
+        case .upToDate:
+            HStack(spacing: 8) {
+                Text("Nejnovější").foregroundStyle(.secondary)
+                Button("Zkontrolovat") { updater.check() }
+            }
+        case .available(let release):
+            HStack(spacing: 8) {
+                Link("Co je nového", destination: release.page)
+                Button(updater.canInstall ? "Nainstalovat \(release.version)" : "Stáhnout \(release.version)") {
+                    updater.install()
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        case .installing:
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.small)
+                Text("Instaluju…").foregroundStyle(.secondary)
+            }
+        case .failed(let message):
+            HStack(spacing: 8) {
+                Text(message).font(.caption).foregroundStyle(.red)
+                Button("Zkusit znovu") { updater.check() }
+            }
+        }
     }
 
     private func move(_ index: Int, by offset: Int) {

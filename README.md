@@ -48,6 +48,11 @@ developer account), so the first time macOS won't open it: go to System
 Settings → Privacy & Security and click **Open Anyway**. Or build it
 yourself, below.
 
+That's needed once. From 1.0.8 on, Resonata looks for a new version once a
+day and installs it itself (right-click → *Nainstalovat*, or in Settings).
+It only replaces itself with a copy signed by the same certificate, and a
+copy it downloads itself doesn't need **Open Anyway** again.
+
 ## Getting it running
 
 ```

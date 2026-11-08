@@ -526,6 +526,33 @@ do {
           "swipe: one wheel click counts")
 }
 
+// MARK: - Updates
+
+check(Updater.isNewer("1.0.8", than: "1.0.7"), "update: 1.0.8 is newer than 1.0.7")
+check(Updater.isNewer("1.0.10", than: "1.0.9"), "update: compared as numbers, not text")
+check(Updater.isNewer("1.1", than: "1.0.9"), "update: a missing part counts as 0")
+check(!Updater.isNewer("1.0.7", than: "1.0.7"), "update: the same version isn't newer")
+check(!Updater.isNewer("1.0", than: "1.0.0"), "update: 1.0 and 1.0.0 are the same")
+check(!Updater.isNewer("1.0.6", than: "1.0.7"), "update: an older release isn't offered")
+do {
+    let json = """
+    {"tag_name":"v1.0.8","html_url":"https://github.com/Durik24/Resonata/releases/tag/v1.0.8",
+     "draft":false,"prerelease":false,
+     "assets":[{"name":"notes.txt","browser_download_url":"https://example.invalid/notes.txt"},
+               {"name":"Resonata-1.0.8-macOS-AppleSilicon.zip",
+                "browser_download_url":"https://github.com/Durik24/Resonata/releases/download/v1.0.8/Resonata-1.0.8-macOS-AppleSilicon.zip"}]}
+    """
+    let release = Updater.parseRelease(Data(json.utf8))
+    check(release?.version == "1.0.8", "update: the v is dropped from the tag", "\(release?.version ?? "nil")")
+    check(release?.zip.lastPathComponent == "Resonata-1.0.8-macOS-AppleSilicon.zip", "update: the zip is the one installed")
+    let pre = json.replacingOccurrences(of: "\"prerelease\":false", with: "\"prerelease\":true")
+    check(Updater.parseRelease(Data(pre.utf8)) == nil, "update: a pre-release isn't offered")
+    let bare = #"{"tag_name":"v1.0.8","html_url":"https://github.com/x","assets":[]}"#
+    check(Updater.parseRelease(Data(bare.utf8)) == nil, "update: a release with no zip isn't offered")
+}
+check(!Updater.isSignedLikeMe(URL(fileURLWithPath: "/System/Applications/Calculator.app")),
+      "update: an app signed by someone else is refused")
+
 // MARK: - Last: a lyrics line that used to crash the parser
 
 // The stamp's end was taken as a UTF-16 offset and walked as a count of

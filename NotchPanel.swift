@@ -631,6 +631,10 @@ final class NotchPanelController {
                 self?.moveToNextScreen()
             })
         }
+        if case .available(let release) = Updater.shared.state {
+            menu.addItem(ClosureMenuItem("Nainstalovat Resonata \(release.version)") { Updater.shared.install() })
+            menu.addItem(.separator())
+        }
         menu.addItem(ClosureMenuItem("Nastavení…") { SettingsWindowController.shared.show() })
         let login = ClosureMenuItem("Spouštět po přihlášení") {
             LoginItem.set(!LoginItem.isEnabled)

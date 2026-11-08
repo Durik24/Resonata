@@ -17,13 +17,15 @@ enum NotchActivity: Equatable {
     case timerDone(minutes: Int)
     /// A Pomodoro phase has begun: a break, or back to work.
     case pomodoro(rest: Bool, minutes: Int)
+    /// A newer Resonata is out; installed from the right-click menu.
+    case update(version: String)
 
     /// How long it stays out. Long enough to read; a meeting or a finished
     /// timer is worth a little longer.
     var duration: TimeInterval {
         switch self {
         case .charging, .lowBattery, .headphones: 3
-        case .meeting, .timerDone, .pomodoro: 6
+        case .meeting, .timerDone, .pomodoro, .update: 6
         }
     }
 
@@ -32,7 +34,7 @@ enum NotchActivity: Equatable {
     /// close, while "charging" or "headphones connected" is old news by then.
     var waitsForClose: Bool {
         switch self {
-        case .lowBattery, .meeting, .timerDone, .pomodoro: true
+        case .lowBattery, .meeting, .timerDone, .pomodoro, .update: true
         case .charging, .headphones: false
         }
     }
@@ -62,6 +64,9 @@ enum NotchActivity: Equatable {
                                detail: "\(minutes) min", trailing: "bell.fill")
                 : ActivityLook(symbol: "timer", tint: ActivityLook.orange, title: "Zpátky do práce",
                                detail: "\(minutes) min", trailing: "bell.fill")
+        case .update(let version):
+            ActivityLook(symbol: "arrow.down.circle.fill", tint: ActivityLook.blue, title: "Nová verze \(version)",
+                         detail: "Klikni pravým", trailing: "sparkles")
         }
     }
 
