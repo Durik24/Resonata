@@ -515,6 +515,11 @@ public sealed class Updater : Observable
         return newest;
     }
 
+    /// Whether a downloaded file's version fields describe a newer Resonata.
+    /// Inno Setup pads them with spaces to a fixed length.
+    public static bool IsNewerSetup(string? product, string? version, string current) =>
+        product?.Trim() == "Resonata" && Versions.IsNewer(version?.Trim().Split('+')[0] ?? "0", current);
+
     public async Task InstallAsync()
     {
         if (State is not UpdateState.Available release) return;
@@ -531,7 +536,7 @@ public sealed class Updater : Observable
             }
 
             var info = FileVersionInfo.GetVersionInfo(path);
-            if (info.ProductName != "Resonata" || !Versions.IsNewer(info.ProductVersion?.Split('+')[0] ?? "0", CurrentVersion))
+            if (!IsNewerSetup(info.ProductName, info.ProductVersion, CurrentVersion))
             {
                 File.Delete(path);
                 State = new UpdateState.Failed(L.T("The download isn't a newer Resonata.", "Stažený soubor není novější Resonata."));

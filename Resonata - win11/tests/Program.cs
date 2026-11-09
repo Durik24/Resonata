@@ -83,6 +83,10 @@ Check(Updater.NewestSetup($"[{release.Replace("1.2.0", "1.1.0")},{release}]") is
 Check(Updater.NewestSetup($"[{release.Replace("\"prerelease\":false", "\"prerelease\":true")}]") is null, "prereleases are skipped");
 Check(Updater.NewestSetup("[]") is null, "no releases at all");
 Check(Updater.NewestSetup("not json") is null, "garbage is nothing");
+Check(Updater.IsNewerSetup("Resonata".PadRight(60), "1.2.0".PadRight(50), "1.0.0"), "a Setup's padded version fields are read");
+Check(!Updater.IsNewerSetup("Resonata".PadRight(60), "1.0.0".PadRight(50), "1.0.0"), "the same version isn't an update");
+Check(!Updater.IsNewerSetup("Something else", "9.9.9", "1.0.0"), "another program's Setup is refused");
+Check(!Updater.IsNewerSetup(null, null, "1.0.0"), "a file with no version fields is refused");
 
 // The album colour
 byte[] Image(byte r, byte g, byte b)
