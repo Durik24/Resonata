@@ -1,0 +1,556 @@
+using System.ComponentModel;
+using System.Globalization;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
+using System.Windows.Media.Animation;
+using System.Windows.Shapes;
+using System.Windows.Threading;
+
+namespace Resonata;
+
+/// Player on the left, the days and their events on the right.
+public sealed class MusicPage : Grid, IPage
+{
+    private const double CoverSize = 110;
+    private static readonly Color FallbackAccent = Color.FromRgb(92, 153, 255);
+
+    private readonly PanelModel _m;
+    private readonly CoverView _cover = new(CoverSize);
+    private readonly Button _badge;
+    private readonly Image _badgeImage = new() { Width = 24, Height = 24 };
+    private readonly TextBlock _title = Ui.Label("", 15, FontWeights.Bold, Brushes.White);
+    private readonly TextBlock _artist = Ui.Label("", 12, FontWeights.SemiBold, Ui.White(0.55));
+    private readonly LyricsLine _lyric;
+    private readonly ThinBar _progress = new() { Height = 12 };
+    private readonly TextBlock _elapsed = Ui.Label("0:00", 9, FontWeights.Medium, Ui.White(0.45));
+    private readonly TextBlock _total = Ui.Label("0:00", 9, FontWeights.Medium, Ui.White(0.45));
+    private readonly TextBlock _playIcon = Ui.Icon(Glyph.Play, 19, Brushes.White);
+    private readonly SpotifyVolumeControl _volume = new();
+    private readonly StackPanel _textColumn = new();
+    private readonly Rectangle _divider = new() { Fill = Ui.White(0.1), Width = 1, Margin = new Thickness(18, 8, 18, 8) };
+    private readonly CalendarColumn _calendar;
+    private readonly DispatcherTimer _clock = new();
+    private readonly Delay _releaseScrub = new();
+    private double? _scrubFraction;
+    private bool _open;
+
+    public MusicPage(PanelModel model)
+    {
+        _m = model;
+        _calendar = new CalendarColumn { Width = 196, Margin = new Thickness(0, 2, 0, 0) };
+        _lyric = new LyricsLine(model);
+
+        ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var main = new Grid();
+        main.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(CoverSize + 24) });
+        main.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        var coverHost = new Grid { Width = CoverSize, Height = CoverSize, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
+        coverHost.Children.Add(_cover);
+        _badge = Ui.Button(new Border
+        {
+            Width = 28, Height = 28, CornerRadius = new CornerRadius(14), Background = Brushes.Black,
+            Child = _badgeImage,
+        }, OpenPlayer);
+        _badge.HorizontalAlignment = HorizontalAlignment.Right;
+        _badge.VerticalAlignment = VerticalAlignment.Bottom;
+        _badge.Margin = new Thickness(0, 0, -7, -7);
+        coverHost.Children.Add(_badge);
+        main.Children.Add(coverHost);
+
+        var column = BuildColumn();
+        SetColumn(column, 1);
+        main.Children.Add(column);
+        Children.Add(main);
+
+        SetColumn(_divider, 1);
+        Children.Add(_divider);
+        SetColumn(_calendar, 2);
+        Children.Add(_calendar);
+
+        _clock.Tick += (_, _) => UpdateProgress();
+        _progress.Scrubbing = f => { _scrubFraction = f; _releaseScrub.Cancel(); UpdateTimes(); };
+        _progress.Scrubbed = OnScrubbed;
+
+        _m.PropertyChanged += OnModelChanged;
+        Settings.Current.PropertyChanged += OnSettingsChanged;
+        Refresh();
+    }
+
+    private Grid BuildColumn()
+    {
+        var column = new Grid { Height = CoverSize, VerticalAlignment = VerticalAlignment.Top };
+        column.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        column.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        column.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        column.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+        _artist.Margin = new Thickness(0, 1, 0, 0);
+        _lyric.Margin = new Thickness(0, 2, 0, 0);
+        _textColumn.Margin = new Thickness(0, -3, 0, 0);
+        _textColumn.Children.Add(_title);
+        _textColumn.Children.Add(_artist);
+        _textColumn.Children.Add(_lyric);
+        column.Children.Add(_textColumn);
+
+        var progress = new StackPanel();
+        progress.Children.Add(_progress);
+        var times = new Grid { Margin = new Thickness(0, 1, 0, 0) };
+        _total.HorizontalAlignment = HorizontalAlignment.Right;
+        times.Children.Add(_elapsed);
+        times.Children.Add(_total);
+        progress.Children.Add(times);
+        SetRow(progress, 2);
+        column.Children.Add(progress);
+
+        var controls = new Grid { Margin = new Thickness(-7, 0, 0, -3) };
+        controls.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        controls.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        var transport = new StackPanel { Orientation = Orientation.Horizontal };
+        transport.Children.Add(Transport(Ui.Icon(Glyph.Previous, 15, Brushes.White), TransportCommand.Previous));
+        transport.Children.Add(Transport(_playIcon, TransportCommand.PlayPause));
+        transport.Children.Add(Transport(Ui.Icon(Glyph.Next, 15, Brushes.White), TransportCommand.Next));
+        controls.Children.Add(transport);
+        _volume.HorizontalAlignment = HorizontalAlignment.Right;
+        SetColumn(_volume, 1);
+        controls.Children.Add(_volume);
+        SetRow(controls, 3);
+        column.Children.Add(controls);
+        return column;
+    }
+
+    private static Button Transport(UIElement icon, TransportCommand command)
+    {
+        var button = Ui.Button(icon, () => MediaService.Active?.Send(command), null, 30, 26);
+        button.Margin = new Thickness(0, 0, 14, 0);
+        return button;
+    }
+
+    private void OpenPlayer()
+    {
+        if (_m.Track is { } track) PlayerApp.Open(track.Source);
+        _m.Close?.Invoke();
+    }
+
+    private void OnModelChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        switch (e.PropertyName)
+        {
+            case nameof(PanelModel.Track): Refresh(); break;
+            case nameof(PanelModel.Artwork): _cover.SetImage(_m.Artwork); break;
+            case nameof(PanelModel.Accent): UpdateAccent(); break;
+        }
+    }
+
+    private void OnSettingsChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(Settings.ShowCalendar) or nameof(Settings.ShowLyrics)) UpdateLayoutForSettings();
+    }
+
+    private void UpdateLayoutForSettings()
+    {
+        var calendar = Settings.Current.ShowCalendar;
+        _divider.Visibility = _calendar.Visibility = calendar ? Visibility.Visible : Visibility.Collapsed;
+        // Centred over the bar beside the calendar; without it the column is
+        // wide, and centred text floated off on its own.
+        var align = calendar ? TextAlignment.Center : TextAlignment.Left;
+        _title.TextAlignment = _artist.TextAlignment = align;
+        _lyric.Alignment = align;
+        _lyric.Visibility = Settings.Current.ShowLyrics && _m.Track is not null ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void Refresh()
+    {
+        var track = _m.Track;
+        _title.Text = track?.Title ?? L.T("Nothing playing", "Nic nehraje");
+        _artist.Text = track?.Artist ?? "";
+        _playIcon.Text = track?.IsPlaying == true ? Glyph.Pause : Glyph.Play;
+        _total.Text = TimeText.Clock(track?.Duration ?? 0);
+        _progress.Visibility = Visibility.Visible;
+        _volume.SetTrack(track);
+        _badgeImage.Source = track is null ? null : PlayerApp.Icon(track.Source);
+        _badge.Visibility = _badgeImage.Source is null ? Visibility.Collapsed : Visibility.Visible;
+        _badge.ToolTip = L.T("Open the player", "Otevřít přehrávač");
+        _cover.SetImage(_m.Artwork);
+        UpdateAccent();
+        UpdateLayoutForSettings();
+        UpdateClock();
+        UpdateProgress();
+    }
+
+    private void UpdateAccent()
+    {
+        var text = Ui.AccentText(_m.Accent);
+        _artist.Foreground = text is { } c ? Ui.Solid(c) : Ui.White(0.55);
+        _progress.Fill = text is { } p ? Ui.Solid(p) : Brushes.White;
+        _calendar.Accent = text ?? FallbackAccent;
+        _volume.Tint = text is { } v ? Ui.Solid(v) : Brushes.White;
+    }
+
+    public void PanelVisibilityChanged(bool panelOpen)
+    {
+        _open = panelOpen;
+        _lyric.SetActive(panelOpen);
+        UpdateClock();
+        UpdateProgress();
+        if (panelOpen) { _calendar.GoToToday(); _volume.Reread(); }
+    }
+
+    /// As often as the bar moves a device pixel, not thirty times a second:
+    /// each redraw is a layout pass, and that was most of the open panel's cost.
+    private void UpdateClock()
+    {
+        var run = _open && _m.Track?.IsPlaying == true;
+        _clock.Interval = TimeSpan.FromSeconds(TimeText.ProgressInterval(_m.Track?.Duration ?? 0));
+        if (run) _clock.Start(); else _clock.Stop();
+    }
+
+    private double Fraction(DateTime at) =>
+        _m.Track is { Duration: > 0 } t ? Math.Clamp(t.Position(at) / t.Duration, 0, 1) : 0;
+
+    private void UpdateProgress()
+    {
+        if (_progress.IsDragging) return;
+        _progress.Value = _scrubFraction ?? Fraction(DateTime.Now);
+        UpdateTimes();
+    }
+
+    private void UpdateTimes()
+    {
+        var duration = _m.Track?.Duration ?? 0;
+        _elapsed.Text = TimeText.Clock((_scrubFraction ?? Fraction(DateTime.Now)) * duration);
+    }
+
+    private void OnScrubbed(double fraction)
+    {
+        _scrubFraction = fraction;
+        if (_m.Track is { Duration: > 0 } track) MediaService.Active?.Seek(fraction * track.Duration);
+        // Handed back once the player has had time to report the new position;
+        // releasing at once makes the knob snap backwards.
+        _releaseScrub.After(1.4, () => { _scrubFraction = null; UpdateProgress(); });
+    }
+}
+
+/// The lyric being sung: the old line leaves upward as the next rises in.
+public sealed class LyricsLine : Grid
+{
+    private const double LineHeight = 15;
+
+    private readonly PanelModel _m;
+    private readonly TextBlock _a = Make(), _b = Make();
+    private readonly Delay _next = new();
+    private TextBlock _front;
+    private int _row = -2;
+    private bool _active;
+
+    private static TextBlock Make()
+    {
+        var text = Ui.Label("", 11, FontWeights.Medium, Ui.White(0.85));
+        text.RenderTransform = new TranslateTransform();
+        text.Height = LineHeight;
+        return text;
+    }
+
+    public LyricsLine(PanelModel model)
+    {
+        _m = model;
+        _front = _a;
+        Height = LineHeight;
+        ClipToBounds = true;
+        Children.Add(_a);
+        Children.Add(_b);
+        _b.Opacity = 0;
+        model.PropertyChanged += (_, e) =>
+        {
+            // Another song's line can share this one's number.
+            if (e.PropertyName == nameof(PanelModel.Lyrics)) _row = -2;
+            if (e.PropertyName is nameof(PanelModel.Track) or nameof(PanelModel.Lyrics) or nameof(PanelModel.LyricsPending))
+                Update();
+        };
+    }
+
+    public TextAlignment Alignment
+    {
+        set => _a.TextAlignment = _b.TextAlignment = value;
+    }
+
+    public void SetActive(bool active)
+    {
+        _active = active;
+        Update();
+    }
+
+    private void Update()
+    {
+        _next.Cancel();
+        if (!_active) return;
+        if (_m.Lyrics is not { } lines)
+        {
+            _row = -2;
+            Show(_m.LyricsPending ? "…" : L.T("No lyrics found", "Text nenalezen"), 0.35, animate: false);
+            return;
+        }
+
+        var now = DateTime.Now;
+        var position = _m.Track?.Position(now) ?? 0;
+        var index = Lrc.Index(lines, position);
+        var row = (index ?? -1) + 1;
+        var text = row == 0 || lines[row - 1].Text.Length == 0 ? "♪" : lines[row - 1].Text;
+        if (row != _row)
+        {
+            var animate = _row >= 0 && row == _row + 1;
+            _row = row;
+            Show(text, 0.85, animate);
+        }
+
+        // Redrawn when a line begins, not ten times a second.
+        if (_m.Track is { IsPlaying: true } && row < lines.Count)
+            _next.After(Math.Max(0.02, lines[row].Time - position), Update);
+    }
+
+    private void Show(string text, double opacity, bool animate)
+    {
+        var back = _front == _a ? _b : _a;
+        var brush = Ui.White(opacity);
+        if (!animate)
+        {
+            _front.Text = text;
+            _front.Foreground = brush;
+            _front.BeginAnimation(OpacityProperty, null);
+            _front.Opacity = 1;
+            ((TranslateTransform)_front.RenderTransform).BeginAnimation(TranslateTransform.YProperty, null);
+            ((TranslateTransform)_front.RenderTransform).Y = 0;
+            back.BeginAnimation(OpacityProperty, null);
+            back.Opacity = 0;
+            return;
+        }
+
+        back.Text = text;
+        back.Foreground = brush;
+        const double duration = 0.4;
+        back.BeginAnimation(OpacityProperty, Anim.To(1, duration, Anim.EaseOut));
+        ((TranslateTransform)back.RenderTransform).BeginAnimation(TranslateTransform.YProperty,
+            new DoubleAnimation(LineHeight, 0, TimeSpan.FromSeconds(duration)) { EasingFunction = Anim.EaseOut });
+        _front.BeginAnimation(OpacityProperty, Anim.To(0, duration, Anim.EaseOut));
+        ((TranslateTransform)_front.RenderTransform).BeginAnimation(TranslateTransform.YProperty,
+            Anim.To(-LineHeight, duration, Anim.EaseOut));
+        _front = back;
+    }
+}
+
+/// A speaker and a short slider, for Spotify's own level in the Windows mixer.
+public sealed class SpotifyVolumeControl : StackPanel
+{
+    private readonly TextBlock _icon = Ui.Icon(Glyph.Volume3, 12, Ui.White(0.7));
+    private readonly ThinBar _bar = new() { Height = 16, RestHeight = 4, ActiveHeight = 4, ShowKnobOnlyWhenActive = false };
+    private double? _volume = SpotifyVolume.LastKnown;
+    private bool _moved;
+    private bool _isSpotify;
+
+    public SpotifyVolumeControl()
+    {
+        Orientation = Orientation.Horizontal;
+        VerticalAlignment = VerticalAlignment.Center;
+        var mute = Ui.Button(_icon, ToggleMute, null, 18, 22);
+        Children.Add(mute);
+        _bar.MinWidth = 40;
+        _bar.Width = 76;
+        _bar.Margin = new Thickness(6, 0, 0, 0);
+        _bar.Scrubbing = f => SetVolume(f * 100);
+        _bar.Scrubbed = f => SetVolume(f * 100);
+        Children.Add(_bar);
+        ToolTip = L.T("Spotify's volume — Spotify only, not the whole PC", "Hlasitost Spotify — jen Spotify, ne celého počítače");
+        Visibility = Visibility.Collapsed;
+    }
+
+    public Brush Tint { set => _bar.Fill = value; }
+
+    public void SetTrack(Track? track)
+    {
+        var spotify = track?.IsSpotify == true;
+        if (spotify == _isSpotify) { Refresh(); return; }
+        _isSpotify = spotify;
+        Reread();
+    }
+
+    /// Spotify's own slider may have moved since the panel last looked.
+    public void Reread()
+    {
+        if (!_isSpotify) { Visibility = Visibility.Collapsed; return; }
+        _moved = false;
+        Refresh();
+        _ = ReadAsync();
+    }
+
+    private async Task ReadAsync()
+    {
+        var value = await SpotifyVolume.ReadAsync();
+        if (_moved) return;
+        _volume = value;
+        SpotifyVolume.LastKnown = value;
+        Refresh();
+    }
+
+    private void Refresh()
+    {
+        Visibility = _isSpotify && _volume is not null ? Visibility.Visible : Visibility.Collapsed;
+        if (_volume is not { } volume) return;
+        _icon.Text = Glyph.Volume(volume);
+        if (!_bar.IsDragging) _bar.Value = volume / 100;
+        _icon.ToolTip = volume < 1 ? L.T("Unmute Spotify", "Zapnout zvuk Spotify") : L.T("Mute Spotify", "Ztlumit Spotify");
+    }
+
+    private void ToggleMute()
+    {
+        if (_volume is { } volume) SetVolume(SpotifyVolume.ToggledMute(volume, SpotifyVolume.BeforeMute));
+    }
+
+    private void SetVolume(double value)
+    {
+        _moved = true;
+        if (value < 1 && _volume is >= 1) SpotifyVolume.BeforeMute = _volume;
+        _volume = value;
+        SpotifyVolume.LastKnown = value;
+        SpotifyVolume.Set((int)Math.Round(value));
+        Refresh();
+    }
+}
+
+/// Five days around today, today in the album's colour, and the picked day's events.
+public sealed class CalendarColumn : StackPanel
+{
+    private readonly TextBlock _month = Ui.Label("", 15, FontWeights.Bold, Brushes.White);
+    private readonly TextBlock _year = Ui.Label("", 11, FontWeights.Medium, Ui.White(0.45));
+    private readonly UniformGrid5 _daysRow = new();
+    private readonly StackPanel _events = new() { Margin = new Thickness(0, 10, 0, 0) };
+    private DateTime _selected = DateTime.Today;
+    private Color _accent = Color.FromRgb(92, 153, 255);
+
+    public CalendarColumn()
+    {
+        var header = new Grid();
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(40) });
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        var label = new StackPanel();
+        label.Children.Add(_month);
+        label.Children.Add(_year);
+        header.Children.Add(label);
+        Grid.SetColumn(_daysRow, 1);
+        header.Children.Add(_daysRow);
+        Children.Add(header);
+        Children.Add(_events);
+
+        CalendarStore.Shared.Changed += Rebuild;
+        Settings.Current.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(Settings.CalendarUrls)) { _ = CalendarStore.Shared.ReloadAsync(); Rebuild(); }
+        };
+        Rebuild();
+    }
+
+    public Color Accent { set { _accent = value; Rebuild(); } }
+
+    public void GoToToday()
+    {
+        _selected = DateTime.Today;
+        Rebuild();
+    }
+
+    private void Rebuild()
+    {
+        _month.Text = _selected.ToString("MMM", L.Culture).TrimEnd('.');
+        _year.Text = _selected.ToString("yyyy", L.Culture);
+        _daysRow.Children.Clear();
+        foreach (var day in CalendarRules.Days(DateTime.Now)) _daysRow.Children.Add(DayButton(day));
+        BuildEvents();
+    }
+
+    private Button DayButton(DateTime date)
+    {
+        var today = date.Date == DateTime.Today;
+        var selected = date.Date == _selected;
+        var busy = CalendarRules.On(CalendarStore.Shared.Events, date).Any();
+        var stack = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center };
+
+        var name = Ui.Label(date.ToString("ddd", L.Culture), 9, FontWeights.SemiBold, Ui.White(today ? 0.9 : 0.4));
+        name.HorizontalAlignment = HorizontalAlignment.Center;
+        stack.Children.Add(name);
+
+        var number = Ui.Label(date.Day.ToString(), 12, FontWeights.SemiBold, today ? Brushes.Black : Ui.White(0.85));
+        number.HorizontalAlignment = HorizontalAlignment.Center;
+        number.VerticalAlignment = VerticalAlignment.Center;
+        stack.Children.Add(new Border
+        {
+            Width = 24, Height = 24, CornerRadius = new CornerRadius(12), Margin = new Thickness(0, 3, 0, 3),
+            Background = today ? Ui.Solid(_accent) : selected ? Ui.White(0.14) : Brushes.Transparent,
+            Child = number,
+        });
+        // A dot for days with something on, so the strip says where to look.
+        stack.Children.Add(new Ellipse { Width = 3, Height = 3, Fill = Ui.White(busy ? 0.5 : 0) });
+
+        return Ui.Button(stack, () => { _selected = date.Date; Rebuild(); });
+    }
+
+    private void BuildEvents()
+    {
+        _events.Children.Clear();
+        var store = CalendarStore.Shared;
+        if (!CalendarStore.IsConnected && !store.IsDemo)
+        {
+            _events.Children.Add(Hint(L.T("Your events will appear here.", "Uvidíš tu své události.")));
+            var label = Ui.Label(L.T("Connect a calendar", "Připojit kalendář"), 11, FontWeights.SemiBold, Brushes.White);
+            label.Margin = new Thickness(10, 0, 10, 0);
+            label.VerticalAlignment = VerticalAlignment.Center;
+            var button = Ui.Button(Ui.Capsule(label, 0.12, 24), () => SettingsWindow.ShowShared(Window.GetWindow(this)));
+            button.HorizontalAlignment = HorizontalAlignment.Left;
+            button.Margin = new Thickness(2, 6, 0, 0);
+            _events.Children.Add(button);
+            return;
+        }
+
+        var list = CalendarRules.On(store.Events, _selected).ToList();
+        if (list.Count == 0)
+        {
+            _events.Children.Add(Hint(store.Failed ? L.T("Couldn't load the calendar.", "Kalendář se nepodařilo načíst.") : L.T("No events", "Žádné události")));
+            return;
+        }
+        foreach (var ev in list.Take(2)) _events.Children.Add(Row(ev));
+        if (list.Count > 2)
+        {
+            var more = Ui.Label(L.T($"+ {list.Count - 2} more", $"+ {list.Count - 2} další"), 10, FontWeights.Medium, Ui.White(0.4));
+            more.Margin = new Thickness(11, 0, 0, 0);
+            _events.Children.Add(more);
+        }
+    }
+
+    private static TextBlock Hint(string text)
+    {
+        var hint = Ui.Label(text, 11, FontWeights.Normal, Ui.White(0.4));
+        hint.Margin = new Thickness(2, 0, 0, 0);
+        return hint;
+    }
+
+    private Grid Row(CalendarEvent ev)
+    {
+        var row = new Grid { Margin = new Thickness(0, 0, 0, 8) };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(11) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.Children.Add(new Border { Width = 3, Height = 26, CornerRadius = new CornerRadius(1.5), Background = Ui.Solid(_accent), HorizontalAlignment = HorizontalAlignment.Left });
+        var text = new StackPanel();
+        text.Children.Add(Ui.Label(ev.Title, 12, FontWeights.SemiBold, Brushes.White));
+        var time = ev.IsAllDay ? L.T("All day", "Celý den") : $"{ev.Start.ToString("H:mm", L.Culture)} – {ev.End.ToString("H:mm", L.Culture)}";
+        text.Children.Add(Ui.Label(time, 10, FontWeights.Normal, Ui.White(0.5)));
+        Grid.SetColumn(text, 1);
+        row.Children.Add(text);
+        return row;
+    }
+}
+
+public sealed class UniformGrid5 : System.Windows.Controls.Primitives.UniformGrid
+{
+    public UniformGrid5() { Rows = 1; Columns = 5; }
+}

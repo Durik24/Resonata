@@ -1,0 +1,191 @@
+// The logic that doesn't need a screen, in the same plain style as the Mac's
+// Tests/main.swift: no framework, non-zero exit on any failure.
+using Resonata;
+
+var passed = 0;
+var failed = 0;
+
+void Check(bool condition, string name)
+{
+    if (condition) { passed++; return; }
+    failed++;
+    Console.WriteLine($"FAIL: {name}");
+}
+
+void Near(double a, double b, string name, double tolerance = 0.001) =>
+    Check(Math.Abs(a - b) <= tolerance, $"{name} (got {a}, wanted {b})");
+
+// The interpolated playhead
+var t0 = new DateTime(2026, 1, 1, 12, 0, 0);
+var playing = new Track { Title = "A", Artist = "B", Album = "C", Duration = 100, SampledPosition = 10, SampledAt = t0, IsPlaying = true };
+Near(playing.Position(t0.AddSeconds(5)), 15, "position runs while playing");
+Near((playing with { IsPlaying = false }).Position(t0.AddSeconds(5)), 10, "position stands while paused");
+Near(playing.Position(t0.AddSeconds(500)), 100, "position stops at the end");
+Near((playing with { SampledPosition = 0 }).Position(t0.AddSeconds(-5)), 0, "position never negative");
+Check(playing.IsSameTrack(playing with { SampledPosition = 50, IsPlaying = false }), "same song ignores what moves");
+Check(!playing.IsSameTrack(playing with { Title = "Z" }), "another title is another song");
+Check((playing with { Source = "Spotify.exe" }).IsSpotify, "Spotify from its exe name");
+Check((playing with { Source = "SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify" }).IsSpotify, "Spotify from the Store");
+Check(!(playing with { Source = "chrome" }).IsSpotify, "a browser isn't Spotify");
+
+// LRC
+const string lrc = "[ar:Someone]\n[00:01.00] one\n[00:02.50][00:09.00] two\n[00:03.00] three\n[00:04.00] four\n";
+var lines = Lrc.Parse(lrc);
+Check(lines is { Count: 5 }, "a line with two stamps counts twice, metadata none");
+Near(lines![1].Time, 2.5, "fractions of a second");
+Check(lines[4].Text == "two", "sorted by time");
+Check(Lrc.Parse("[00:01.00] one\n[00:02.00]\n[00:03.00]\n") is null, "a placeholder isn't lyrics");
+Check(Lrc.Parse("🎵 [00:01.00] a\n[00:02.00] b\n[00:03.00] c\n[00:04.00] d") is { Count: 4 }, "an emoji before the stamp doesn't break it");
+Check(Lrc.Index(lines, 0.5) is null, "nothing before the first line");
+Check(Lrc.Index(lines, 1.0) == 0, "a line begins exactly on its stamp");
+Check(Lrc.Index(lines, 3.5) == 2, "the last line that has passed");
+Check(Lrc.Index(lines, 99) == 4, "stays on the last line");
+var roundTrip = Lrc.Parse(Lrc.Serialize(lines));
+Check(roundTrip is { Count: 5 } && Math.Abs(roundTrip[1].Time - 2.5) < 0.01, "the cache format reads back");
+
+// Motion
+var inRange = true;
+for (var i = 0; i < 500; i++)
+{
+    var level = Motion.Level(i % 30, i * 0.13);
+    if (level is < 0 or > 1) inRange = false;
+}
+Check(inRange, "motion stays within 0...1");
+var wave = Motion.WaveLevels(true, 12.5);
+Check(wave.Length == 24 && wave[0] < wave[12] * 0.7 && wave[^1] < wave[12] * 0.7, "the wave tapers at both ends");
+Check(Motion.WaveLevels(false, 3).All(v => v <= 0.06), "at rest the wave is a calm line");
+
+// Timer and Pomodoro
+var plan = PomodoroPlan.Standard;
+Check(plan.Next(PomodoroPhase.Work, 1) == (PomodoroPhase.Rest, 5, 1), "work is followed by a break");
+Check(plan.Next(PomodoroPhase.Work, 4) == (PomodoroPhase.Rest, 15, 4), "every fourth break is long");
+Check(plan.Next(PomodoroPhase.Rest, 4) == (PomodoroPhase.Work, 25, 5), "a break is followed by the next round");
+Check(new PomodoroPlan(0, 999, -1, 50).Clamped == new PomodoroPlan(1, 240, 1, 12), "lengths are kept sensible");
+Check(TimeText.ClampMinutes(0) == 1 && TimeText.ClampMinutes(999) == 240, "minutes clamp");
+Check(TimeText.Countdown(1499.2) == "25:00", "countdown rounds up");
+Check(TimeText.Countdown(3900) == "65 min", "from an hour up, in minutes");
+Check(TimeText.Clock(93.4) == "1:33" && TimeText.Clock(double.NaN) == "0:00", "clock text");
+Near(TimeText.ProgressInterval(240), 0.4, "a four-minute song moves a pixel every 0.4 s");
+Near(TimeText.ProgressInterval(1), 1.0 / 30, "never faster than 30 fps");
+Near(TimeText.ProgressInterval(0), 0.5, "no duration, slow tick");
+
+// Versions and releases
+Check(Versions.IsNewer("1.0.10", "1.0.9"), "numbers, not text");
+Check(!Versions.IsNewer("1.0.0", "1.0"), "missing parts count as 0");
+Check(!Versions.IsNewer("1.0.0", "1.0.1"), "older isn't newer");
+Check(Versions.FromTag("win-v1.2.0") == "1.2.0" && Versions.FromTag("v1.2.0") == "1.2.0", "tags");
+const string release = """{"tag_name":"win-v1.2.0","html_url":"https://x/y","draft":false,"prerelease":false,"assets":[{"name":"Resonata-Setup-1.2.0.exe","browser_download_url":"https://x/s.exe"}]}""";
+const string macRelease = """{"tag_name":"v1.0.9","html_url":"h","assets":[{"name":"Resonata-AppleSilicon.zip","browser_download_url":"u"}]}""";
+Check(Updater.NewestSetup($"[{release}]") is { Version: "1.2.0", Setup: "https://x/s.exe" }, "a release with a Setup");
+Check(Updater.NewestSetup($"[{macRelease}]") is null, "a Mac release is nothing to install here");
+Check(Updater.NewestSetup($"[{macRelease},{release}]") is { Version: "1.2.0" }, "a newer Mac release doesn't hide the Windows one");
+Check(Updater.NewestSetup($"[{release.Replace("1.2.0", "1.1.0")},{release}]") is { Version: "1.2.0" }, "the newest Setup wins, whatever the order");
+Check(Updater.NewestSetup($"[{release.Replace("\"prerelease\":false", "\"prerelease\":true")}]") is null, "prereleases are skipped");
+Check(Updater.NewestSetup("[]") is null, "no releases at all");
+Check(Updater.NewestSetup("not json") is null, "garbage is nothing");
+
+// The album colour
+byte[] Image(byte r, byte g, byte b)
+{
+    var pixels = new byte[AccentPicker.Grid * AccentPicker.Grid * 4];
+    for (var i = 0; i < pixels.Length; i += 4) { pixels[i] = r; pixels[i + 1] = g; pixels[i + 2] = b; pixels[i + 3] = 255; }
+    return pixels;
+}
+Check(AccentPicker.Pick(Image(128, 128, 128)) is null, "a grey cover has no colour");
+Check(AccentPicker.Pick(Image(5, 5, 5)) is null, "a black cover has no colour");
+Check(AccentPicker.Pick(Image(200, 40, 60)) is { R: > 0.7, G: < 0.3 }, "a red cover is red");
+Check(AccentPicker.Pick(Image(60, 10, 10)) is { R: > 0.54 }, "too dark is lifted");
+
+// The spring
+var spring = new Spring(0) { Target = 100 };
+var peak = 0.0;
+for (var i = 0; i < 300 && !spring.Settled; i++) { spring.Step(1.0 / 60, 0.38, 0.8); peak = Math.Max(peak, spring.Value); }
+Check(spring.Settled, "the spring settles");
+Near(spring.Value, 100, "on its target", 0.1);
+Check(peak is > 100 and < 110, "with a hint of overshoot");
+var bouncy = new Spring(0) { Target = 100 };
+var bouncyPeak = 0.0;
+var settleSteps = 0;
+for (; settleSteps < 300 && !bouncy.Settled; settleSteps++) { bouncy.Step(1.0 / 60, 0.44, 0.66); bouncyPeak = Math.Max(bouncyPeak, bouncy.Value); }
+Check(bouncyPeak is > 104 and < 110, $"the panel's spring has a visible bounce (peak {bouncyPeak:0.0})");
+Check(settleSteps < 90, $"and comes to rest within a second and a half ({settleSteps} frames)");
+var stutter = new Spring(0) { Target = 100 };
+stutter.Step(1.0, 0.38, 0.8);
+Check(Math.Abs(stutter.Value) < 1000, "a long frame doesn't blow it up");
+
+// Rules
+Check(PowerRules.CrossesWarning(21, 20), "down past 20");
+Check(!PowerRules.CrossesWarning(20, 20) && !PowerRules.CrossesWarning(19, 20), "sitting there or rising isn't news");
+Check(PowerRules.CrossesWarning(11, 9), "down past 10");
+Check(!PowerRules.CrossesWarning(null, 15), "on launch there's no change");
+Check(PowerRules.IsPlugIn(false, true) && !PowerRules.IsPlugIn(null, true) && !PowerRules.IsPlugIn(true, true), "plugged in means a change");
+var other = playing with { Title = "Other" };
+Check(SongPeekRules.ShouldPeek(playing, other, false, true), "a new song peeks");
+Check(!SongPeekRules.ShouldPeek(null, other, false, true), "not the first song seen");
+Check(!SongPeekRules.ShouldPeek(playing, playing with { SampledPosition = 3 }, false, true), "not the same song");
+Check(!SongPeekRules.ShouldPeek(playing, other, true, true), "not over the open panel");
+Check(!SongPeekRules.ShouldPeek(playing, other with { IsPlaying = false }, false, true), "not when paused");
+Check(!SongPeekRules.ShouldPeek(playing, other, false, false), "not when switched off");
+Check(SpotifyVolume.ToggledMute(40, null) == 0, "mute from any level");
+Check(SpotifyVolume.ToggledMute(0, 40) == 40, "back to the level before");
+Check(SpotifyVolume.ToggledMute(0, null) == 50, "halfway when there was none");
+
+// Settings files from older versions
+Check(System.Text.Json.JsonSerializer.Deserialize<Settings>("""{"OpenMode":"Nook"}""")!.OpenMode == OpenMode.Hover, "the removed mode reads as Hover");
+Check(System.Text.Json.JsonSerializer.Deserialize<Settings>("""{"OpenMode":"Click"}""")!.OpenMode == OpenMode.Click, "Click stays Click");
+
+// Page swipes
+var swipe = new PageSwipeTracker();
+Check(swipe.Add(40, t0) == 0, "not far enough yet");
+Check(swipe.Add(50, t0.AddMilliseconds(10)) == 1, "far enough turns one page");
+Check(swipe.Add(500, t0.AddMilliseconds(20)) == 0, "one page per gesture");
+Check(swipe.Add(-120, t0.AddMilliseconds(600)) == -1, "a pause starts a new gesture");
+
+// Calendar
+var noon = new DateTime(2026, 3, 10, 12, 0, 0);
+var days = CalendarRules.Days(noon);
+Check(days.Length == 5 && days[0] == new DateTime(2026, 3, 8) && days[4] == new DateTime(2026, 3, 12), "two days either side");
+var late = new CalendarEvent("x", "Party", new DateTime(2026, 3, 10, 23, 0, 0), new DateTime(2026, 3, 11, 1, 0, 0), false);
+Check(CalendarRules.On([late], new DateTime(2026, 3, 11)).Any(), "past midnight it shows on both days");
+Check(!CalendarRules.On([late], new DateTime(2026, 3, 12)).Any(), "but not the day after");
+var soon = new CalendarEvent("y", "Call", noon.AddMinutes(4), noon.AddMinutes(30), false);
+var allDay = new CalendarEvent("z", "Holiday", noon.AddMinutes(3), noon.AddHours(5), true);
+Check(CalendarRules.Due([soon, allDay, late], noon, TimeSpan.FromMinutes(5)).Single() == soon, "timed events about to start");
+Check(CalendarRules.MeetingDetail(noon.AddMinutes(5), noon) == "in 5 min · 12:05", "meeting text");
+Check(CalendarRules.MeetingDetail(noon, noon) == "now · 12:00", "meeting started");
+
+const string ics = """
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//test//EN
+BEGIN:VEVENT
+UID:weekly
+DTSTAMP:20260101T000000Z
+DTSTART:20260105T100000Z
+DTEND:20260105T110000Z
+RRULE:FREQ=WEEKLY;BYDAY=MO
+SUMMARY:Weekly
+END:VEVENT
+BEGIN:VEVENT
+UID:day
+DTSTAMP:20260101T000000Z
+DTSTART;VALUE=DATE:20260310
+DTEND;VALUE=DATE:20260311
+SUMMARY:Whole day
+END:VEVENT
+BEGIN:VEVENT
+UID:far
+DTSTAMP:20260101T000000Z
+DTSTART:20270101T100000Z
+DTEND:20270101T110000Z
+SUMMARY:Next year
+END:VEVENT
+END:VCALENDAR
+""";
+var parsed = CalendarStore.Parse(ics.Replace("\r\n", "\n").Replace("\n", "\r\n"), new DateTime(2026, 3, 8), new DateTime(2026, 3, 13)).ToList();
+Check(parsed.Count(e => e.Title == "Weekly") == 1, $"a recurring event falls in the window once (got {parsed.Count(e => e.Title == "Weekly")})");
+Check(parsed.Any(e => e.Title == "Whole day" && e.IsAllDay && e.Start.Date == new DateTime(2026, 3, 10)), "an all-day event keeps its date");
+Check(parsed.All(e => e.Title != "Next year"), "outside the window isn't included");
+
+Console.WriteLine($"{passed} passed, {failed} failed");
+return failed == 0 ? 0 : 1;
