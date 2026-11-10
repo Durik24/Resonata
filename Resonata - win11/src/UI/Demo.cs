@@ -1,5 +1,9 @@
 using System.IO;
 using System.Windows;
+using System.Windows.Automation;
+using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
@@ -105,6 +109,7 @@ public static class Snapshots
             await Task.Delay(700);
             Save(window, dir, "page-" + tab.ToString().ToLowerInvariant());
         }
+        await NewerStatesAsync(m, window, dir);
         window.Collapse();
         await Task.Delay(900);
 
@@ -114,6 +119,64 @@ public static class Snapshots
         SaveFromScreen(settings, dir, "settings");
         settings.Close();
         ((App)Application.Current).Quit();
+    }
+
+    /// What the pages grew later: five lines of the lyrics, a live stream, and
+    /// the timer's buttons kept across its ticks. Driven the way a click is.
+    private static async Task NewerStatesAsync(PanelModel m, NotchWindow window, string dir)
+    {
+        m.Tab = PanelTab.Music;
+        await Task.Delay(700);
+        if (Find<LyricsLine>(window) is { } line)
+        {
+            line.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left) { RoutedEvent = UIElement.MouseLeftButtonUpEvent });
+            await Task.Delay(700);
+            Save(window, dir, "page-music-lyrics");
+            var back = Find<Button>(window, b => AutomationProperties.GetName(b) == L.T("Back to the player", "Zpět k přehrávači"));
+            Log.Write($"snapshot: the lyrics list has its way back: {back is { IsVisible: true }}");
+            Click(back);
+            await Task.Delay(500);
+        }
+        else Log.Write("snapshot: no lyric line to click");
+
+        var song = m.Track;
+        m.Track = song is null ? null : song with { Title = "Radio Afterglow", Duration = 0, SampledPosition = 0, SampledAt = DateTime.Now };
+        // Past the moment in which a song's length may still arrive.
+        await Task.Delay(2200);
+        Save(window, dir, "page-music-live");
+        m.Track = song;
+        await Task.Delay(500);
+
+        m.Tab = PanelTab.Timer;
+        CountdownTimer.Shared.Start(25);
+        await Task.Delay(700);
+        Save(window, dir, "page-timer-running");
+        var pause = Labelled(window, L.T("Pause", "Pozastavit"));
+        await Task.Delay(1300);
+        var kept = pause is not null && ReferenceEquals(pause, Labelled(window, L.T("Pause", "Pozastavit")));
+        Log.Write($"snapshot: the timer's Pause button outlived a tick: {kept}");
+        Click(pause);
+        await Task.Delay(600);
+        Save(window, dir, "page-timer-paused");
+        CountdownTimer.Shared.Cancel();
+        await Task.Delay(400);
+    }
+
+    private static void Click(Button? button) => button?.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+
+    /// The button with this text on it.
+    private static Button? Labelled(DependencyObject root, string text) =>
+        Find<Button>(root, b => Find<TextBlock>(b, t => t.Text == text) is not null);
+
+    private static T? Find<T>(DependencyObject root, Func<T, bool>? match = null) where T : DependencyObject
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T found && (match is null || match(found))) return found;
+            if (Find(child, match) is { } deeper) return deeper;
+        }
+        return null;
     }
 
     /// For a window with a system backdrop, which rendering it ourselves can't
