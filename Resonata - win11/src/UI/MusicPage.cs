@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Shapes;
@@ -34,12 +35,36 @@ public sealed class MusicPage : Grid, IPage
     private readonly Delay _releaseScrub = new();
     private double? _scrubFraction;
     private bool _open;
+    private readonly LyricsList _lyricsList;
+    private readonly Button _lyricsBack;
+    private FrameworkElement _progressBlock = null!, _controlsBlock = null!;
+    private readonly Delay _liveDelay = new();
+    private bool _liveSettled;
+    private string? _songKey;
+    /// The bigger lyrics view was asked for; shown while there are lyrics.
+    private bool _lyricsMode;
 
     public MusicPage(PanelModel model)
     {
         _m = model;
         _calendar = new CalendarColumn { Width = 196, Margin = new Thickness(0, 2, 0, 0) };
         _lyric = new LyricsLine(model);
+        // A click on the line being sung brings up more of the song.
+        _lyric.Background = Brushes.Transparent;
+        _lyric.Cursor = Cursors.Hand;
+        _lyric.ToolTip = L.T("Show more of the lyrics", "Zobrazit víc textu");
+        _lyric.MouseLeftButtonUp += (_, e) =>
+        {
+            if (_m.Lyrics is null) return;
+            SetLyricsMode(true);
+            e.Handled = true;
+        };
+        _lyricsList = new LyricsList(model) { Visibility = Visibility.Collapsed, VerticalAlignment = VerticalAlignment.Bottom };
+        _lyricsBack = Ui.Button(Ui.Icon(Glyph.Back, 10, Ui.White(0.6)), () => SetLyricsMode(false),
+            L.T("Back to the player", "Zpět k přehrávači"), 22, 18);
+        _lyricsBack.HorizontalAlignment = HorizontalAlignment.Right;
+        _lyricsBack.VerticalAlignment = VerticalAlignment.Top;
+        _lyricsBack.Visibility = Visibility.Collapsed;
 
         ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -106,6 +131,7 @@ public sealed class MusicPage : Grid, IPage
         progress.Children.Add(times);
         SetRow(progress, 2);
         column.Children.Add(progress);
+        _progressBlock = progress;
 
         var controls = new Grid { Margin = new Thickness(-7, 0, 0, -3) };
         controls.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -120,12 +146,26 @@ public sealed class MusicPage : Grid, IPage
         controls.Children.Add(_volume);
         SetRow(controls, 3);
         column.Children.Add(controls);
+        _controlsBlock = controls;
+
+        // The bigger lyrics view, in the bar's and the buttons' place.
+        SetRow(_lyricsList, 1);
+        SetRowSpan(_lyricsList, 3);
+        column.Children.Add(_lyricsList);
+        column.Children.Add(_lyricsBack);
         return column;
     }
 
     private static Button Transport(UIElement icon, TransportCommand command)
     {
         var button = Ui.Button(icon, () => MediaService.Active?.Send(command), null, 30, 26);
+        // No tooltip on these, but a name for a screen reader.
+        System.Windows.Automation.AutomationProperties.SetName(button, command switch
+        {
+            TransportCommand.Previous => L.T("Previous", "Předchozí"),
+            TransportCommand.Next => L.T("Next", "Další"),
+            _ => L.T("Play or pause", "Přehrát nebo pozastavit"),
+        });
         button.Margin = new Thickness(0, 0, 14, 0);
         return button;
     }
@@ -143,12 +183,35 @@ public sealed class MusicPage : Grid, IPage
             case nameof(PanelModel.Track): Refresh(); break;
             case nameof(PanelModel.Artwork): _cover.SetImage(_m.Artwork); break;
             case nameof(PanelModel.Accent): UpdateAccent(); break;
+            case nameof(PanelModel.Lyrics): ApplyLyricsMode(); break;
         }
     }
 
     private void OnSettingsChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(Settings.ShowCalendar) or nameof(Settings.ShowLyrics)) UpdateLayoutForSettings();
+        if (e.PropertyName is nameof(Settings.ShowCalendar) or nameof(Settings.ShowLyrics)) ApplyLyricsMode();
+    }
+
+    /// The bigger lyrics view is up: asked for, switched on, and there are lyrics.
+    private bool LyricsShown => _lyricsMode && Settings.Current.ShowLyrics && _m.Lyrics is not null;
+
+    /// A few lines of the song at once, in the bar's and the buttons' place;
+    /// a click on a line jumps the song there. Kept from song to song until
+    /// the arrow in the corner is clicked; a song without lyrics shows the player.
+    private void SetLyricsMode(bool on)
+    {
+        _lyricsMode = on;
+        ApplyLyricsMode();
+    }
+
+    private void ApplyLyricsMode()
+    {
+        var list = LyricsShown;
+        _lyricsList.Visibility = _lyricsBack.Visibility = list ? Visibility.Visible : Visibility.Collapsed;
+        _progressBlock.Visibility = _controlsBlock.Visibility = _artist.Visibility =
+            list ? Visibility.Collapsed : Visibility.Visible;
+        _lyricsList.SetActive(list && _open);
+        UpdateLayoutForSettings();
     }
 
     private void UpdateLayoutForSettings()
@@ -160,7 +223,14 @@ public sealed class MusicPage : Grid, IPage
         var align = calendar ? TextAlignment.Center : TextAlignment.Left;
         _title.TextAlignment = _artist.TextAlignment = align;
         _lyric.Alignment = align;
-        _lyric.Visibility = Settings.Current.ShowLyrics && _m.Track is not null ? Visibility.Visible : Visibility.Collapsed;
+        _lyricsList.Alignment = align;
+        var list = LyricsShown;
+        // Clear of the arrow in the corner.
+        _title.Margin = new Thickness(0, 0, list && !calendar ? 26 : 0, 0);
+        // Only for something lyrics are looked up for: under a podcast or a
+        // film "no lyrics found" was just noise.
+        _lyric.Visibility = !list && Settings.Current.ShowLyrics && _m.Track is { } track && LyricsRules.ShouldLookUp(track)
+            ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void Refresh()
@@ -178,14 +248,30 @@ public sealed class MusicPage : Grid, IPage
         _cover.SetImage(_m.Artwork);
         UpdateAccent();
         UpdateLayoutForSettings();
+
+        var song = track is null ? null : $"{track.Title}\u001F{track.Artist}\u001F{track.Source}";
+        if (song != _songKey)
+        {
+            // A song's length can arrive a beat after its title; only one
+            // still without it after this long is a live stream.
+            _songKey = song;
+            _liveSettled = false;
+            _liveDelay.After(1.5, () => { _liveSettled = true; UpdateProgress(); });
+        }
+
         UpdateClock();
         UpdateProgress();
     }
+
+    /// A radio station, a live stream: nowhere to scrub to, and a bar stuck
+    /// at the start over "0:00 / 0:00" read as broken.
+    private bool IsLive => _m.Track is { } track && LiveRules.IsLive(track.Duration, _liveSettled);
 
     private void UpdateAccent()
     {
         var text = Ui.AccentText(_m.Accent);
         _artist.Foreground = text is { } c ? Ui.Solid(c) : Ui.White(0.55);
+        _lyricsList.Accent = text is { } l ? Ui.Solid(l) : Brushes.White;
         _progress.Fill = text is { } p ? Ui.Solid(p) : Brushes.White;
         _calendar.Accent = text ?? FallbackAccent;
         _volume.Tint = text is { } v ? Ui.Solid(v) : Brushes.White;
@@ -195,6 +281,7 @@ public sealed class MusicPage : Grid, IPage
     {
         _open = panelOpen;
         _lyric.SetActive(panelOpen);
+        _lyricsList.SetActive(panelOpen && LyricsShown);
         UpdateClock();
         UpdateProgress();
         if (panelOpen) { _calendar.GoToToday(); _volume.Reread(); }
@@ -215,14 +302,24 @@ public sealed class MusicPage : Grid, IPage
     private void UpdateProgress()
     {
         if (_progress.IsDragging) return;
-        _progress.Value = _scrubFraction ?? Fraction(DateTime.Now);
+        var live = IsLive;
+        _progress.IsEmpty = live;
+        _progress.IsHitTestVisible = !live;
+        _progress.Value = live ? 0 : _scrubFraction ?? Fraction(DateTime.Now);
         UpdateTimes();
     }
 
     private void UpdateTimes()
     {
+        if (IsLive)
+        {
+            _elapsed.Text = L.T("● LIVE", "● ŽIVĚ");
+            _total.Text = "";
+            return;
+        }
         var duration = _m.Track?.Duration ?? 0;
         _elapsed.Text = TimeText.Clock((_scrubFraction ?? Fraction(DateTime.Now)) * duration);
+        _total.Text = TimeText.Clock(duration);
     }
 
     private void OnScrubbed(double fraction)
@@ -339,6 +436,95 @@ public sealed class LyricsLine : Grid
         ((TranslateTransform)_front.RenderTransform).BeginAnimation(TranslateTransform.YProperty,
             Anim.To(-LineHeight, duration, Anim.EaseOut));
         _front = back;
+    }
+}
+
+/// A few lines of the song at once, the one being sung picked out and kept
+/// in the middle; a click on a line jumps the song there. Redrawn only as a
+/// line begins, like the single line it stands in for.
+public sealed class LyricsList : StackPanel
+{
+    public const int Lines = 5;
+    private const double RowHeight = 17;
+
+    private readonly PanelModel _m;
+    private readonly TextBlock[] _rows = new TextBlock[Lines];
+    private readonly Border[] _slots = new Border[Lines];
+    /// Which line of the song each row is showing; -1 for none.
+    private readonly int[] _lineOf = new int[Lines];
+    private readonly Delay _next = new();
+    private Brush _accent = Brushes.White;
+    private bool _active;
+
+    public LyricsList(PanelModel model)
+    {
+        _m = model;
+        for (var i = 0; i < Lines; i++)
+        {
+            var slot = i;
+            var text = Ui.Label("", 12, FontWeights.Medium, Ui.White(0.4));
+            text.VerticalAlignment = VerticalAlignment.Center;
+            _rows[i] = text;
+            _lineOf[i] = -1;
+            // Transparent, not null: the whole row takes the click, not just the letters.
+            var row = new Border
+            {
+                Height = RowHeight, Background = Brushes.Transparent, Cursor = Cursors.Hand, Child = text,
+                ToolTip = L.T("Jump to this line", "Skočit na tenhle řádek"),
+            };
+            row.MouseLeftButtonUp += (_, e) => { Seek(slot); e.Handled = true; };
+            _slots[i] = row;
+            Children.Add(row);
+        }
+        model.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(PanelModel.Track) or nameof(PanelModel.Lyrics)) Update();
+        };
+    }
+
+    public Brush Accent { set { _accent = value; Update(); } }
+
+    public TextAlignment Alignment
+    {
+        set { foreach (var row in _rows) row.TextAlignment = value; }
+    }
+
+    public void SetActive(bool active)
+    {
+        _active = active;
+        Update();
+    }
+
+    private void Seek(int slot)
+    {
+        var index = _lineOf[slot];
+        if (_m.Lyrics is { } lines && index >= 0 && index < lines.Count)
+            MediaService.Active?.Seek(lines[index].Time);
+    }
+
+    private void Update()
+    {
+        _next.Cancel();
+        if (!_active || _m.Lyrics is not { } lines) return;
+
+        var position = _m.Track?.Position(DateTime.Now) ?? 0;
+        var current = Lrc.Index(lines, position);
+        var (start, count) = LyricsRules.Window(lines.Count, current, Lines);
+        for (var slot = 0; slot < Lines; slot++)
+        {
+            var index = slot < count ? start + slot : -1;
+            _lineOf[slot] = index;
+            _slots[slot].Visibility = index < 0 ? Visibility.Hidden : Visibility.Visible;
+            if (index < 0) continue;
+            var sung = index == current;
+            _rows[slot].Text = lines[index].Text.Length == 0 ? "♪" : lines[index].Text;
+            _rows[slot].FontWeight = sung ? FontWeights.SemiBold : FontWeights.Medium;
+            _rows[slot].Foreground = sung ? _accent : Ui.White(0.4);
+        }
+
+        var next = (current ?? -1) + 1;
+        if (_m.Track is { IsPlaying: true } && next < lines.Count)
+            _next.After(Math.Max(0.02, lines[next].Time - position), Update);
     }
 }
 
@@ -521,7 +707,7 @@ public sealed class CalendarColumn : StackPanel
         foreach (var ev in list.Take(2)) _events.Children.Add(Row(ev));
         if (list.Count > 2)
         {
-            var more = Ui.Label(L.T($"+ {list.Count - 2} more", $"+ {list.Count - 2} další"), 10, FontWeights.Medium, Ui.White(0.4));
+            var more = Ui.Label(L.More(list.Count - 2), 10, FontWeights.Medium, Ui.White(0.4));
             more.Margin = new Thickness(11, 0, 0, 0);
             _events.Children.Add(more);
         }

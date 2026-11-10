@@ -64,7 +64,12 @@ public static class Ui
             Width = width,
             Height = height,
         };
-        if (tip is not null) button.ToolTip = tip;
+        if (tip is not null)
+        {
+            button.ToolTip = tip;
+            // What a screen reader says: an icon alone says nothing.
+            System.Windows.Automation.AutomationProperties.SetName(button, tip);
+        }
         button.Click += (_, _) => click();
         return button;
     }
@@ -287,6 +292,14 @@ public sealed class ThinBar : FrameworkElement
 
     public Brush Fill { get => _fill; set { _fill = value; InvalidateVisual(); } }
 
+    private bool _empty;
+    /// Nothing filled in and no knob: a live stream has no position to show.
+    public bool IsEmpty
+    {
+        get => _empty;
+        set { if (_empty == value) return; _empty = value; InvalidateVisual(); }
+    }
+
     protected override void OnRender(DrawingContext dc)
     {
         // The whole element takes the mouse: a 4 px target is unusable.
@@ -296,6 +309,7 @@ public sealed class ThinBar : FrameworkElement
         var top = (ActualHeight - height) / 2;
         var radius = height / 2;
         dc.DrawRoundedRectangle(Ui.White(0.22), null, new Rect(0, top, ActualWidth, height), radius, radius);
+        if (_empty) return;
         // At least a dot, so position zero isn't a rendering artifact.
         dc.DrawRoundedRectangle(_fill, null, new Rect(0, top, Math.Max(height, ActualWidth * _value), height), radius, radius);
         if (active || !ShowKnobOnlyWhenActive)

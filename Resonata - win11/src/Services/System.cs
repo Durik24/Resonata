@@ -232,7 +232,7 @@ public sealed class HotKey
         (uint mods, uint key)? combo = choice switch
         {
             HotKeyChoice.CtrlShiftSpace => (control | shift, 0x20),
-            HotKeyChoice.CtrlAltN => (control | alt, 0x4E),
+            HotKeyChoice.AltShiftN => (alt | shift, 0x4E),
             _ => null,
         };
         if (combo is not { } c) return true;
@@ -244,7 +244,7 @@ public sealed class HotKey
     public static string Title(HotKeyChoice choice) => choice switch
     {
         HotKeyChoice.CtrlShiftSpace => L.T("Ctrl + Shift + Space", "Ctrl + Shift + Mezerník"),
-        HotKeyChoice.CtrlAltN => "Ctrl + Alt + N",
+        HotKeyChoice.AltShiftN => "Alt + Shift + N",
         _ => L.T("Off", "Vypnuto"),
     };
 }
@@ -437,24 +437,17 @@ public sealed class Updater : Observable
     {
         var first = new Delay();
         first.After(30, () => CheckIfDue(atLaunch: true));
-        _timer.Tick += (_, _) => CheckIfDue();
+        _timer.Tick += (_, _) => CheckIfDue(atLaunch: false);
         _timer.Start();
     }
 
-    private void CheckIfDue(bool atLaunch = false)
+    private void CheckIfDue(bool atLaunch)
     {
         var s = Settings.Current;
-        if (s.CheckForUpdates && ShouldCheck(atLaunch, s.UpdateLastCheck, DateTime.Now, s.UpdateAnnounced, CurrentVersion))
+        if (s.CheckForUpdates && UpdateRules.ShouldCheck(atLaunch, s.UpdateLastCheck, DateTime.Now,
+                s.UpdateAnnounced, CurrentVersion, Interval))
             _ = CheckAsync();
     }
-
-    /// Once a day, and at launch straight away when a newer version was found
-    /// before and still isn't installed. What was found is only kept in memory,
-    /// so after a restart "Install" was gone for up to a day. It isn't
-    /// announced at the top a second time: that version is remembered.
-    public static bool ShouldCheck(bool atLaunch, DateTime lastCheck, DateTime now, string? announced, string current) =>
-        (atLaunch && announced is not null && Versions.IsNewer(announced, current))
-        || now - lastCheck >= Interval;
 
     public async Task CheckAsync()
     {
@@ -465,8 +458,10 @@ public sealed class Updater : Observable
             using var request = new HttpRequestMessage(HttpMethod.Get, ReleasesApi);
             request.Headers.Accept.ParseAdd("application/vnd.github+json");
             using var response = await Http.SendAsync(request);
-            Settings.Current.UpdateLastCheck = DateTime.Now;
             response.EnsureSuccessStatusCode();
+            // Only an answer counts as a check. Stamped before this, a refusal
+            // from GitHub — its rate limit, say — wasn't tried again for a day.
+            Settings.Current.UpdateLastCheck = DateTime.Now;
             var release = NewestSetup(await response.Content.ReadAsStringAsync());
             if (release is null || !Versions.IsNewer(release.Version, CurrentVersion))
             {
@@ -560,7 +555,21 @@ public sealed class Updater : Observable
             }
 
             // Setup closes this copy itself and starts the new one afterwards.
-            Process.Start(new ProcessStartInfo(path, "/SILENT /SP-") { UseShellExecute = true });
+            using var setup = Process.Start(new ProcessStartInfo(path, "/SILENT /SP-") { UseShellExecute = true });
+            // Still here once Setup has gone: it was cancelled part-way. The
+            // update is offered again; it used to say "installing" until the
+            // next restart, with no way to try again.
+            try
+            {
+                if (setup is not null) await setup.WaitForExitAsync();
+                else await Task.Delay(TimeSpan.FromMinutes(2));
+            }
+            catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception)
+            {
+                // Setup runs elevated and may not let itself be waited on.
+                await Task.Delay(TimeSpan.FromMinutes(2));
+            }
+            State = release;
         }
         catch (System.ComponentModel.Win32Exception e) when (e.NativeErrorCode == 1223)
         {

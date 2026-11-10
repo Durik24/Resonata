@@ -6,7 +6,8 @@ shelf. Windows has no notch and its windows use the top of the screen, so here
 Resonata is **completely hidden until wanted**. Rest the pointer at the top
 centre of the screen and the pill slides out. In Hover mode, staying on it opens
 the whole panel and moving away closes it; in Click mode a click opens it and
-another closes it. A click on that edge, on the pill, the shortcut or the tray
+another closes it. A click on that edge, on the pill, the shortcut (Ctrl + Shift +
+Space, or Alt + Shift + N) or the tray
 icon opens the panel at once. It slides out by itself for a moment when a new
 song starts or the timer ends.
 
@@ -73,6 +74,15 @@ newer Resonata Setup, not on a signature as on the Mac.
 | `src/UI/` | The pages, the settings window, the tray icon, demo mode |
 | `installer/Resonata.iss` | The installer and uninstaller |
 | `tests/` | The logic tests, in the plain style of the Mac's |
+
+## Lyrics
+
+Looked up on LRCLIB only with *Lyrics* switched on in Settings, and only for
+songs: something with an artist that runs 30 s – 15 min, so not a podcast, a
+film or a live stream. When the exact match misses, the search result nearest
+the song's length is used, and none if the nearest is more than 10 s out.
+Click the lyric line for five lines of the song at once; click a line to jump
+there. A stream with no length shows **LIVE** instead of a bar stuck at 0:00.
 
 ## Differences from the Mac
 

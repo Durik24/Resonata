@@ -50,7 +50,7 @@ konci nastavení Resonaty. Odinstalátor se zeptá, jestli smazat i poznámky,
 | Kliknout úplně nahoře uprostřed obrazovky | Rovnou se otevře velký panel |
 | Kliknout na pilulku | Otevře se velký panel, bez čekání |
 | Kliknout na prázdné místo v horním pruhu panelu | Panel se zavře |
-| **Ctrl + Shift + Mezerník** | Otevře nebo zavře panel odkudkoliv |
+| **Ctrl + Shift + Mezerník** | Otevře nebo zavře panel odkudkoliv (v nastavení jde přepnout na Alt + Shift + N) |
 | Levý klik na ikonu u hodin | Otevře nebo zavře panel |
 | Pravý klik na ikonu nebo na pilulku | Nabídka: nastavení, spuštění po přihlášení, ukončení |
 | Kliknout kamkoliv mimo panel | Panel se zavře |

@@ -86,7 +86,8 @@ public partial class App : Application
             _activityPeek.Show(new NotchActivity.Pomodoro(phase == PomodoroPhase.Rest, minutes));
 
         _model.PropertyChanged += OnModelChanged;
-        // Switched on, the song playing gets its lyrics; switched off, nothing more goes out.
+        // Lyrics switched on are fetched for the song already playing;
+        // switched off, they're dropped and nothing more is asked.
         Settings.Current.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(Settings.ShowLyrics) && !Demo.IsOn) _lyrics.Load(_model.Track);
