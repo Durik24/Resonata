@@ -28,6 +28,21 @@ Check((playing with { Source = "Spotify.exe" }).IsSpotify, "Spotify from its exe
 Check((playing with { Source = "SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify" }).IsSpotify, "Spotify from the Store");
 Check(!(playing with { Source = "chrome" }).IsSpotify, "a browser isn't Spotify");
 
+// What LRCLIB is asked about, and which answer is taken
+Check(LyricsRules.ShouldLookUp(playing with { Duration = 200 }), "a song is looked up");
+Check(!LyricsRules.ShouldLookUp(playing with { Duration = 200, Artist = " " }), "nothing without an artist");
+Check(!LyricsRules.ShouldLookUp(playing with { Duration = 0 }), "not before the length is known, nor a stream");
+Check(!LyricsRules.ShouldLookUp(playing with { Duration = 20 }), "not a jingle");
+Check(!LyricsRules.ShouldLookUp(playing with { Duration = 3600 }), "not a podcast or a film");
+Check(LyricsRules.ShouldLookUp(playing with { Duration = 30 }) && LyricsRules.ShouldLookUp(playing with { Duration = 900 }), "both ends count as songs");
+Check(LyricsRules.Closest([250, 201, 330], 200) == 1, "the nearest in length");
+Check(LyricsRules.Closest([250, 330], 200) is null, "none when all are too far out");
+Check(LyricsRules.Closest([210], 200) == 0, "10 s out still counts");
+Check(LyricsRules.Closest([null, 0], 200) == 0, "no lengths to go by: the first");
+Check(LyricsRules.Closest([null, 205], 200) == 1, "a result without a length loses to one that fits");
+Check(LyricsRules.Closest([], 200) is null, "no results");
+Check(LyricsRules.Closest([250], 0) == 0, "no length of our own: the first");
+
 // LRC
 const string lrc = "[ar:Someone]\n[00:01.00] one\n[00:02.50][00:09.00] two\n[00:03.00] three\n[00:04.00] four\n";
 var lines = Lrc.Parse(lrc);
@@ -87,6 +102,12 @@ Check(Updater.IsNewerSetup("Resonata".PadRight(60), "1.2.0".PadRight(50), "1.0.0
 Check(!Updater.IsNewerSetup("Resonata".PadRight(60), "1.0.0".PadRight(50), "1.0.0"), "the same version isn't an update");
 Check(!Updater.IsNewerSetup("Something else", "9.9.9", "1.0.0"), "another program's Setup is refused");
 Check(!Updater.IsNewerSetup(null, null, "1.0.0"), "a file with no version fields is refused");
+var checkedAt = new DateTime(2026, 1, 1, 12, 0, 0);
+Check(!Updater.ShouldCheck(false, checkedAt, checkedAt.AddHours(2), null, "1.0.0"), "not twice a day");
+Check(Updater.ShouldCheck(false, checkedAt, checkedAt.AddHours(25), null, "1.0.0"), "once a day");
+Check(Updater.ShouldCheck(true, checkedAt, checkedAt.AddHours(2), "1.1.0", "1.0.0"), "a found update is looked for again at launch");
+Check(!Updater.ShouldCheck(true, checkedAt, checkedAt.AddHours(2), "1.1.0", "1.1.0"), "not once it's installed");
+Check(!Updater.ShouldCheck(false, checkedAt, checkedAt.AddHours(2), "1.1.0", "1.0.0"), "only at launch, not every hour");
 
 // The album colour
 byte[] Image(byte r, byte g, byte b)

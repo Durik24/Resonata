@@ -34,10 +34,11 @@ public sealed class LyricsStore(PanelModel model)
         return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(raw)))[..24];
     }
 
-    /// Same song as last time is a no-op; null clears the lines.
+    /// Same song as last time is a no-op; null clears the lines. With lyrics
+    /// switched off, or for what isn't a song, LRCLIB isn't asked at all.
     public void Load(Track? track)
     {
-        if (track is null)
+        if (track is null || !Settings.Current.ShowLyrics || !LyricsRules.ShouldLookUp(track))
         {
             _current = null;
             _task?.Cancel();
@@ -107,6 +108,8 @@ public sealed class LyricsStore(PanelModel model)
     private sealed class Record
     {
         [JsonPropertyName("syncedLyrics")] public string? SyncedLyrics { get; set; }
+        /// The recording's length in seconds, as LRCLIB has it.
+        [JsonPropertyName("duration")] public double? Duration { get; set; }
     }
 
     /// Exact match first; a looser search if that misses, since a title with
@@ -124,15 +127,19 @@ public sealed class LyricsStore(PanelModel model)
         if (search.body is null) return (Outcome.None, null);
         try
         {
-            foreach (var record in JsonSerializer.Deserialize<Record[]>(search.body) ?? [])
-                if (record.SyncedLyrics is { } synced && Lrc.Parse(synced) is { } found)
-                    return (Outcome.Lines, found);
+            // Those that really have timed lyrics, then the nearest in length.
+            var timed = (JsonSerializer.Deserialize<Record[]>(search.body) ?? [])
+                .Select(r => (r.Duration, Lines: r.SyncedLyrics is { } synced ? Lrc.Parse(synced) : null))
+                .Where(r => r.Lines is not null)
+                .ToList();
+            return LyricsRules.Closest(timed.Select(r => r.Duration).ToList(), t.Duration) is { } best
+                ? (Outcome.Lines, timed[best].Lines)
+                : (Outcome.None, null);
         }
         catch (JsonException)
         {
             return (Outcome.None, null);
         }
-        return (Outcome.None, null);
     }
 
     private static IReadOnlyList<LyricLine>? Parse(string body)

@@ -138,31 +138,37 @@ public static class SpotifyVolume
     public static double ToggledMute(double volume, double? before) =>
         volume >= 1 ? 0 : before is >= 1 ? before.Value : 50;
 
+    /// Spotify's sessions on every output, the one playing first. Not only the
+    /// default output's: Spotify can be set to play on another one. None while
+    /// Spotify hasn't played on this PC yet, or plays elsewhere via Connect.
     private static List<SimpleAudioVolume> Sessions()
     {
-        var found = new List<SimpleAudioVolume>();
+        var found = new List<(SimpleAudioVolume Volume, bool Active)>();
         using var enumerator = new MMDeviceEnumerator();
-        var manager = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia).AudioSessionManager;
-        manager.RefreshSessions();
-        var sessions = manager.Sessions;
-        for (var i = 0; i < sessions.Count; i++)
+        foreach (var device in enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active))
         {
-            var session = sessions[i];
-            try
+            var manager = device.AudioSessionManager;
+            manager.RefreshSessions();
+            var sessions = manager.Sessions;
+            for (var i = 0; i < sessions.Count; i++)
             {
-                using var process = Process.GetProcessById((int)session.GetProcessID);
-                if (process.ProcessName.Equals("Spotify", StringComparison.OrdinalIgnoreCase))
-                    found.Add(session.SimpleAudioVolume);
-            }
-            catch (ArgumentException)
-            {
-                // That process has just gone.
+                var session = sessions[i];
+                try
+                {
+                    using var process = Process.GetProcessById((int)session.GetProcessID);
+                    if (process.ProcessName.Equals("Spotify", StringComparison.OrdinalIgnoreCase))
+                        found.Add((session.SimpleAudioVolume, session.State == AudioSessionState.AudioSessionStateActive));
+                }
+                catch (ArgumentException)
+                {
+                    // That process has just gone.
+                }
             }
         }
-        return found;
+        return found.OrderByDescending(s => s.Active).Select(s => s.Volume).ToList();
     }
 
-    /// 0–100, or null when Spotify has no audio session yet.
+    /// 0–100, or null when Spotify has no audio session on this PC.
     public static Task<double?> ReadAsync() => Task.Run<double?>(() =>
     {
         try
@@ -430,15 +436,25 @@ public sealed class Updater : Observable
     public void Start()
     {
         var first = new Delay();
-        first.After(30, CheckIfDue);
+        first.After(30, () => CheckIfDue(atLaunch: true));
         _timer.Tick += (_, _) => CheckIfDue();
         _timer.Start();
     }
 
-    private void CheckIfDue()
+    private void CheckIfDue(bool atLaunch = false)
     {
-        if (Settings.Current.CheckForUpdates && DateTime.Now - Settings.Current.UpdateLastCheck >= Interval) _ = CheckAsync();
+        var s = Settings.Current;
+        if (s.CheckForUpdates && ShouldCheck(atLaunch, s.UpdateLastCheck, DateTime.Now, s.UpdateAnnounced, CurrentVersion))
+            _ = CheckAsync();
     }
+
+    /// Once a day, and at launch straight away when a newer version was found
+    /// before and still isn't installed. What was found is only kept in memory,
+    /// so after a restart "Install" was gone for up to a day. It isn't
+    /// announced at the top a second time: that version is remembered.
+    public static bool ShouldCheck(bool atLaunch, DateTime lastCheck, DateTime now, string? announced, string current) =>
+        (atLaunch && announced is not null && Versions.IsNewer(announced, current))
+        || now - lastCheck >= Interval;
 
     public async Task CheckAsync()
     {

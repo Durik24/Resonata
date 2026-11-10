@@ -35,6 +35,45 @@ public sealed record Track
 
 public readonly record struct LyricLine(double Time, string Text);
 
+/// What to ask LRCLIB about, and which of its answers to use.
+public static class LyricsRules
+{
+    /// Song lengths: half a minute to a quarter of an hour.
+    public const double ShortestSong = 30, LongestSong = 15 * 60;
+
+    /// How far a search result's length may be from the song's and still be
+    /// taken for the same recording.
+    public const double LengthTolerance = 10;
+
+    /// Only something with an artist that runs as long as a song. A video's,
+    /// a podcast's or a film's title went to LRCLIB too, and none of those have
+    /// synced lyrics. It also waits out the moment at a song change when the
+    /// title has arrived and the length hasn't, which cost a second lookup.
+    public static bool ShouldLookUp(Track track) =>
+        !string.IsNullOrWhiteSpace(track.Artist) && track.Duration is >= ShortestSong and <= LongestSong;
+
+    /// Which search result to use for a song `duration` seconds long, given each
+    /// result's own length; null for none of them. The search goes by title and
+    /// artist alone, so it also returns the live version and the remix, and the
+    /// first one's lyrics drifted out of time. The nearest in length is the same
+    /// recording; one more than LengthTolerance out isn't, and none beats wrong.
+    public static int? Closest(IReadOnlyList<double?> durations, double duration)
+    {
+        if (durations.Count == 0) return null;
+        if (duration <= 0) return 0;
+        int? best = null;
+        var bestGap = double.PositiveInfinity;
+        for (var i = 0; i < durations.Count; i++)
+        {
+            if (durations[i] is not { } length || length <= 0) continue;
+            var gap = Math.Abs(length - duration);
+            if (gap < bestGap) (best, bestGap) = (i, gap);
+        }
+        if (best is null) return 0;
+        return bestGap <= LengthTolerance ? best : null;
+    }
+}
+
 public static partial class Lrc
 {
     [GeneratedRegex(@"\[(\d+):(\d{1,2}(?:\.\d+)?)\]")]
