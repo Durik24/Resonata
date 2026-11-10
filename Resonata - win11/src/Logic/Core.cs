@@ -336,3 +336,73 @@ public sealed class PageSwipeTracker
         return _travel > 0 ? 1 : -1;
     }
 }
+
+/// What lyrics are looked up for, and which search result is used.
+public static class LyricsRules
+{
+    /// Song lengths: half a minute to a quarter of an hour.
+    public const double MinLength = 30, MaxLength = 15 * 60;
+
+    /// How far a search result's length may be from the song's and still be
+    /// taken for the same recording.
+    public const double LengthTolerance = 10;
+
+    /// Every title and artist used to go to LRCLIB — a YouTube video's, a
+    /// podcast's, a film's. None of those have synced lyrics, and what you
+    /// watch is nobody's business: asked only for something with an artist
+    /// that runs as long as a song does. A live stream has no length at all.
+    public static bool ShouldLookUp(Track track) =>
+        !string.IsNullOrWhiteSpace(track.Artist) && track.Duration >= MinLength && track.Duration <= MaxLength;
+
+    /// Which search result to use for a song `duration` seconds long, given
+    /// each result's own length; null for none of them.
+    ///
+    /// The search goes by title and artist, so it returns the live version
+    /// and the remix along with the album cut. The first with lyrics — what
+    /// this used to take — gave lines timed for another recording, drifting
+    /// out of time as the song went on. No lyrics beat wrong ones.
+    public static int? Closest(IReadOnlyList<double?> durations, double duration)
+    {
+        if (durations.Count == 0) return null;
+        if (duration <= 0) return 0;
+        int? best = null;
+        var gap = double.PositiveInfinity;
+        for (var i = 0; i < durations.Count; i++)
+        {
+            if (durations[i] is not { } length || length <= 0) continue;
+            var here = Math.Abs(length - duration);
+            if (here < gap) { gap = here; best = i; }
+        }
+        if (best is null) return 0; // no lengths to go by: the first, as before
+        return gap <= LengthTolerance ? best : null;
+    }
+
+    /// The lines in view around `current`: it in the middle where there are
+    /// enough either side, the first or last few at the ends of the song.
+    public static (int Start, int Count) Window(int count, int? current, int visible)
+    {
+        if (count <= visible) return (0, Math.Max(count, 0));
+        var start = Math.Clamp((current ?? 0) - visible / 2, 0, count - visible);
+        return (start, visible);
+    }
+}
+
+public static class LiveRules
+{
+    /// Playing something with no length, even after a moment to be told it:
+    /// a radio station, a live stream. `settled` is that moment having
+    /// passed — a song's length can arrive a beat after its title.
+    public static bool IsLive(double duration, bool settled) => settled && duration <= 0;
+}
+
+public static class UpdateRules
+{
+    /// Whether to ask GitHub now: once every `interval` — and at launch, at
+    /// once, when a newer version was already found and hasn't been installed.
+    ///
+    /// What was found is only kept in memory, so after a restart "Install"
+    /// was gone from the menu until the next daily check, up to a day later.
+    public static bool ShouldCheck(bool atLaunch, DateTime lastCheck, DateTime now, string? announced,
+        string current, TimeSpan interval) =>
+        (atLaunch && announced is not null && Versions.IsNewer(announced, current)) || now - lastCheck >= interval;
+}

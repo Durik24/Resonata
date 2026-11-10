@@ -226,7 +226,7 @@ public sealed class HotKey
         (uint mods, uint key)? combo = choice switch
         {
             HotKeyChoice.CtrlShiftSpace => (control | shift, 0x20),
-            HotKeyChoice.CtrlAltN => (control | alt, 0x4E),
+            HotKeyChoice.AltShiftN => (alt | shift, 0x4E),
             _ => null,
         };
         if (combo is not { } c) return true;
@@ -238,7 +238,7 @@ public sealed class HotKey
     public static string Title(HotKeyChoice choice) => choice switch
     {
         HotKeyChoice.CtrlShiftSpace => L.T("Ctrl + Shift + Space", "Ctrl + Shift + Mezerník"),
-        HotKeyChoice.CtrlAltN => "Ctrl + Alt + N",
+        HotKeyChoice.AltShiftN => "Alt + Shift + N",
         _ => L.T("Off", "Vypnuto"),
     };
 }
@@ -430,14 +430,17 @@ public sealed class Updater : Observable
     public void Start()
     {
         var first = new Delay();
-        first.After(30, CheckIfDue);
-        _timer.Tick += (_, _) => CheckIfDue();
+        first.After(30, () => CheckIfDue(atLaunch: true));
+        _timer.Tick += (_, _) => CheckIfDue(atLaunch: false);
         _timer.Start();
     }
 
-    private void CheckIfDue()
+    private void CheckIfDue(bool atLaunch)
     {
-        if (Settings.Current.CheckForUpdates && DateTime.Now - Settings.Current.UpdateLastCheck >= Interval) _ = CheckAsync();
+        var s = Settings.Current;
+        if (s.CheckForUpdates && UpdateRules.ShouldCheck(atLaunch, s.UpdateLastCheck, DateTime.Now,
+                s.UpdateAnnounced, CurrentVersion, Interval))
+            _ = CheckAsync();
     }
 
     public async Task CheckAsync()
@@ -449,8 +452,10 @@ public sealed class Updater : Observable
             using var request = new HttpRequestMessage(HttpMethod.Get, ReleasesApi);
             request.Headers.Accept.ParseAdd("application/vnd.github+json");
             using var response = await Http.SendAsync(request);
-            Settings.Current.UpdateLastCheck = DateTime.Now;
             response.EnsureSuccessStatusCode();
+            // Only an answer counts as a check. Stamped before this, a refusal
+            // from GitHub — its rate limit, say — wasn't tried again for a day.
+            Settings.Current.UpdateLastCheck = DateTime.Now;
             var release = NewestSetup(await response.Content.ReadAsStringAsync());
             if (release is null || !Versions.IsNewer(release.Version, CurrentVersion))
             {
@@ -544,7 +549,21 @@ public sealed class Updater : Observable
             }
 
             // Setup closes this copy itself and starts the new one afterwards.
-            Process.Start(new ProcessStartInfo(path, "/SILENT /SP-") { UseShellExecute = true });
+            using var setup = Process.Start(new ProcessStartInfo(path, "/SILENT /SP-") { UseShellExecute = true });
+            // Still here once Setup has gone: it was cancelled part-way. The
+            // update is offered again; it used to say "installing" until the
+            // next restart, with no way to try again.
+            try
+            {
+                if (setup is not null) await setup.WaitForExitAsync();
+                else await Task.Delay(TimeSpan.FromMinutes(2));
+            }
+            catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception)
+            {
+                // Setup runs elevated and may not let itself be waited on.
+                await Task.Delay(TimeSpan.FromMinutes(2));
+            }
+            State = release;
         }
         catch (System.ComponentModel.Win32Exception e) when (e.NativeErrorCode == 1223)
         {

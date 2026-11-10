@@ -189,6 +189,9 @@ public sealed class TimerPage : StackPanel, IPage
     private readonly List<(int Minutes, Border Pill)> _presets = [];
     private readonly StackPanel _controls = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 12, 0, 0) };
     private bool _writing;
+    private bool _open;
+    /// What the buttons under the ring were last built for — see `Refresh`.
+    private string? _controlsFor;
 
     public TimerPage()
     {
@@ -248,7 +251,8 @@ public sealed class TimerPage : StackPanel, IPage
         right.Children.Add(_controls);
         Children.Add(right);
 
-        _timer.Ticked += Refresh;
+        // The second's tick only matters while the page can be seen.
+        _timer.Ticked += () => { if (_open) Refresh(); };
         Settings.Current.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName is nameof(Settings.PomodoroWork) or nameof(Settings.PomodoroRest)) Refresh();
@@ -257,7 +261,11 @@ public sealed class TimerPage : StackPanel, IPage
         Refresh();
     }
 
-    public void PanelVisibilityChanged(bool panelOpen) { if (panelOpen) Refresh(); }
+    public void PanelVisibilityChanged(bool panelOpen)
+    {
+        _open = panelOpen;
+        if (panelOpen) Refresh();
+    }
 
     private RepeatButton Step(string glyph, int delta, string tip)
     {
@@ -310,6 +318,17 @@ public sealed class TimerPage : StackPanel, IPage
             pill.Background = Ui.White(current ? 0.2 : 0.08);
         }
 
+        // Built again only when they'd come out different. They used to be
+        // thrown away and rebuilt every second while a timer ran, and a click
+        // that was down when the second ticked — on Pause, on Cancel — landed
+        // on a button that was no longer there and did nothing.
+        var plan = Settings.Current.PomodoroPlan;
+        var controlsFor = active
+            ? $"running|{_timer.IsPaused}"
+            : $"stopped|{_timer.ChosenMinutes}|{plan.Work}|{plan.Rest}|{plan.LongRest}|{plan.Rounds}";
+        if (controlsFor == _controlsFor) return;
+        _controlsFor = controlsFor;
+
         _controls.Children.Clear();
         if (active)
         {
@@ -319,8 +338,6 @@ public sealed class TimerPage : StackPanel, IPage
         }
         else
         {
-            var s = Settings.Current;
-            var plan = s.PomodoroPlan;
             _controls.Children.Add(Control(Glyph.Play, L.T($"Start {_timer.ChosenMinutes} min", $"Spustit {_timer.ChosenMinutes} min"), () => _timer.Start(_timer.ChosenMinutes)));
             var pomodoro = Control(Glyph.Repeat, $"Pomodoro {plan.Work} + {plan.Rest}", _timer.StartPomodoro);
             pomodoro.ToolTip = L.T($"{plan.Work} min of work and {plan.Rest} min of break, over and over; every {plan.Rounds}th break is {plan.LongRest} min. Set the lengths in Settings → Pomodoro.", $"{plan.Work} min práce a {plan.Rest} min pauza pořád dokola, každá {plan.Rounds}. pauza {plan.LongRest} min. Délky nastavíš v Nastavení → Pomodoro.");

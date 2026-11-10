@@ -36,7 +36,31 @@ public sealed class OpenModeConverter : JsonConverter<OpenMode>
 }
 public enum AnimationSpeed { Fast, Normal, Slow }
 public enum WaveColour { Album, White, Custom }
-public enum HotKeyChoice { Off, CtrlShiftSpace, CtrlAltN }
+/// The second one was Ctrl + Alt + N. Windows reads AltGr as Ctrl + Alt, and
+/// on a Czech keyboard AltGr + N is how "}" is typed — the shortcut took the
+/// brace away. Alt + Shift + N types nothing on any layout.
+public enum HotKeyChoice { Off, CtrlShiftSpace, AltShiftN }
+
+/// A settings file from before still says "CtrlAltN": read as the shortcut
+/// that took its place, and anything unknown as Off, rather than a name this
+/// version doesn't know costing the whole file.
+public sealed class HotKeyChoiceConverter : JsonConverter<HotKeyChoice>
+{
+    public override HotKeyChoice Read(ref Utf8JsonReader reader, Type type, JsonSerializerOptions options)
+    {
+        if (reader.TokenType != JsonTokenType.String)
+        {
+            reader.Skip();
+            return HotKeyChoice.Off;
+        }
+        var text = reader.GetString();
+        if (text == "CtrlAltN") return HotKeyChoice.AltShiftN;
+        return Enum.TryParse<HotKeyChoice>(text, out var value) && Enum.IsDefined(value) ? value : HotKeyChoice.Off;
+    }
+
+    public override void Write(Utf8JsonWriter writer, HotKeyChoice value, JsonSerializerOptions options) =>
+        writer.WriteStringValue(value.ToString());
+}
 public enum PageSwipe { WithFingers, Reversed, Off }
 public enum AppLanguage { English, Czech }
 
@@ -45,6 +69,13 @@ public static class L
 {
     public static string T(string english, string czech) =>
         Settings.Current.Language == AppLanguage.Czech ? czech : english;
+
+    /// "+ 3 more" under a list cut short.
+    public static string More(int count) => More(count, Settings.Current.Language == AppLanguage.Czech);
+
+    /// Czech counts differently from five up: 2 další, but 5 dalších.
+    public static string More(int count, bool czech) =>
+        czech ? $"+ {count} {(count >= 5 ? "dalších" : "další")}" : $"+ {count} more";
 
     public static System.Globalization.CultureInfo Culture =>
         System.Globalization.CultureInfo.GetCultureInfo(Settings.Current.Language == AppLanguage.Czech ? "cs-CZ" : "en-GB");
@@ -146,6 +177,7 @@ public sealed class Settings : Observable
     public bool ShowLyrics { get => _showLyrics; set => Set(ref _showLyrics, value); }
 
     private HotKeyChoice _hotKey = HotKeyChoice.CtrlShiftSpace;
+    [JsonConverter(typeof(HotKeyChoiceConverter))]
     public HotKeyChoice HotKey { get => _hotKey; set => Set(ref _hotKey, value); }
 
     private bool _showSongPeek = true;

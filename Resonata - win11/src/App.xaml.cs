@@ -86,6 +86,12 @@ public partial class App : Application
             _activityPeek.Show(new NotchActivity.Pomodoro(phase == PomodoroPhase.Rest, minutes));
 
         _model.PropertyChanged += OnModelChanged;
+        // Lyrics switched on are fetched for the song already playing;
+        // switched off, they're dropped and nothing more is asked.
+        Settings.Current.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(Settings.ShowLyrics) && !Demo.IsOn) _lyrics.Load(_model.Track);
+        };
 
         _power.OnPlugIn = b => { if (Settings.Current.ShowChargingPeek) _activityPeek.Show(new NotchActivity.Charging(b.Percent)); };
         _power.OnLow = b => { if (Settings.Current.ShowChargingPeek) _activityPeek.Show(new NotchActivity.LowBattery(b.Percent)); };

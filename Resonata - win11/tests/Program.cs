@@ -138,6 +138,36 @@ Check(SpotifyVolume.ToggledMute(0, null) == 50, "halfway when there was none");
 Check(System.Text.Json.JsonSerializer.Deserialize<Settings>("""{"OpenMode":"Nook"}""")!.OpenMode == OpenMode.Hover, "the removed mode reads as Hover");
 Check(System.Text.Json.JsonSerializer.Deserialize<Settings>("""{"OpenMode":"Click"}""")!.OpenMode == OpenMode.Click, "Click stays Click");
 
+Check(System.Text.Json.JsonSerializer.Deserialize<Settings>("""{"HotKey":"CtrlAltN"}""")!.HotKey == HotKeyChoice.AltShiftN, "the old AltGr shortcut reads as the one that replaced it");
+Check(System.Text.Json.JsonSerializer.Deserialize<Settings>("""{"HotKey":"CtrlShiftSpace"}""")!.HotKey == HotKeyChoice.CtrlShiftSpace, "the default shortcut stays");
+Check(System.Text.Json.JsonSerializer.Deserialize<Settings>("""{"HotKey":"Nonsense","ShowLyrics":false}""") is { HotKey: HotKeyChoice.Off, ShowLyrics: false }, "an unknown shortcut doesn't cost the file");
+
+// What lyrics are looked up for, and which search result is used
+var song = playing with { Duration = 214, Artist = "B" };
+Check(LyricsRules.ShouldLookUp(song), "a song is looked up");
+Check(!LyricsRules.ShouldLookUp(song with { Duration = 0 }), "no length - a live stream, or not known yet - isn't");
+Check(!LyricsRules.ShouldLookUp(song with { Duration = 3600 }), "an hour-long episode isn't");
+Check(!LyricsRules.ShouldLookUp(song with { Artist = "  " }), "nothing without an artist");
+Check(LyricsRules.Closest([263, 214.4, 198], 214) == 1, "the result nearest in length, not the first");
+Check(LyricsRules.Closest([263, 301], 214) is null, "none within ten seconds, none used");
+Check(LyricsRules.Closest([null, 215], 214) == 1, "a result with a length beats one without");
+Check(LyricsRules.Closest([null, null], 214) == 0, "no lengths to go by, the first as before");
+Check(LyricsRules.Closest([], 214) is null, "no results, none used");
+Check(LyricsRules.Window(40, 10, 5) == (8, 5), "the sung line in the middle");
+Check(LyricsRules.Window(40, null, 5) == (0, 5) && LyricsRules.Window(40, 39, 5) == (35, 5), "the first and the last five at the ends");
+Check(LyricsRules.Window(4, 2, 5) == (0, 4), "a short song shows whole");
+
+// Live streams, plurals, and an update found before a restart
+Check(LiveRules.IsLive(0, true) && !LiveRules.IsLive(0, false) && !LiveRules.IsLive(214, true), "live is no length after a moment");
+Check(L.More(4, czech: true) == "+ 4 další" && L.More(5, czech: true) == "+ 5 dalších", "Czech counts differently from five up");
+Check(L.More(5, czech: false) == "+ 5 more", "English has the one form");
+var day = TimeSpan.FromHours(24);
+Check(!UpdateRules.ShouldCheck(true, t0, t0.AddHours(1), null, "1.0.0", day), "checked an hour ago, nothing found, not again");
+Check(UpdateRules.ShouldCheck(true, t0, t0.AddHours(1), "1.0.1", "1.0.0", day), "one found before the restart is looked up again at launch");
+Check(!UpdateRules.ShouldCheck(false, t0, t0.AddHours(1), "1.0.1", "1.0.0", day), "but only at launch, not every hour");
+Check(!UpdateRules.ShouldCheck(true, t0, t0.AddHours(1), "1.0.0", "1.0.0", day), "once it's installed there's nothing to look up");
+Check(UpdateRules.ShouldCheck(false, t0, t0.AddHours(25), null, "1.0.0", day), "and once a day regardless");
+
 // Page swipes
 var swipe = new PageSwipeTracker();
 Check(swipe.Add(40, t0) == 0, "not far enough yet");

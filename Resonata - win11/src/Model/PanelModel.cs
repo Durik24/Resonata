@@ -8,6 +8,8 @@ public enum PanelTab { Music, Notes, Apps, Timer, Shelf }
 
 public static class Glyph
 {
+    /// A chevron pointing back (Segoe's ChevronLeft).
+    public const string Back = "\uE76B";
     public const string Music = "", Notes = "", Apps = "", Timer = "", Shelf = "";
     public const string Play = "", Pause = "", Previous = "", Next = "";
     public const string Settings = "", Screens = "", Add = "", Close = "", Minus = "";

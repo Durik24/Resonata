@@ -37,7 +37,10 @@ public sealed class LyricsStore(PanelModel model)
     /// Same song as last time is a no-op; null clears the lines.
     public void Load(Track? track)
     {
-        if (track is null)
+        // Nothing playing, lyrics switched off, or not a song at all: then
+        // LRCLIB isn't asked. The switch used to hide the line and nothing
+        // more — every title and artist still went there.
+        if (track is null || !Settings.Current.ShowLyrics || !LyricsRules.ShouldLookUp(track))
         {
             _current = null;
             _task?.Cancel();
@@ -107,6 +110,8 @@ public sealed class LyricsStore(PanelModel model)
     private sealed class Record
     {
         [JsonPropertyName("syncedLyrics")] public string? SyncedLyrics { get; set; }
+        /// The recording's length in seconds, as LRCLIB has it.
+        [JsonPropertyName("duration")] public double? Duration { get; set; }
     }
 
     /// Exact match first; a looser search if that misses, since a title with
@@ -124,9 +129,13 @@ public sealed class LyricsStore(PanelModel model)
         if (search.body is null) return (Outcome.None, null);
         try
         {
+            var timed = new List<(double? Duration, IReadOnlyList<LyricLine> Lines)>();
             foreach (var record in JsonSerializer.Deserialize<Record[]>(search.body) ?? [])
                 if (record.SyncedLyrics is { } synced && Lrc.Parse(synced) is { } found)
-                    return (Outcome.Lines, found);
+                    timed.Add((record.Duration, found));
+            // The one nearest this recording's length, not simply the first.
+            if (LyricsRules.Closest(timed.Select(r => r.Duration).ToList(), t.Duration) is { } best)
+                return (Outcome.Lines, timed[best].Lines);
         }
         catch (JsonException)
         {
