@@ -1,0 +1,34 @@
+# Runs both versions' logic tests on every push and pull request.
+#
+# The two versions share a design and no code, and each can only be tested on
+# its own system: the Windows tests need Windows' desktop runtime, so they
+# can't be run on the Mac this is mostly written on. Here both run every time.
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  macos:
+    name: macOS
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Swift version
+        run: swift --version
+      # Plain swiftc, like build.sh: nothing but the command-line tools.
+      - name: Logic tests
+        working-directory: "Resonata - macOS"
+        run: ./test.sh
+
+  windows:
+    name: Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Logic tests
+        run: dotnet run --project "Resonata - win11/tests/Resonata.Tests.csproj" -c Release
