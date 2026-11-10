@@ -9,7 +9,7 @@ dalších přehrávačů.
 
 ## Instalace
 
-1. Stáhni `Resonata-Setup-1.0.0.exe` z [vydání na GitHubu](https://github.com/Durik24/Resonata/releases/tag/win-v1.0.0) a spusť ho.
+1. Stáhni `Resonata-Setup-1.1.0.exe` z [vydání na GitHubu](https://github.com/Durik24/Resonata/releases/tag/win-v1.1.0) a spusť ho.
 2. Když se objeví modré okno SmartScreen, klikni na **Další informace** a pak
    **Přesto spustit**. Instalátor není podepsaný placeným certifikátem.
 3. Windows se zeptá, jestli povolit aplikaci od **neznámého vydavatele**.
