@@ -9,15 +9,18 @@ dalších přehrávačů.
 
 ## Instalace
 
-1. Spusť `Resonata-Setup-1.0.0.exe`.
+1. Stáhni `Resonata-Setup-1.0.0.exe` z [vydání na GitHubu](https://github.com/Durik24/Resonata/releases/tag/win-v1.0.0) a spusť ho.
 2. Když se objeví modré okno SmartScreen, klikni na **Další informace** a pak
    **Přesto spustit**. Instalátor není podepsaný placeným certifikátem.
-3. Potvrď oprávnění správce a projdi průvodce.
+3. Windows se zeptá, jestli povolit aplikaci od **neznámého vydavatele**.
+   Ukáže to u každého nepodepsaného programu, potvrď to a projdi průvodce.
 
-> **Inteligentní řízení aplikací (Smart App Control):** pokud ho máš ve Windows
-> zapnuté, nepodepsaný Setup se nespustí a tlačítko „Přesto spustit“ tam není.
-> Výjimku pro jednu aplikaci Windows nedovolí a po vypnutí může jít ochrana
-> zapnout zpátky až po přeinstalaci Windows, takže to kvůli Resonatě nedělej.
+> **Inteligentní řízení aplikací (Smart App Control):** Setup stažený z GitHubu
+> se na našem počítači se zapnutou ochranou nainstaloval bez potíží. Windows
+> ale soubory posuzuje podle jejich pověsti, takže to jinde dopadnout může jinak.
+> Pokud ho zablokuje, tlačítko „Přesto spustit“ tam není a výjimku pro jednu
+> aplikaci Windows nedovolí. Ochranu kvůli tomu nevypínej, zapnout jde zpátky
+> až po přeinstalaci Windows. Počkej radši na podepsanou verzi.
 
 Aplikace je ve výchozím stavu anglicky, češtinu zapneš v **Settings → Language**
 (projeví se po restartu Resonaty).
