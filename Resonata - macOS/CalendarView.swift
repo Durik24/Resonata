@@ -34,6 +34,15 @@ struct CalendarColumn: View {
             // The panel can stay open across midnight, but each open starts
             // from today again.
             selected = Calendar.current.startOfDay(for: Date())
+        }
+        // Re-read once the panel has opened, not as it opens: the read asks
+        // EventKit and waits for the answer on the main thread, and from
+        // `onAppear` that wait sat in the first frame of the opening. What
+        // is shown meanwhile is the last read, which the store keeps current
+        // by itself as the calendar changes.
+        .task {
+            try? await Task.sleep(for: .seconds(Preferences.animationSpeed.settleTime))
+            guard !Task.isCancelled else { return }
             store.reload()
         }
     }

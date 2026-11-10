@@ -47,7 +47,8 @@ struct NotchFrame: ViewModifier, Animatable {
 
     func body(content: Content) -> some View {
         let shape = NotchShape(topRadius: topRadius, bottomRadius: bottomRadius)
-        content
+        if FrameProbe.isOn { FrameProbe.record("\(size.width) \(size.height)") }
+        return content
             // The content's size comes from this modifier, frame by frame.
             // Without this, SwiftUI *also* animated the content's own layout
             // from old to new on the same transaction — two animations of one
@@ -78,5 +79,67 @@ struct NotchFrame: ViewModifier, Animatable {
             // controller never resizes it mid-animation, so this outer frame
             // is constant while anything inside moves.
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+}
+
+/// Debug (`RESONATA_DEBUG_FRAMES=1`): the size the notch was laid out at on
+/// every frame, with the time, so a stutter can be read off as numbers — a
+/// gap in the times is a dropped frame, a step in the sizes is a jump.
+/// `com.local.resonata.toggle` writes them to `RESONATA_DEBUG_DIR` a moment
+/// after each open and close.
+@MainActor
+enum FrameProbe {
+    static let isOn = ProcessInfo.processInfo.environment["RESONATA_DEBUG_FRAMES"] == "1"
+    private static var lines: [String] = []
+    private static var start = CACurrentMediaTime()
+
+    static func begin() {
+        lines = []
+        start = CACurrentMediaTime()
+        watchRunLoop()
+    }
+
+    private static var watching = false
+    private static var woke = CACurrentMediaTime()
+    private static var phases = ""
+
+    /// Every pass of the main run loop that kept it busy for over 6 ms —
+    /// work that a frame had to wait behind.
+    private static func watchRunLoop() {
+        guard !watching else { return }
+        watching = true
+        let observer = CFRunLoopObserverCreateWithHandler(
+            nil, CFRunLoopActivity.allActivities.rawValue, true, 0
+        ) { _, activity in
+            MainActor.assumeIsolated {
+                let now = CACurrentMediaTime()
+                if activity == .afterWaiting {
+                    woke = now
+                    phases = ""
+                } else if activity == .beforeWaiting {
+                    if now - woke > 0.006 {
+                        record(String(format: "busy %.1f ms%@", (now - woke) * 1000, phases))
+                    }
+                } else {
+                    let name = activity == .beforeTimers ? "T" : activity == .beforeSources ? "S" : "?"
+                    phases += String(format: " %@%.1f", name, (now - woke) * 1000)
+                }
+            }
+        }
+        CFRunLoopAddObserver(CFRunLoopGetMain(), observer, .commonModes)
+    }
+
+    static func record(_ what: String) {
+        lines.append(String(format: "%7.1f  %@", (CACurrentMediaTime() - start) * 1000, what))
+    }
+
+    private static var count = 0
+
+    static func write(tag: String) {
+        count += 1
+        let dir = ProcessInfo.processInfo.environment["RESONATA_DEBUG_DIR"] ?? NSTemporaryDirectory()
+        try? lines.joined(separator: "\n").write(
+            to: URL(fileURLWithPath: dir).appendingPathComponent("frames-\(count)-\(tag).txt"),
+            atomically: true, encoding: .utf8)
     }
 }

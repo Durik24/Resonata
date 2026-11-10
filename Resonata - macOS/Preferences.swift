@@ -186,6 +186,44 @@ enum AnimationSpeed: String, CaseIterable, Identifiable {
         }
     }
 
+    /// The spring for the panel opening: `spring`, already moving.
+    ///
+    /// A spring starts from rest — 3% of the way after one frame, 11% after
+    /// two — and the panel's content takes a few hundredths of a second to
+    /// build before the first frame at all. Together that was a click, a
+    /// pause, and then the panel: the open felt stuck. The same spring with
+    /// a push behind it is 11% out on its first frame and lands exactly as
+    /// before, overshoot included.
+    var openSpring: Animation {
+        func pushed(response: Double, damping: Double, velocity: Double) -> Animation {
+            let stiffness = pow(2 * Double.pi / response, 2)
+            return .interpolatingSpring(mass: 1, stiffness: stiffness,
+                                        damping: 2 * damping * stiffness.squareRoot(),
+                                        initialVelocity: velocity)
+        }
+        return switch self {
+        case .fast: pushed(response: 0.25, damping: 0.86, velocity: 8)
+        case .normal: pushed(response: 0.38, damping: 0.8, velocity: 6)
+        case .slow: pushed(response: 0.7, damping: 0.8, velocity: 3)
+        }
+    }
+
+    /// The spring for the open panel going back into the notch: no bounce.
+    ///
+    /// The opening spring's little overshoot, played backwards, is the pill
+    /// dipping *under* its own size before settling — measured at 1.9 pt
+    /// short and 3.8 pt narrow, a third of a second in. The pill is the
+    /// hardware cutout's height, so for those frames the real notch stuck
+    /// out below it. Critically damped, it arrives and stops; a touch
+    /// quicker than the opening, because leaving shouldn't be watched.
+    var closeSpring: Animation {
+        switch self {
+        case .fast: .spring(response: 0.22, dampingFraction: 1)
+        case .normal: .spring(response: 0.32, dampingFraction: 1)
+        case .slow: .spring(response: 0.6, dampingFraction: 1)
+        }
+    }
+
     /// How long that spring takes to land, near enough. The window is cut
     /// down to the new shape only after this (`NotchPanelController.apply`),
     /// and whatever waits for a slide to finish waits this long. It was one

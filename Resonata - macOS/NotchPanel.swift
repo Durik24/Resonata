@@ -116,7 +116,49 @@ final class NotchPanel: NSPanel {
     /// A key nothing wanted. The default is a beep for every one of them.
     override func keyDown(with event: NSEvent) {}
 
+    /// Until when the panel is opening or closing (`CACurrentMediaTime`),
+    /// set by the controller. See `sendEvent`.
+    var movingUntil: CFTimeInterval = 0
+    private var heldMoves: [NSEvent] = []
+
+    /// Hands AppKit the "window moved" events kept back during an animation.
+    /// The controller calls this before each resize of its own, so AppKit
+    /// always hears of the moves in the order they happened.
+    func releaseHeldMoves() {
+        let held = heldMoves
+        heldMoves = []
+        held.forEach { super.sendEvent($0) }
+    }
+
+    private func releaseHeldMovesWhenStill() {
+        let wait = max(0, movingUntil - CACurrentMediaTime()) + 0.02
+        DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, !self.heldMoves.isEmpty else { return }
+                if CACurrentMediaTime() < self.movingUntil {
+                    self.releaseHeldMovesWhenStill()
+                } else {
+                    self.releaseHeldMoves()
+                }
+            }
+        }
+    }
+
     override func sendEvent(_ event: NSEvent) {
+        // The window grows as the panel opens, and about a tenth of a second
+        // later the window server reports back that it has moved. AppKit's
+        // answer to that asks the server whether the displays have changed
+        // and waits for the reply on this thread — sampled at 7 to 9 ms,
+        // every time, in the frames where the opening panel moves fastest:
+        // one frame late, the hitch in the middle of the open. The report
+        // says nothing AppKit doesn't know, since the move was its own, so
+        // it waits until the panel has stopped.
+        if event.type == .appKitDefined, event.subtype == .windowMoved,
+           CACurrentMediaTime() < movingUntil {
+            heldMoves.append(event)
+            if heldMoves.count == 1 { releaseHeldMovesWhenStill() }
+            return
+        }
         switch event.type {
         case .keyDown where onKeyDown?(event) == true:
             // Before the text field sees it: Esc in a note would otherwise
@@ -183,6 +225,8 @@ final class NotchPanel: NSPanel {
 
     /// `RESONATA_DEBUG_CLICK=1` logs every mouse-down the panel receives.
     static let debugClick = ProcessInfo.processInfo.environment["RESONATA_DEBUG_CLICK"] == "1"
+    /// `RESONATA_DEBUG_FILM=1`: the debug toggle photographs every 40 ms.
+    static let debugFilm = ProcessInfo.processInfo.environment["RESONATA_DEBUG_FILM"] == "1"
 }
 
 /// Hosting view that treats the first click as a click.
@@ -500,8 +544,16 @@ final class NotchPanelController {
                 MainActor.assumeIsolated {
                     guard let self else { return }
                     let opening = !self.model.isExpanded
+                    if FrameProbe.isOn {
+                        FrameProbe.begin()
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                            MainActor.assumeIsolated { FrameProbe.write(tag: opening ? "open" : "close") }
+                        }
+                    } else {
+                        self.debugSnapshots(tag: opening ? "open" : "close",
+                                            every: NotchPanel.debugFilm ? 0.04 : nil)
+                    }
                     self.setExpanded(opening)
-                    self.debugSnapshots(tag: opening ? "open" : "close")
                 }
             }
         }
@@ -808,11 +860,22 @@ final class NotchPanelController {
                     self.model.activity = nil
                     self.model.hovering = false
                     self.hoverPeeking = false
+                    // Room for the panel first, in this same pass. Left to
+                    // the model's subscriber, the window grew one run-loop
+                    // pass later: the panel was laid out once in the pill's
+                    // window and again in the big one, before the first
+                    // frame of the open had been drawn.
+                    self.apply(expanded: true, hasTrack: self.model.showsCollapsedContent,
+                               peeking: false)
                 }
+                if FrameProbe.isOn { FrameProbe.record("setExpanded") }
+                self.panel?.movingUntil = CACurrentMediaTime() + Preferences.animationSpeed.settleTime
                 self.model.isExpanded = expanded
                 self.panel?.contentView?.needsLayout = true
                 self.panel?.contentView?.layoutSubtreeIfNeeded()
+                if FrameProbe.isOn { FrameProbe.record("laid out") }
                 self.panel?.displayIfNeeded()
+                if FrameProbe.isOn { FrameProbe.record("displayed") }
                 if expanded {
                     if takingKeyboard { self.panel?.makeKey() }
                 } else {
@@ -1084,10 +1147,12 @@ final class NotchPanelController {
     /// and log the window's frame and visibility at each. Shows whether the
     /// app has *drawn* the expanded panel when it thinks it has — the window
     /// is ours, so this needs no permission.
-    private func debugSnapshots(tag: String = "open") {
+    private func debugSnapshots(tag: String = "open", every step: TimeInterval? = nil) {
         let dir = ProcessInfo.processInfo.environment["RESONATA_DEBUG_DIR"] ?? NSTemporaryDirectory()
         let t0 = CFAbsoluteTimeGetCurrent()
-        for delay in [0.05, 0.15, 0.3, 0.6, 1.5] {
+        // `every`: a film strip of the first 0.7 s instead of five stills.
+        let delays = step.map { Array(stride(from: 0.0, through: 0.7, by: $0)) } ?? [0.05, 0.15, 0.3, 0.6, 1.5]
+        for delay in delays {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
                 MainActor.assumeIsolated {
                     guard let self, let panel = self.panel, let view = panel.contentView else { return }
@@ -1246,6 +1311,8 @@ final class NotchPanelController {
         // began the spring: a visible jump from below. Leaving the display to
         // SwiftUI's own pass, a moment later, draws the first frame of the new
         // state straight into the new frame.
+        if FrameProbe.isOn { FrameProbe.record("window \(rect.width) x \(rect.height)") }
+        panel.releaseHeldMoves()
         panel.controllerResizing = true
         panel.setFrame(rect, display: false)
         panel.controllerResizing = false
@@ -1255,6 +1322,7 @@ final class NotchPanelController {
         // size.
         panel.contentView?.needsLayout = true
         panel.contentView?.layoutSubtreeIfNeeded()
+        if FrameProbe.isOn { FrameProbe.record("window laid out") }
     }
 
     private func frame(

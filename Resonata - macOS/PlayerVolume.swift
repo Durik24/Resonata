@@ -154,6 +154,7 @@ struct PlayerVolumeControl: View {
         .onAppear {
             moved = false
             PlayerVolume.read(player) { value in
+                if FrameProbe.isOn { FrameProbe.record("volume read") }
                 guard !moved else { return }
                 volume = value.map(Double.init)
                 Self.lastKnown[player.bundleID] = volume

@@ -32,6 +32,8 @@ struct NotchView: View {
 
     // Settings, read here so a change in the settings window re-renders.
     @AppStorage(Preferences.Key.animationSpeed) private var speedSetting = AnimationSpeed.normal.rawValue
+    /// The open panel's content is still in the view, closing — see `content`.
+    @State private var lingering = false
     @AppStorage(Preferences.Key.waveColour) private var waveColourSetting = WaveColour.album.rawValue
     @AppStorage(Preferences.Key.customWaveColour) private var customWaveHex = "#FFFFFF"
     @AppStorage(Preferences.Key.showLyrics) var showLyricsSetting = true
@@ -92,6 +94,12 @@ struct NotchView: View {
     /// watched, damped enough to land without a wobble.
     var settle: Animation { (AnimationSpeed(rawValue: speedSetting) ?? .normal).spring }
 
+    /// The same, for the panel opening — see `AnimationSpeed.openSpring`.
+    var settleOpen: Animation { (AnimationSpeed(rawValue: speedSetting) ?? .normal).openSpring }
+
+    /// The same, for the panel closing — see `AnimationSpeed.closeSpring`.
+    var settleClosed: Animation { (AnimationSpeed(rawValue: speedSetting) ?? .normal).closeSpring }
+
     /// Fades for content swapping in place: artwork, titles, glyphs.
     var fade: Animation { (AnimationSpeed(rawValue: speedSetting) ?? .normal).fade }
 
@@ -109,25 +117,42 @@ struct NotchView: View {
     /// On close it waits for the open content's 0.1 s fade before coming
     /// in, so the two never show at once.
     private static let closedSwap = AnyTransition.asymmetric(
-        insertion: .opacity.animation(.easeInOut(duration: 0.22).delay(0.08)),
+        insertion: .opacity.animation(.easeOut(duration: 0.2).delay(0.12)),
         removal: .identity
     )
 
-    /// The open panel's content comes into focus rather than just fading:
-    /// NotchNook's scale-and-blur. The scale half already comes from the
-    /// content growing with the box (see `content`), so this adds the blur.
-    ///
-    /// On close it just goes, quickly. A view being removed keeps its last
-    /// layout, so the open panel's content stayed full size while the box
-    /// shrank around it, and over 0.32 s of blur it lay across the closed
-    /// row fading in — two titles on top of each other mid-close.
-    private static let focusIn = AnyTransition.asymmetric(
-        insertion: AnyTransition.modifier(
-            active: Defocus(radius: 10, opacity: 0),
-            identity: Defocus(radius: 0, opacity: 1)
-        ).animation(.easeOut(duration: 0.32)),
+    /// The wave fades in with the panel and is gone early on the way back:
+    /// it rides the bottom edge, which on a close is heading for the pill.
+    private static let waveSwap = AnyTransition.asymmetric(
+        insertion: .opacity.animation(.easeInOut(duration: 0.22)),
         removal: .opacity.animation(.easeOut(duration: 0.1))
     )
+
+    /// The open panel's content zooms out of the notch and comes into focus
+    /// rather than just fading: NotchNook's scale-and-blur. The scale rides
+    /// the box's own spring (see `content`); the blur and the fade keep
+    /// their own, shorter clock.
+    ///
+    /// On close it goes back the way it came — but not as this transition's
+    /// removal. See `content` and `Recede`.
+    private var focusIn: AnyTransition {
+        .asymmetric(
+            insertion: AnyTransition.modifier(
+                active: Zoom(scale: closedScale),
+                identity: Zoom(scale: 1)
+            ).animation(settleOpen).combined(with: AnyTransition.modifier(
+                active: Defocus(radius: 10, opacity: 0),
+                identity: Defocus(radius: 0, opacity: 1)
+            ).animation(.easeOut(duration: 0.32))),
+            removal: .identity
+        )
+    }
+
+    /// The pill's height as a share of the open panel's: how small the
+    /// content is when the box around it has closed.
+    private var closedScale: CGFloat {
+        (notchSize.height + NotchMetrics.collapsedExtraHeight) / model.expandedHeight
+    }
 
     /// The closed pill's size, swollen by `hoverGrowth` when asked — shared
     /// with `NotchPanelController`, so the window and the click target grow
@@ -209,11 +234,10 @@ struct NotchView: View {
                         .padding(.horizontal, 22)
                         .padding(.bottom, 8)
                         .allowsHitTesting(false)
-                        .transition(Self.crossfade)
+                        .transition(Self.waveSwap)
                 }
 
                 content
-                    .padding(.horizontal, model.isExpanded ? 20 : 6)
             }
             // The notch itself: size, radii, fills, clip and hit shape, all
             // in one animatable modifier — see `NotchFrame` for why it has
@@ -224,13 +248,20 @@ struct NotchView: View {
                 bottomRadius: model.isExpanded ? 24 : 7 * model.pillScale,
                 xOffset: !model.isExpanded && model.peeking ? Self.peekShift : 0,
                 background: { shape in
+                    // Plain rectangles, not `shape.fill`: `NotchFrame` clips
+                    // them to the silhouette anyway. A gradient filling a
+                    // custom shape is painted by Core Graphics on the main
+                    // thread, again for every frame the shape changes on —
+                    // profiled at about 60 ms of an open, in the frames where
+                    // the panel moves fastest. A bare gradient is a layer the
+                    // GPU stretches.
                     AnyView(ZStack {
-                        shape.fill(Self.panelBlack)
+                        Self.panelBlack
                         // The wash sits *over* solid black, never replacing
                         // it — the collapsed pill has to stay black enough to
                         // pass for the bezel, and a gradient that bottoms out
                         // anywhere above black would give the illusion away.
-                        shape.fill(accentWash)
+                        accentWash
                     })
                 }
             ))
@@ -239,7 +270,7 @@ struct NotchView: View {
             // 32 → 280 on open, and animating that frame centred the whole
             // panel mid-window and slid it up. Here, the shape grows out of
             // the notch and the frame around it simply snaps to fit.
-            .animation(settle, value: model.isExpanded)
+            .animation(model.isExpanded ? settleOpen : settleClosed, value: model.isExpanded)
             .animation(settle, value: model.showsCollapsedContent)
             .animation(settle, value: model.peeking)
             .animation(settle, value: model.tab)
@@ -325,28 +356,68 @@ struct NotchView: View {
         )
     }
 
-    @ViewBuilder
     private var content: some View {
-        if model.isExpanded {
-            // The panel's content is laid out at its final size and revealed
-            // by the growing box — and since the box grows from the top
-            // centre, the first thing visible is the *middle* of the panel,
-            // which reads as the content popping out from there. Scaling it
-            // with the box's current height, anchored at the top centre,
-            // makes the whole panel zoom out of the notch and back into it.
-            // `AnimatedFrame` runs layout every frame, so the reader sees the
-            // interpolated size.
-            GeometryReader { geo in
-                expanded
-                    .frame(width: geo.size.width, alignment: .top)
-                    .scaleEffect(
-                        max(0.05, min(1, geo.size.height / model.expandedHeight)),
-                        anchor: .top
-                    )
+        ZStack {
+            if model.isExpanded || lingering {
+                // The panel's content is laid out once, at its final size,
+                // and revealed by the growing box — and since the box grows
+                // from the top centre, the first thing visible would be the
+                // *middle* of the panel, the content popping out from there.
+                // So it is scaled with the box, anchored at the top centre:
+                // the whole panel zooms out of the notch and back into it.
+                //
+                // On the way out the scale is the transition's (`focusIn`),
+                // on the way back `Recede`'s, both on the box's own spring:
+                // the box's height and the scale are straight lines in the
+                // spring's progress, so they stay each other's share on
+                // every frame. The scale used to be read back from the box
+                // with a `GeometryReader`, which rebuilt and re-laid-out the
+                // whole panel on every frame of the animation — 6 to 12 ms
+                // of each 16.7, and the frames that didn't make it were the
+                // stutter in the open.
+                Color.clear
+                    .overlay(alignment: .top) {
+                        expanded.frame(height: model.expandedHeight, alignment: .top)
+                    }
+                    .modifier(Recede(progress: model.isExpanded ? 0 : 1, smallest: closedScale))
+                    // Nothing under this may change its layout on the frame
+                    // `isExpanded` flips, or this spring takes that change
+                    // too: the margin once did, 20 to 6, and the content
+                    // jumped sideways at the start of every close. (The
+                    // scoped form, `animation(_:body:)`, would rule that
+                    // out, but photographed it drew `Recede` late and at
+                    // full size, like a removal transition.)
+                    .animation(model.isExpanded ? settleOpen : settleClosed, value: model.isExpanded)
+                    // The panel's own margin, open or closing; the pill's
+                    // is the closed row's.
+                    .padding(.horizontal, 20)
+                    // Still there while it shrinks away, but no longer the
+                    // panel: nothing in it takes a click or is read out.
+                    .allowsHitTesting(model.isExpanded)
+                    .accessibilityHidden(!model.isExpanded)
+                    .transition(focusIn)
             }
-            .transition(Self.focusIn)
-        } else {
-            closedRow.transition(Self.closedSwap)
+            if !model.isExpanded {
+                closedRow
+                    .padding(.horizontal, 6)
+                    .transition(Self.closedSwap)
+            }
+        }
+        // The open content outlives `isExpanded` by the length of the close,
+        // so that it can be seen leaving. As a removal transition it
+        // couldn't: photographed frame by frame, a view on its way out was
+        // drawn at full size, and faded a tenth of a second late, whatever
+        // the transition said — the panel's text cut off by the box closing
+        // over it.
+        .task(id: model.isExpanded) {
+            if model.isExpanded {
+                lingering = true
+                return
+            }
+            let wait = (AnimationSpeed(rawValue: speedSetting) ?? .normal).settleTime
+            try? await Task.sleep(for: .seconds(wait))
+            guard !Task.isCancelled else { return }
+            lingering = false
         }
     }
 
@@ -558,6 +629,42 @@ struct NotchView: View {
             // Trailing padding shifts only the wave inward — the artwork sits
             // on the far side of the cutout and stays put.
             .padding(.trailing, NotchMetrics.waveformNudge)
+    }
+}
+
+/// The open panel's content on its way back into the notch, for
+/// `NotchView.content`: one number, 0 open to 1 closed, on the box's spring.
+///
+/// The size follows the box all the way, so the content stays the box's
+/// share of itself — the opening, backwards. The blur and the fade are done
+/// by 0.65: the last third of the way the box is nearly a pill and the
+/// artwork and bars are fading in, and a smudge of the old panel under them
+/// was two things at once.
+private struct Recede: ViewModifier, Animatable {
+    var progress: CGFloat
+    /// The scale at `progress` 1.
+    var smallest: CGFloat
+
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    func body(content: Content) -> some View {
+        let fade = min(1, max(0, progress / 0.65))
+        content
+            .scaleEffect(max(0.05, 1 + (smallest - 1) * progress), anchor: .top)
+            .blur(radius: 8 * fade)
+            .opacity(1 - fade)
+    }
+}
+
+/// A scale from the top centre, for `NotchView.focusIn`.
+private struct Zoom: ViewModifier {
+    var scale: CGFloat
+
+    func body(content: Content) -> some View {
+        content.scaleEffect(max(0.05, scale), anchor: .top)
     }
 }
 
