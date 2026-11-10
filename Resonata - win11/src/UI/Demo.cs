@@ -87,6 +87,52 @@ public static class Snapshots
         ((App)Application.Current).Quit();
     }
 
+    /// `RESONATA_VOLUMETEST=1`: reads Spotify's volume the way the panel does,
+    /// moves it a tenth and back, and logs each step with Spotify's level in
+    /// the Windows mixer beside it. The real Spotify, which the logic tests
+    /// can't reach.
+    public static async Task RunVolumeTestAsync()
+    {
+        static string Mixer()
+        {
+            using var enumerator = new NAudio.CoreAudioApi.MMDeviceEnumerator();
+            var levels = new List<string>();
+            foreach (var device in enumerator.EnumerateAudioEndPoints(NAudio.CoreAudioApi.DataFlow.Render, NAudio.CoreAudioApi.DeviceState.Active))
+            {
+                var sessions = device.AudioSessionManager;
+                sessions.RefreshSessions();
+                for (var i = 0; i < sessions.Sessions.Count; i++)
+                {
+                    var session = sessions.Sessions[i];
+                    try
+                    {
+                        using var process = System.Diagnostics.Process.GetProcessById((int)session.GetProcessID);
+                        if (process.ProcessName == "Spotify") levels.Add($"{session.SimpleAudioVolume.Volume:F2}");
+                    }
+                    catch (ArgumentException) { }
+                }
+            }
+            return levels.Count == 0 ? "none" : string.Join(", ", levels);
+        }
+
+        await Task.Delay(1000);
+        var before = await SpotifyVolume.ReadAsync();
+        Log.Write($"volume test: read {before?.ToString() ?? "nothing"}, Spotify's own slider: {SpotifyVolume.InTenths}, mixer {Mixer()}");
+        if (before is { } level)
+        {
+            var moved = level >= 10 ? level - 10 : level + 10;
+            SpotifyVolume.Set((int)moved);
+            await Task.Delay(1500);
+            Log.Write($"volume test: set {moved}, mixer now {Mixer()}");
+            SpotifyVolume.Set((int)level);
+            await Task.Delay(1500);
+            Log.Write($"volume test: set {level} again, mixer now {Mixer()}");
+            // As the panel would when opened next: it should read back the last level.
+            Log.Write($"volume test: read back {(await SpotifyVolume.ReadAsync())?.ToString() ?? "nothing"}");
+        }
+        ((App)Application.Current).Quit();
+    }
+
     public static async Task RunAsync(PanelModel m, NotchWindow window, SongPeek songPeek, ActivityPeek activity, string dir)
     {
         Directory.CreateDirectory(dir);

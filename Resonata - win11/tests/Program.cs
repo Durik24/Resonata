@@ -133,6 +133,15 @@ Check(!SongPeekRules.ShouldPeek(playing, other, false, false), "not when switche
 Check(SpotifyVolume.ToggledMute(40, null) == 0, "mute from any level");
 Check(SpotifyVolume.ToggledMute(0, 40) == 40, "back to the level before");
 Check(SpotifyVolume.ToggledMute(0, null) == 50, "halfway when there was none");
+Check(SpotifyVolume.Snap(37, tenths: true) == 40 && SpotifyVolume.Snap(34, tenths: true) == 30, "Spotify's own slider goes in tenths");
+Check(SpotifyVolume.Snap(35, tenths: true) == 40 && SpotifyVolume.Snap(5, tenths: true) == 10, "halfway between two goes up");
+Check(SpotifyVolume.Snap(0, tenths: true) == 0 && SpotifyVolume.Snap(100, tenths: true) == 100, "both ends stay");
+Check(SpotifyVolume.Snap(37.4, tenths: false) == 37, "the mixer takes any whole level");
+Check(SpotifyVolume.Snap(130, tenths: false) == 100 && SpotifyVolume.Snap(-5, tenths: true) == 0, "never outside 0–100");
+// What Spotify's window had: the side panels' widths, the place in a song, the volume.
+Check(SpotifyVolume.PickVolume([(72, 420), (0, 219857), (0, 1), (280, 420)]) == 2, "the volume is the slider from 0 to 1");
+Check(SpotifyVolume.PickVolume([(72, 420), (0, 219857)]) is null, "no volume slider, none picked");
+Check(SpotifyVolume.PickVolume([]) is null, "no sliders at all");
 
 // Settings files from older versions
 Check(System.Text.Json.JsonSerializer.Deserialize<Settings>("""{"OpenMode":"Nook"}""")!.OpenMode == OpenMode.Hover, "the removed mode reads as Hover");

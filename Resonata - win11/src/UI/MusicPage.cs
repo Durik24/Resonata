@@ -598,6 +598,8 @@ public sealed class SpotifyVolumeControl : StackPanel
     private void SetVolume(double value)
     {
         _moved = true;
+        // Where Spotify will really put it: its own slider goes in tenths.
+        value = SpotifyVolume.Snap(value, SpotifyVolume.InTenths);
         if (value < 1 && _volume is >= 1) SpotifyVolume.BeforeMute = _volume;
         _volume = value;
         SpotifyVolume.LastKnown = value;

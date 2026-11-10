@@ -74,6 +74,8 @@ public partial class App : Application
             _ = Snapshots.RunAsync(_model, _window, _songPeek, _activityPeek, dir);
         if (Environment.GetEnvironmentVariable("RESONATA_ANIMTEST") == "1")
             _ = Snapshots.RunAnimationTestAsync(_window);
+        if (Environment.GetEnvironmentVariable("RESONATA_VOLUMETEST") == "1")
+            _ = Snapshots.RunVolumeTestAsync();
     }
 
     private void Wire()

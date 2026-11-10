@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -126,7 +127,14 @@ public sealed class OutputWatcher : IMMNotificationClient
     public void OnPropertyValueChanged(string pwstrDeviceId, PropertyKey key) { }
 }
 
-/// Spotify's own level in Windows' volume mixer, leaving everything else alone.
+/// Spotify's own volume: the slider in Spotify's window, the one the Mac
+/// reaches through AppleScript's `sound volume`. So Spotify's slider moves
+/// with it, the rest of the PC's sound stays where it is, and it also works
+/// for a phone or a speaker Spotify plays on through Connect.
+///
+/// Spotify has no way in on Windows but the one screen readers use, UI
+/// Automation, which works with its window minimised too, not closed. When
+/// that window can't be reached, Spotify's level in Windows' volume mixer.
 public static class SpotifyVolume
 {
     private static readonly SemaphoreSlim Gate = new(1, 1);
@@ -134,9 +142,69 @@ public static class SpotifyVolume
     public static double? LastKnown { get; set; }
     public static double? BeforeMute { get; set; }
 
+    /// Spotify's own slider takes tenths: anything else lands on the nearest.
+    /// True when the last look found it, so the knob here lands there too.
+    public static bool InTenths { get; private set; }
+
+    /// Found afresh each time the panel opens, then kept for the drag.
+    private static RangeValuePattern? _slider;
+
     /// The speaker click: down to 0 from any level, and back to the level before.
     public static double ToggledMute(double volume, double? before) =>
         volume >= 1 ? 0 : before is >= 1 ? before.Value : 50;
+
+    /// The level `volume` will really be: Spotify's slider rounds to tenths.
+    public static double Snap(double volume, bool tenths) =>
+        Math.Clamp(tenths ? Math.Round(volume / 10, MidpointRounding.AwayFromZero) * 10 : Math.Round(volume), 0, 100);
+
+    /// Which of the sliders in Spotify's window is its volume: the one from 0
+    /// to 1. The others are the place in the song (0 to its length in ms) and
+    /// the side panels' widths. Their names are in Spotify's language.
+    public static int? PickVolume(IReadOnlyList<(double Minimum, double Maximum)> ranges)
+    {
+        for (var i = 0; i < ranges.Count; i++)
+            if (ranges[i] is (0d, 1d)) return i;
+        return null;
+    }
+
+    /// Spotify's volume slider, or null when no Spotify window has one.
+    private static RangeValuePattern? AppSlider()
+    {
+        if (_slider is not null) return _slider;
+        var sliders = new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Slider);
+        foreach (var process in Process.GetProcessesByName("Spotify"))
+        {
+            using (process)
+            {
+                IntPtr window;
+                try
+                {
+                    window = process.MainWindowHandle;
+                }
+                catch (InvalidOperationException)
+                {
+                    continue; // That process has just gone.
+                }
+                if (window == IntPtr.Zero) continue;
+
+                var patterns = new List<RangeValuePattern>();
+                var ranges = new List<(double, double)>();
+                foreach (AutomationElement slider in AutomationElement.FromHandle(window).FindAll(TreeScope.Descendants, sliders))
+                {
+                    if (!slider.TryGetCurrentPattern(RangeValuePattern.Pattern, out var found)) continue;
+                    var range = (RangeValuePattern)found;
+                    patterns.Add(range);
+                    ranges.Add((range.Current.Minimum, range.Current.Maximum));
+                }
+                if (PickVolume(ranges) is { } index) return _slider = patterns[index];
+            }
+        }
+        return null;
+    }
+
+    private static bool IsGone(Exception e) =>
+        e is ElementNotAvailableException or ElementNotEnabledException or InvalidOperationException
+            or ArgumentException or COMException;
 
     /// Spotify's sessions on every output, the one playing first. Not only the
     /// default output's: Spotify can be set to play on another one. None while
@@ -168,11 +236,29 @@ public static class SpotifyVolume
         return found.OrderByDescending(s => s.Active).Select(s => s.Volume).ToList();
     }
 
-    /// 0–100, or null when Spotify has no audio session on this PC.
-    public static Task<double?> ReadAsync() => Task.Run<double?>(() =>
+    /// 0–100, or null with no Spotify to ask. Spotify's slider while its window
+    /// is minimised can be a step behind what Spotify was last told, since a
+    /// window not being drawn passes changes on late; it catches up when used.
+    public static Task<double?> ReadAsync() => Task.Run<double?>(async () =>
     {
+        await Gate.WaitAsync();
         try
         {
+            _slider = null;
+            try
+            {
+                if (AppSlider() is { } slider)
+                {
+                    InTenths = true;
+                    return Math.Round(slider.Current.Value * 100);
+                }
+            }
+            catch (Exception e) when (IsGone(e))
+            {
+                _slider = null;
+                Log.Write($"Spotify's slider unreadable: {e.Message}");
+            }
+            InTenths = false;
             var first = Sessions().FirstOrDefault();
             return first is null ? null : first.Mute ? 0 : Math.Round(first.Volume * 100);
         }
@@ -180,6 +266,10 @@ public static class SpotifyVolume
         {
             Log.Write($"Spotify volume unreadable: {e.Message}");
             return null;
+        }
+        finally
+        {
+            Gate.Release();
         }
     });
 
@@ -194,6 +284,24 @@ public static class SpotifyVolume
             {
                 var value = Interlocked.Exchange(ref _pendingBoxed, 0) - 1;
                 if (value < 0) return;
+                try
+                {
+                    if (AppSlider() is { } slider)
+                    {
+                        var level = Snap(value, tenths: true) / 100;
+                        slider.SetValue(level);
+                        _lastLevel = level;
+                        _ = SettleAsync(Interlocked.Increment(ref _burst));
+                        return;
+                    }
+                }
+                catch (Exception e) when (IsGone(e))
+                {
+                    // Spotify redrew its bar or closed: looked for again next time.
+                    _slider = null;
+                    Log.Write($"Spotify's slider failed: {e.Message}");
+                    return;
+                }
                 foreach (var session in Sessions())
                 {
                     session.Volume = value / 100f;
@@ -213,6 +321,33 @@ public static class SpotifyVolume
 
     // 0 means nothing waiting, otherwise the level plus one.
     private static int _pendingBoxed;
+
+    /// Counts the levels sent to Spotify's slider, so only the last one settles.
+    private static int _burst;
+    private static double _lastLevel;
+
+    /// Once the levels stop coming, the last one once more. A minimised
+    /// Spotify passes a change on only when the next thing is asked of it, so
+    /// without this the panel read the level before last when it next opened.
+    /// The same level again changes nothing in Spotify.
+    private static async Task SettleAsync(int burst)
+    {
+        await Task.Delay(600);
+        if (burst != Volatile.Read(ref _burst)) return;
+        await Gate.WaitAsync();
+        try
+        {
+            if (burst == _burst && _slider is { } slider) slider.SetValue(_lastLevel);
+        }
+        catch (Exception e) when (IsGone(e))
+        {
+            _slider = null;
+        }
+        finally
+        {
+            Gate.Release();
+        }
+    }
 }
 
 public sealed class HotKey

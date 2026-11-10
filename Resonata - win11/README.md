@@ -95,7 +95,14 @@ there. A stream with no length shows **LIVE** instead of a bar stuck at 0:00.
 - The calendar reads private `.ics` links. Windows has nothing a desktop app can
   simply ask for your events.
 - No Apple Music heart: nothing on Windows to talk to.
-- Spotify's volume goes through the Windows mixer rather than AppleScript.
+- Spotify's volume moves the slider in Spotify's own window, as AppleScript's
+  `sound volume` does on the Mac, through UI Automation (Windows' interface for
+  screen readers; Spotify has no other way in). It works with the window
+  minimised and for a device Spotify plays on through Connect. Spotify's slider
+  takes tenths, so the level moves in steps of 10. A minimised window reports a
+  change only when next asked something, so the last level is sent once more
+  when a drag stops. With no Spotify window, the Windows mixer's level for
+  Spotify instead, which is this PC's alone.
 
 ## Cost
 

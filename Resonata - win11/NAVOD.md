@@ -75,7 +75,11 @@ celou obrazovku se sama nevysouvá.
 ## Stránky panelu
 
 - **Hudba**: obal, název, text písně, posuvník, ovládání a kalendář. Když hraje
-  Spotify, je tu i posuvník jen pro jeho hlasitost, ostatní zvuk zůstane.
+  Spotify, je tu i posuvník jeho hlasitosti. Hýbe přímo posuvníkem ve Spotify,
+  po 10 %, takže funguje i když Spotify hraje přes Spotify Connect do telefonu
+  nebo do reproduktoru. Ostatní zvuk počítače zůstane. Spotify musí mít otevřené
+  okno, klidně minimalizované. Bez okna se posuvník vrátí ke směšovači hlasitosti
+  Windows a mění Spotify jen v tomhle počítači.
 - **Poznámky a úkoly**: ukládá se průběžně a jen u tebe v počítači.
 - **Aplikace**: až 11 zástupců. Přidáš je tlačítkem +, řadíš v nastavení.
 - **Časovač**: 5–60 minut jedním klepnutím, libovolná délka v kruhu, nebo Pomodoro.
