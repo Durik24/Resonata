@@ -30,6 +30,10 @@ func approx(_ a: Double, _ b: Double, _ tolerance: Double = 1e-6) -> Bool {
     abs(a - b) <= tolerance
 }
 
+// The interface's strings are checked in Czech, whatever the Mac running
+// the tests speaks — see `L`.
+L.isCzech = true
+
 // MARK: - Playhead
 
 let t0 = Date(timeIntervalSinceReferenceDate: 1_000_000)
@@ -431,12 +435,12 @@ do {
           "lyrics: a note for the intro and for empty lines")
     check(LyricsView.row(for: nil) == 0 && LyricsView.row(for: 0) == 1 && LyricsView.row(for: 4) == 5,
           "lyrics: before the first line is the intro row")
-    check(SpotifyVolumeControl.symbol(for: 0) == "speaker.slash.fill"
-          && SpotifyVolumeControl.symbol(for: 50) == "speaker.wave.2.fill"
-          && SpotifyVolumeControl.symbol(for: 100) == "speaker.wave.3.fill", "spotify: speaker follows the level")
-    check(SpotifyVolumeControl.toggledMute(70, before: nil) == 0, "spotify: speaker click mutes")
-    check(SpotifyVolumeControl.toggledMute(0, before: 70) == 70, "spotify: second click brings the level back")
-    check(SpotifyVolumeControl.toggledMute(0, before: nil) == 50, "spotify: unmuting with nothing to go back to")
+    check(PlayerVolumeControl.symbol(for: 0) == "speaker.slash.fill"
+          && PlayerVolumeControl.symbol(for: 50) == "speaker.wave.2.fill"
+          && PlayerVolumeControl.symbol(for: 100) == "speaker.wave.3.fill", "spotify: speaker follows the level")
+    check(PlayerVolumeControl.toggledMute(70, before: nil) == 0, "spotify: speaker click mutes")
+    check(PlayerVolumeControl.toggledMute(0, before: 70) == 70, "spotify: second click brings the level back")
+    check(PlayerVolumeControl.toggledMute(0, before: nil) == 50, "spotify: unmuting with nothing to go back to")
 }
 
 // MARK: - Pomodoro
@@ -552,6 +556,117 @@ do {
 }
 check(!Updater.isSignedLikeMe(URL(fileURLWithPath: "/System/Applications/Calculator.app")),
       "update: an app signed by someone else is refused")
+
+// MARK: - Language
+
+check(L.usesCzech(setting: "czech", preferred: ["en-GB"]), "language: Czech when chosen, whatever the Mac speaks")
+check(!L.usesCzech(setting: "english", preferred: ["cs-CZ"]), "language: English when chosen")
+check(L.usesCzech(setting: nil, preferred: ["cs-CZ", "en-GB"]), "language: left alone, Czech on a Czech Mac")
+check(!L.usesCzech(setting: "system", preferred: ["en-GB", "cs-CZ"]), "language: left alone, English when Czech isn't first")
+check(!L.usesCzech(setting: nil, preferred: []), "language: English when the Mac says nothing")
+check(L.more(2, czech: true) == "+ 2 další" && L.more(4, czech: true) == "+ 4 další",
+      "plural: two to four are 'další'")
+check(L.more(5, czech: true) == "+ 5 dalších" && L.more(12, czech: true) == "+ 12 dalších",
+      "plural: five and up are 'dalších'")
+check(L.more(5, czech: false) == "+ 5 more", "plural: English has the one form")
+check(PanelTab.music.title == "Hudba", "language: the tests run in Czech")
+L.isCzech = false
+check(PanelTab.music.title == "Music" && OpenMode.click.title == "Click", "language: the same strings in English")
+L.isCzech = true
+
+// MARK: - What lyrics are looked up for
+
+do {
+    func song(_ duration: Double, artist: String = "X") -> Track {
+        Track(title: "A", artist: artist, album: "Y", duration: duration, sampledPosition: 0,
+              sampledAt: t0, isPlaying: true, source: "Safari")
+    }
+    check(LyricsStore.shouldLookUp(song(214)), "lyrics: a song is looked up")
+    check(!LyricsStore.shouldLookUp(song(0)), "lyrics: no length — a live stream, or not known yet — isn't")
+    check(!LyricsStore.shouldLookUp(song(3600)), "lyrics: an hour-long episode isn't")
+    check(!LyricsStore.shouldLookUp(song(12)), "lyrics: a twelve-second clip isn't")
+    check(!LyricsStore.shouldLookUp(song(214, artist: "  ")), "lyrics: nothing without an artist")
+    check(LyricsStore.shouldLookUp(song(15 * 60)) && !LyricsStore.shouldLookUp(song(15 * 60 + 1)),
+          "lyrics: a quarter of an hour is the longest song")
+
+    // Search results: the album cut is 214 s; a live version runs 263.
+    check(LyricsStore.closest([263, 214.4, 198], to: 214) == 1, "lyrics: the result nearest in length, not the first")
+    check(LyricsStore.closest([263, 301], to: 214) == nil, "lyrics: none within ten seconds, none used")
+    check(LyricsStore.closest([224], to: 214) == 0 && LyricsStore.closest([224.5], to: 214) == nil,
+          "lyrics: ten seconds out is the limit")
+    check(LyricsStore.closest([nil, 215], to: 214) == 1, "lyrics: a result with a length beats one without")
+    check(LyricsStore.closest([nil, nil], to: 214) == 0, "lyrics: no lengths to go by, the first as before")
+    check(LyricsStore.closest([], to: 214) == nil, "lyrics: no results, none used")
+    check(LyricsStore.closest([300, 200], to: 0) == 0, "lyrics: the song's own length unknown, the first")
+}
+
+// MARK: - The bigger lyrics view
+
+check(LyricsList.window(count: 40, current: 10, visible: 5) == 8..<13, "lyrics list: the sung line in the middle")
+check(LyricsList.window(count: 40, current: nil, visible: 5) == 0..<5, "lyrics list: before the first line, the first five")
+check(LyricsList.window(count: 40, current: 1, visible: 5) == 0..<5, "lyrics list: no gap above the first line")
+check(LyricsList.window(count: 40, current: 39, visible: 5) == 35..<40, "lyrics list: the last five at the end")
+check(LyricsList.window(count: 4, current: 2, visible: 5) == 0..<4, "lyrics list: a short song shows whole")
+check(LyricsList.window(count: 0, current: nil, visible: 5).isEmpty, "lyrics list: nothing to show")
+
+// MARK: - Live streams
+
+check(!NotchView.isLive(duration: 0, settled: false), "live: not while the length may still be on its way")
+check(NotchView.isLive(duration: 0, settled: true), "live: still no length after a moment")
+check(!NotchView.isLive(duration: 214, settled: true), "live: a song with a length isn't")
+
+// MARK: - Keys on the open panel
+
+do {
+    typealias C = NotchPanelController
+    check(C.keyAction(keyCode: 53, expanded: true, typing: false) == .close, "keys: Esc closes the open panel")
+    check(C.keyAction(keyCode: 53, expanded: true, typing: true) == .close, "keys: Esc closes it from a note too")
+    check(C.keyAction(keyCode: 53, expanded: true, typing: true, composing: true) == nil,
+          "keys: Esc is the input method's while it composes")
+    check(C.keyAction(keyCode: 49, expanded: true, typing: false) == .playPause, "keys: Space plays and pauses")
+    check(C.keyAction(keyCode: 49, expanded: true, typing: true) == nil, "keys: Space in a note is a space")
+    check(C.keyAction(keyCode: 49, expanded: false, typing: false) == nil
+          && C.keyAction(keyCode: 53, expanded: false, typing: false) == nil, "keys: nothing while closed")
+    check(C.keyAction(keyCode: 49, expanded: true, typing: false, modified: true) == nil,
+          "keys: with ⌘ held it's somebody's shortcut")
+    check(C.keyAction(keyCode: 0, expanded: true, typing: false) == nil, "keys: other keys are left alone")
+}
+
+// MARK: - Volume for Spotify and Apple Music
+
+do {
+    func playing(_ source: String, _ bundle: String?) -> Track {
+        Track(title: "A", artist: "X", album: "Y", duration: 100, sampledPosition: 0, sampledAt: t0,
+              isPlaying: true, source: source, bundleID: bundle)
+    }
+    check(PlayerVolume.player(for: playing("Spotify", "com.spotify.client")) == PlayerVolume.spotify,
+          "volume: Spotify has a slider")
+    check(PlayerVolume.player(for: playing("Hudba", "com.apple.Music")) == PlayerVolume.music,
+          "volume: so has Music, found by its ID — it's 'Hudba' on a Czech Mac")
+    check(PlayerVolume.music.scriptName == "Music", "volume: AppleScript is told 'Music', never the name shown")
+    check(PlayerVolume.player(for: playing("Safari", "com.apple.Safari")) == nil, "volume: a browser has none")
+    check(PlayerVolume.player(for: nil) == nil, "volume: nothing playing, no slider")
+}
+
+// MARK: - Settling, and an update found before a restart
+
+check(AnimationSpeed.normal.settleTime == 0.55 && AnimationSpeed.fast.settleTime == 0.55,
+      "settle: fast and normal as before")
+check(AnimationSpeed.slow.settleTime > 0.9, "settle: the slow spring is given time to land")
+
+do {
+    let day = 24.0 * 3600
+    check(!Updater.shouldCheck(atLaunch: true, lastCheck: 1000, now: 1000 + 3600, announced: nil, current: "1.0.8"),
+          "update: checked an hour ago, nothing found, not again")
+    check(Updater.shouldCheck(atLaunch: true, lastCheck: 1000, now: 1000 + 3600, announced: "1.0.9", current: "1.0.8"),
+          "update: one found before the restart is looked up again at launch")
+    check(!Updater.shouldCheck(atLaunch: false, lastCheck: 1000, now: 1000 + 3600, announced: "1.0.9", current: "1.0.8"),
+          "update: but only at launch, not every hour")
+    check(!Updater.shouldCheck(atLaunch: true, lastCheck: 1000, now: 1000 + 3600, announced: "1.0.8", current: "1.0.8"),
+          "update: once it's installed there's nothing to look up")
+    check(Updater.shouldCheck(atLaunch: false, lastCheck: 1000, now: 1000 + day, announced: nil, current: "1.0.8"),
+          "update: and once a day regardless")
+}
 
 // MARK: - Last: a lyrics line that used to crash the parser
 

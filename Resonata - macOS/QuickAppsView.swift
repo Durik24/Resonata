@@ -37,11 +37,11 @@ struct QuickAppsView: View {
                     tile(icon: Image(systemName: "plus")
                                 .font(.system(size: 15, weight: .medium))
                                 .foregroundStyle(.white.opacity(0.6)),
-                         title: "Přidat",
+                         title: L.t("Add", "Přidat"),
                          dashed: true)
                 }
                 .buttonStyle(TransportButtonStyle())
-                .help("Přidat aplikaci")
+                .help(L.t("Add an app", "Přidat aplikaci"))
             }
         }
         .fixedSize(horizontal: true, vertical: false)

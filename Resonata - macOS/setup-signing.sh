@@ -7,8 +7,7 @@
 # build.sh used to sign ad-hoc (`codesign --sign -`). An ad-hoc signature is a
 # hash of the binary, so every rebuild gave the app a brand-new identity — and
 # macOS ties permissions to identity. Each rebuild silently revoked Automation
-# (reading Spotify) and Screen Recording (the audio the spectrum listens to),
-# and the app looked broken until they were granted again.
+# (reading Spotify), and the app looked broken until it was granted again.
 #
 # A real certificate keeps the identity the same across builds, so you grant
 # each permission once and it sticks.
@@ -51,5 +50,5 @@ security add-trusted-cert -p codeSign -k "$KEYCHAIN" "$WORK/cert.pem"
 echo
 echo "Done. Next:"
 echo "  ./build.sh run"
-echo "Then grant Automation (Spotify/Music) and Screen Recording when asked."
-echo "They will now survive rebuilds."
+echo "Then grant Automation (Spotify/Music) when asked — the only permission Resonata asks for."
+echo "It will now survive rebuilds."

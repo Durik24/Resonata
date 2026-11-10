@@ -17,8 +17,8 @@ enum HotKeyChoice: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .off: "Vypnuto"
-        case .shiftCommandSpace: "⇧⌘ Mezerník"
+        case .off: L.t("Off", "Vypnuto")
+        case .shiftCommandSpace: L.t("⇧⌘ Space", "⇧⌘ Mezerník")
         case .controlOptionCommandN: "⌃⌥⌘ N"
         }
     }

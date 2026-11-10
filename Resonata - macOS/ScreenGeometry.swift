@@ -272,6 +272,14 @@ extension NSScreen {
         deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID
     }
 
+    /// The display's own identifier, the same after a restart — which
+    /// `displayID` isn't promised to be. What a pinned display is saved as.
+    var uuid: String? {
+        guard let displayID,
+              let uuid = CGDisplayCreateUUIDFromDisplayID(displayID)?.takeRetainedValue() else { return nil }
+        return CFUUIDCreateString(nil, uuid) as String?
+    }
+
     /// Whether this is the laptop's own panel rather than something plugged in.
     var isBuiltIn: Bool {
         guard let displayID else { return hasNotch }

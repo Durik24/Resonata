@@ -8,9 +8,9 @@ a ovládání.
 Zvuk počítače NEPOSLOUCHÁ: žádný záznam zvuku ani obrazovky, žádné
 takové oprávnění. Co hraje, ví ze systémového "právě hraje" (to
 samé, co ukazuje Ovládací centrum). Sloupce a vlnka se hýbou klidným
-vymyšleným pohybem, když něco hraje, a stojí, když je pauza. Barva
-obalu krátce zjasní pokaždé, když začne nový řádek textu písně —
-takže notch drží rytmus skladby, aniž by ji poslouchal.
+vymyšleným pohybem, když něco hraje, a stojí, když je pauza. Řádek
+textu písně se posune s každým novým veršem — takže notch drží
+rytmus skladby, aniž by ji poslouchal.
 
 Dělej kroky popořadě. Kroky 1 až 5 jsou povinné, zbytek je volitelný.
 
@@ -118,7 +118,6 @@ KROK 7 — Vyzkoušej ovládání
 
   - Sloupce v notchi             hýbou se, když něco hraje,
                                  stojí při pauze (zvuk neposlouchají)
-  - Nový řádek textu             barva obalu na okamžik zjasní
   - Zvuk z prohlížeče            funguje jako každý jiný přehrávač:
                                  název, obal, tlačítka i posuvník
   - Klikni na notch              rozbalí se velký panel, dole
@@ -131,13 +130,21 @@ KROK 7 — Vyzkoušej ovládání
                                  Spotify ztlumí, další klik
                                  vrátí hlasitost. Poprvé se macOS
                                  zeptá, jestli smí Resonata
-                                 ovládat Spotify.
+                                 ovládat Spotify. Stejný posuvník
+                                 má i Apple Music.
+  - Živé vysílání                rádio nebo stream bez délky má
+                                 místo posuvníku nápis ŽIVĚ
   - Text písně                   když ho LRCLIB zná, pod
                                  interpretem je právě zpívaný
                                  řádek; s každým veršem odjede
-                                 nahoru a zespodu přijede další. Bliknutí
-                                 barvou na nový řádek jde
-                                 zapnout v nastavení.
+                                 nahoru a zespodu přijede další.
+                                 Klikni na řádek a místo ovládání
+                                 uvidíš pět řádků písně najednou;
+                                 kliknutím na řádek skladba skočí
+                                 tam, šipkou se vrátíš zpět.
+                                 Hledá se jen u písní (ne u
+                                 podcastů a videí) a jen když
+                                 jsou texty v nastavení zapnuté.
                                  Stahuje se jednou, pak z cache
                                  (~/Library/Caches/com.local.resonata)
   - Připoj nabíječku             zavřený notch se na 3 s vysune
@@ -217,7 +224,9 @@ KROK 7 — Vyzkoušej ovládání
     (nebo ctrl+klik)             displej, spouštět po
                                  přihlášení, ukončit aplikaci
   - ⇧⌘ Mezerník                  otevře / zavře notch odkudkoliv
-                                 (zkratka jde změnit v nastavení)
+                                 (zkratka jde změnit v nastavení).
+                                 Po otevření zkratkou: Esc zavře,
+                                 mezerník pustí / zastaví hudbu.
   - Srdíčko                      u skladeb z Apple Music: přidat
                                  do oblíbených. Spotify to z Macu
                                  neumožňuje, proto tam není.
@@ -230,7 +239,8 @@ KROK 7 — Vyzkoušej ovládání
                                  se vrátí na notebook
   - Ikona dvou obdélníků         ruční přepnutí na jiný displej
     (vpravo nahoře)              (jen když máš víc displejů);
-                                 ruční volba má přednost
+                                 ruční volba má přednost a
+                                 pamatuje se i po restartu
   - Celoobrazovkový režim        notch se sám schová
 
 Když hudbu pozastavíš, po 10 sekundách se notch smrskne zpátky na
@@ -298,16 +308,29 @@ NASTAVENÍ
 Pravé tlačítko na notch → Nastavení…
 
   Spouštět po přihlášení      zapnout / vypnout
-  Otevírat notch              Kliknutím / Najetím myší
-  Otevřít notch zkratkou      Vypnuto, ⇧⌘ Mezerník, ⌃⌥⌘ N
-  Zmenšit notch po pauze za   5 / 10 / 20 / 30 / 60 s
+  Jazyk                       Podle Macu / English / Čeština
+                              (projeví se po restartu)
+  Klávesová zkratka           Vypnuto, ⇧⌘ Mezerník, ⌃⌥⌘ N
+  Hledat nové verze           zapnout / vypnout
+  Otevírat notch              Kliknutím / Najetím myší /
+                              Kliknutím a gesty
   Animace                     Rychlé / Normální / Pomalé
-  Zobrazovat texty písní      zapnout / vypnout
+  Zmenšit notch po pauze za   5 / 10 / 20 / 30 / 60 s
+  Swipe mezi stránkami        Doprava / Doleva / Vypnuto
+  Texty písní                 zapnout / vypnout (vypnuté se
+                              ani nehledají)
   Kalendář vedle přehrávače   zapnout / vypnout (bez něj je
                               panel užší)
   Barva vlny                  podle obalu, bílá, nebo vlastní
+  Kalendáře                   které kalendáře se počítají,
+                              a vynechat odmítnuté události
+                              (až po připojení kalendáře)
+  Zprávy v notchi             nová skladba, baterie,
+                              sluchátka, událost z kalendáře
+  Pomodoro                    délky práce a pauz
+  Aplikace v notchi           přidat, odebrat, seřadit
 
-Všechno se projeví hned, bez restartu.
+Všechno kromě jazyka se projeví hned, bez restartu.
 
 
 ────────────────────────────────────────────────────────────────
@@ -317,7 +340,7 @@ TESTY
     ./test.sh
 
 Ověří logiku bez spouštění aplikace: posuvník, texty písní, pohyb
-sloupců a vlnky, záblesk na řádcích textu a čtení z MediaRemote. Na konci vypíše
+sloupců a vlnky a čtení z MediaRemote. Na konci vypíše
 "N passed, 0 failed". Když něco selže, vypíše FAIL a co přesně.
 
 
@@ -327,9 +350,17 @@ VYPNUTÍ A ODINSTALACE
 
 Ukončit:      pravé tlačítko na notch → Ukončit Resonata
               (nebo v Terminálu: pkill -x Resonata)
-Odinstalovat: smaž složku a odeber položku přihlášení
-              z Kroku 8. Certifikát "Resonata Dev" jde smazat
-              v Klíčence. Nikam jinam se nic neukládá.
+Odinstalovat: smaž aplikaci i složku projektu a odeber
+              položku přihlášení z Kroku 8. Certifikát
+              "Resonata Dev" jde smazat v Klíčence.
+              Na Macu po ní zůstanou jen tyhle věci,
+              které můžeš smazat ručně:
+                ~/Library/Application Support/Resonata
+                  (poznámky a úkoly)
+                ~/Library/Caches/com.local.resonata
+                  (stažené texty písní)
+                ~/Library/Preferences/com.local.resonata.plist
+                  (nastavení)
 
 
 ────────────────────────────────────────────────────────────────
@@ -364,7 +395,8 @@ CO JE V KTERÉM SOUBORU
 ResonataApp.swift      start aplikace, skrytí ikony z Docku
 Motion.swift           vymyšlený pohyb sloupců a vlnky
 SongPeek.swift         krátké ukázání nové skladby v zavřeném notchi
-SpotifyVolume.swift    hlasitost samotného Spotify (posuvník u ovládání)
+PlayerVolume.swift     hlasitost samotného Spotify / Apple Music (posuvník)
+Language.swift         angličtina a čeština vedle sebe
 Notes.swift            ukládání poznámky a úkolů
 NotesView.swift        stránka Poznámky a úkoly
 QuickApps.swift        seznam aplikací, otevírání, přidávání
@@ -412,6 +444,6 @@ ZNÁMÁ OMEZENÍ
   nehraje nic, 0 %.
 
 - Sloupce a vlnka nesledují skutečný zvuk — Resonata ho záměrně
-  neposlouchá. Jediný skutečný rytmus, který ukazuje, je záblesk
-  na začátku řádků textu (jen u písní, ke kterým LRCLIB zná
-  časovaný text).
+  neposlouchá. Jediný skutečný rytmus, který ukazuje, je řádek
+  textu, který se posune s každým veršem (jen u písní, ke
+  kterým LRCLIB zná časovaný text).

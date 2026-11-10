@@ -77,8 +77,8 @@ enum QuickApps {
     @MainActor
     static func chooseAndAdd() {
         let panel = NSOpenPanel()
-        panel.title = "Přidat aplikaci do notche"
-        panel.prompt = "Přidat"
+        panel.title = L.t("Add an app to the notch", "Přidat aplikaci do notche")
+        panel.prompt = L.t("Add", "Přidat")
         panel.allowedContentTypes = [.application]
         panel.allowsMultipleSelection = true
         panel.directoryURL = URL(fileURLWithPath: "/Applications")

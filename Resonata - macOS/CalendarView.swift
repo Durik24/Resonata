@@ -9,7 +9,8 @@ struct CalendarColumn: View {
 
     @State private var selected = Calendar.current.startOfDay(for: Date())
 
-    private static let czech = Locale(identifier: "cs_CZ")
+    /// Czech or British English, with the interface — see `L`.
+    private static var czech: Locale { L.locale }
 
     var body: some View {
         let days = CalendarStore.days(around: Date())
@@ -72,15 +73,15 @@ struct CalendarColumn: View {
     private var events: some View {
         switch store.access {
         case .notAsked:
-            hint("Uvidíš tu své události.",
-                 button: "Připojit kalendář") { store.requestAccess() }
+            hint(L.t("Your events will appear here.", "Uvidíš tu své události."),
+                 button: L.t("Connect the calendar", "Připojit kalendář")) { store.requestAccess() }
         case .denied:
-            hint("Resonata nemá přístup ke kalendáři.",
-                 button: "Otevřít Nastavení") { store.openPrivacySettings() }
+            hint(L.t("Resonata has no access to the calendar.", "Resonata nemá přístup ke kalendáři."),
+                 button: L.t("Open Settings", "Otevřít Nastavení")) { store.openPrivacySettings() }
         case .granted:
             let list = store.events(on: selected)
             if list.isEmpty {
-                Text("Žádné události")
+                Text(L.t("No events", "Žádné události"))
                     .font(.system(size: 11))
                     .foregroundStyle(.white.opacity(0.35))
                     .padding(.leading, 2)
@@ -88,7 +89,7 @@ struct CalendarColumn: View {
                 VStack(alignment: .leading, spacing: 8) {
                     ForEach(list.prefix(2)) { row($0) }
                     if list.count > 2 {
-                        Text("+ \(list.count - 2) další")
+                        Text(L.more(list.count - 2))
                             .font(.system(size: 10, weight: .medium))
                             .foregroundStyle(.white.opacity(0.4))
                             .padding(.leading, 11)
@@ -135,7 +136,7 @@ struct CalendarColumn: View {
     }
 
     private func time(of event: CalendarStore.Event) -> String {
-        if event.isAllDay { return "Celý den" }
+        if event.isAllDay { return L.t("All day", "Celý den") }
         let start = event.start.formatted(.dateTime.hour().minute().locale(Self.czech))
         let end = event.end.formatted(.dateTime.hour().minute().locale(Self.czech))
         return "\(start) – \(end)"

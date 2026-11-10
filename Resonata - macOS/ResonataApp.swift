@@ -63,12 +63,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         sigterm.resume()
         termination = sigterm
 
-        openAtLoginOnce()
+        // The demo saves nothing, the login item included: run from a
+        // project folder for screenshots, it must not make itself the copy
+        // that starts at login.
+        if !Demo.isOn { openAtLoginOnce() }
         controller.show()
         // The demo's made-up song stands in for real playback — see `Demo`.
         if !Demo.isOn { startNowPlaying() }
 
-        HotKey.shared.action = { [weak self] in self?.controller.toggle() }
+        HotKey.shared.action = { [weak self] in self?.controller.toggle(fromKeyboard: true) }
         HotKey.shared.apply(Preferences.hotKey)
 
         // Plugging in the charger gets a moment in the closed notch too.
@@ -150,8 +153,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 MainActor.assumeIsolated {
                     let activity: NotchActivity? = switch kind {
                     case "lowbattery": .lowBattery(percent: 20)
-                    case "headphones": .headphones(name: OutputWatcher.currentName ?? "Sluchátka")
-                    case "meeting": .meeting(title: "Schůzka", start: Date().addingTimeInterval(300))
+                    case "headphones": .headphones(name: OutputWatcher.currentName ?? L.t("Headphones", "Sluchátka"))
+                    case "meeting": .meeting(title: L.t("Meeting", "Schůzka"), start: Date().addingTimeInterval(300))
                     case "timer": .timerDone(minutes: 25)
                     case "update": .update(version: "1.0.8")
                     default: nil
@@ -180,6 +183,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self?.activityPeek.show(.charging(percent: Battery.read()?.percent ?? 80))
                 }
             }
+            // `com.local.resonata.lyrics`: the music page's bigger lyrics
+            // view, on and off.
+            center.addObserver(forName: Notification.Name("com.local.resonata.lyrics"),
+                               object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.model.showingLyrics.toggle() }
+            }
+            // `com.local.resonata.live`: as if the song were a live stream,
+            // with no length.
+            center.addObserver(forName: Notification.Name("com.local.resonata.live"),
+                               object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.model.track?.duration = 0 }
+            }
             center.addObserver(forName: Notification.Name("com.local.resonata.page"),
                                object: nil, queue: .main) { [weak self] note in
                 let name = note.object as? String
@@ -196,6 +211,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         lyrics.$isFetching
             .sink { [weak self] pending in self?.model.lyricsPending = pending }
             .store(in: &cancellables)
+
+        // Lyrics switched on in Settings are fetched for the song already
+        // playing; switched off, they're dropped. Any settings change lands
+        // here, and for the same song `load` does nothing.
+        NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification,
+                                               object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, !Demo.isOn else { return }
+                self.loadLyrics(for: self.model.track)
+            }
+        }
 
         // Last, so nothing above overwrites the demo's song or lyrics.
         if Demo.isOn { Demo.install(on: model) }
@@ -263,7 +289,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.model.track = track
                 // Cheap when the song hasn't changed — the store keys on the
                 // song, not on the position, so a re-sync is a no-op.
-                self?.lyrics.load(for: track)
+                self?.loadLyrics(for: track)
             }
             .store(in: &sourceCancellables)
 
@@ -274,10 +300,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .store(in: &sourceCancellables)
     }
 
+    /// Lyrics only while they're switched on. The switch used to hide the
+    /// line and nothing more: every song's title and artist still went to
+    /// LRCLIB. Off, the store is told there's nothing playing.
+    private func loadLyrics(for track: Track?) {
+        lyrics.load(for: Preferences.showLyrics ? track : nil)
+    }
+
     private func loadFavorite(for track: Track?) {
         model.isFavorite = nil
-        guard track?.bundleID == MusicFavorite.bundleID else { return }
-        MusicFavorite.read { [weak self] value in self?.model.isFavorite = value }
+        guard let track, track.bundleID == MusicFavorite.bundleID else { return }
+        MusicFavorite.read { [weak self] value in
+            // Music can take a moment to answer, and the song may have moved
+            // on by then — to Spotify, say, where a heart then turned up
+            // that set a favourite in Music. Only for the song it was asked
+            // about.
+            guard let self, let now = self.model.track, now.bundleID == MusicFavorite.bundleID,
+                  now.isSameTrack(as: track) else { return }
+            self.model.isFavorite = value
+        }
     }
 
     /// Adds Resonata to System Settings › General › Login Items, once.

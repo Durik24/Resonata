@@ -51,11 +51,16 @@ final class LyricsStore: ObservableObject {
     /// Points the store at `track`. Same song as last time is a no-op; nil
     /// clears the lines.
     func load(for track: Track?) {
-        guard let track else {
+        // Nothing playing — or nothing that's a song: a podcast, a film, a
+        // live stream. Then LRCLIB isn't asked, and what's playing stays on
+        // this Mac. See `shouldLookUp`.
+        guard let track, Self.shouldLookUp(track) else {
             current = nil
             task?.cancel()
-            lines = nil
-            isFetching = false
+            // Only when they change: this is called on every settings change
+            // too, and publishing "still nothing" each time redrew the panel.
+            if lines != nil { lines = nil }
+            if isFetching { isFetching = false }
             return
         }
 
@@ -108,6 +113,24 @@ final class LyricsStore: ObservableObject {
         }
     }
 
+    // MARK: What to look up
+
+    /// Song lengths: half a minute to a quarter of an hour.
+    nonisolated static let songLengths: ClosedRange<TimeInterval> = 30...(15 * 60)
+
+    /// Whether `track` is worth asking LRCLIB about.
+    ///
+    /// Every title and artist used to go there — a YouTube video's, a
+    /// podcast episode's, a film's. None of those have synced lyrics, and
+    /// what you watch is nobody's business. Asked only for something that
+    /// has an artist and runs as long as a song does; a live stream has no
+    /// length at all. It also waits out the moment at a song change when the
+    /// title has arrived and the length hasn't, which used to cost a second
+    /// lookup for every song.
+    nonisolated static func shouldLookUp(_ track: Track) -> Bool {
+        !track.artist.trimmingCharacters(in: .whitespaces).isEmpty && songLengths.contains(track.duration)
+    }
+
     // MARK: Identity
 
     /// Same fields `Track.isSameTrack(as:)` compares, plus duration, which
@@ -123,6 +146,8 @@ final class LyricsStore: ObservableObject {
 
     private struct Record: Decodable {
         var syncedLyrics: String?
+        /// The recording's length in seconds, as LRCLIB has it.
+        var duration: Double?
     }
 
     /// What a lookup came to: lyrics, a clear "none", or no answer at all.
@@ -167,11 +192,42 @@ final class LyricsStore: ObservableObject {
         case .notFound: return .none
         case .data(let data):
             let records = (try? JSONDecoder().decode([Record].self, from: data)) ?? []
-            for record in records {
-                if let synced = record.syncedLyrics, let lines = parse(synced) { return .lines(lines) }
+            // Those that really have timed lyrics, then the one nearest this
+            // recording's length — see `closest`.
+            let timed = records.compactMap { record -> (duration: Double?, lines: [LyricLine])? in
+                guard let synced = record.syncedLyrics, let lines = parse(synced) else { return nil }
+                return (record.duration, lines)
             }
-            return .none
+            guard let best = closest(timed.map(\.duration), to: track.duration) else { return .none }
+            return .lines(timed[best].lines)
         }
+    }
+
+    /// How far a search result's length may be from the song's and still be
+    /// taken for the same recording.
+    nonisolated static let lengthTolerance: TimeInterval = 10
+
+    /// Which search result to use for a song `duration` seconds long, given
+    /// each result's own length; nil for none of them.
+    ///
+    /// The search goes by title and artist alone, so it returns the live
+    /// version and the remix along with the album cut. Taking the first with
+    /// lyrics — as this used to — showed lines timed for another recording:
+    /// right words, drifting further out of time as the song went on. The
+    /// nearest in length is the same recording or as good as; one more than
+    /// `lengthTolerance` out isn't, and no lyrics beat wrong ones.
+    nonisolated static func closest(_ durations: [Double?], to duration: TimeInterval) -> Int? {
+        guard !durations.isEmpty else { return nil }
+        // Nothing to compare with: the first, as before.
+        guard duration > 0 else { return 0 }
+        var best: (index: Int, gap: Double)?
+        for (index, length) in durations.enumerated() {
+            guard let length, length > 0 else { continue }
+            let gap = abs(length - duration)
+            if gap < (best?.gap ?? .infinity) { best = (index, gap) }
+        }
+        guard let best else { return 0 }
+        return best.gap <= lengthTolerance ? best.index : nil
     }
 
     private static func request(_ url: URL) async -> Answer {

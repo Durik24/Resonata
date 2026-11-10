@@ -51,6 +51,31 @@ extension Notification.Name {
     static let resonataDidCommandPlayer = Notification.Name("ResonataDidCommandPlayer")
 }
 
+/// The one queue every AppleScript call in the app runs on.
+///
+/// `NSAppleScript` isn't thread-safe — Apple lists it as main-thread-only —
+/// and scripts ran on five queues at once: the now-playing poll, the
+/// playhead check every five seconds, the heart, the volume slider and the
+/// transport buttons. Two of them overlapping is a crash waiting for its
+/// moment. One serial queue, off the main thread because a script blocks
+/// until the player answers, means only one ever runs at a time.
+enum AppleScript {
+    static let queue = DispatchQueue(label: "com.local.resonata.applescript", qos: .userInitiated)
+
+    /// Runs `source` and hands back its answer, or nil — and a line in the
+    /// log naming `what` — when it failed. Only ever on `queue`.
+    static func run(_ source: String, what: String) -> NSAppleEventDescriptor? {
+        dispatchPrecondition(condition: .onQueue(queue))
+        var error: NSDictionary?
+        let output = NSAppleScript(source: source)?.executeAndReturnError(&error)
+        if let error {
+            NSLog("Resonata: %@ failed: %@", what, error)
+            return nil
+        }
+        return output
+    }
+}
+
 /// Main-actor isolated: implementations drive `@Published` UI state, and the
 /// swap-in replacement (mediaremote-adapter) will too. Without this the
 /// conformance straddles actors and is an error under the Swift 6 language mode.
@@ -118,6 +143,7 @@ final class AppleScriptNowPlaying: ObservableObject, NowPlayingSource {
     private var localObservers: [NSObjectProtocol] = []
 
     func start() {
+        Self.removeStaleArtwork()
         poll()
         timer = Timer.scheduledTimer(
             withTimeInterval: Self.resyncInterval, repeats: true
@@ -168,15 +194,34 @@ final class AppleScriptNowPlaying: ObservableObject, NowPlayingSource {
         }
         distributedObservers.removeAll()
         localObservers.removeAll()
+        artworkKey = nil
+        removeArtworkFile()
     }
+
+    /// The cover written out for Music goes when its song does. They were
+    /// never deleted — one file a song, for as long as the Mac stayed up.
+    private func removeArtworkFile() {
+        if let old = artworkURL { try? FileManager.default.removeItem(at: old) }
+        artworkURL = nil
+    }
+
+    /// Cover files an earlier run left behind: the last one of a run
+    /// outlives it.
+    private static func removeStaleArtwork() {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []
+        for name in names where name.hasPrefix(artworkPrefix) {
+            try? FileManager.default.removeItem(at: dir.appendingPathComponent(name))
+        }
+    }
+
+    private nonisolated static let artworkPrefix = "resonata-artwork-"
 
     /// One serial queue for every AppleScript call.
     ///
     /// `NSAppleScript` is not thread-safe, and confining it here is what makes
     /// caching compiled scripts safe — see `compiledScripts`.
-    private nonisolated static let scriptQueue = DispatchQueue(
-        label: "com.local.resonata.applescript", qos: .utility
-    )
+    private nonisolated static var scriptQueue: DispatchQueue { AppleScript.queue }
 
     /// Compiled scripts, reused across polls.
     ///
@@ -255,7 +300,7 @@ final class AppleScriptNowPlaying: ObservableObject, NowPlayingSource {
             let key = "\(t.title)\u{1F}\(t.album)\u{1F}\(t.artist)"
             if key != artworkKey {
                 artworkKey = key
-                artworkURL = nil
+                removeArtworkFile()
                 // On the AppleScript queue, not here: this runs on the main
                 // thread, `NSAppleScript` blocks, and it isn't thread-safe —
                 // every other script already runs on `scriptQueue`.
@@ -264,7 +309,12 @@ final class AppleScriptNowPlaying: ObservableObject, NowPlayingSource {
                     DispatchQueue.main.async {
                         MainActor.assumeIsolated {
                             guard let self, self.artworkKey == key, var current = self.track
-                            else { return }
+                            else {
+                                // The song moved on while this one's cover
+                                // was being written: nobody will show it.
+                                if let url { try? FileManager.default.removeItem(at: url) }
+                                return
+                            }
                             self.artworkURL = url
                             current.artworkURL = url
                             self.track = current
@@ -276,7 +326,7 @@ final class AppleScriptNowPlaying: ObservableObject, NowPlayingSource {
             track = t
         } else if track?.source != "Music" {
             artworkKey = nil
-            artworkURL = nil
+            removeArtworkFile()
         }
 
         // Keep the existing anchor when the player turns out to be exactly
@@ -304,7 +354,7 @@ final class AppleScriptNowPlaying: ObservableObject, NowPlayingSource {
     /// previous album's art on screen.
     private nonisolated static func extractMusicArtwork() -> URL? {
         let path = NSTemporaryDirectory()
-            + "resonata-artwork-\(UUID().uuidString.prefix(8)).dat"
+            + "\(artworkPrefix)\(UUID().uuidString.prefix(8)).dat"
         let script = """
         tell application "Music"
             if player state is stopped then return ""
@@ -423,43 +473,10 @@ final class AppleScriptNowPlaying: ObservableObject, NowPlayingSource {
 
 // MARK: - Transport controls
 
-enum MediaKey: Int32 {
-    case playPause = 16
-    case next      = 19
-    case previous  = 20
-}
-
-/// Posts a system-wide media key. Works with every player, including browsers,
-/// and doesn't care which app is frontmost.
-///
-/// Requires Accessibility permission (System Settings → Privacy & Security →
-/// Accessibility). If you'd rather not ask for that, send `next track` /
-/// `playpause` to Spotify or Music over AppleScript instead — same idea, but
-/// only for those two apps.
-func postMediaKey(_ key: MediaKey) {
-    func send(down: Bool) {
-        let flags = NSEvent.ModifierFlags(rawValue: down ? 0xA00 : 0xB00)
-        let data1 = Int((key.rawValue << 16) | ((down ? 0xA : 0xB) << 8))
-        NSEvent.otherEvent(
-            with: .systemDefined,
-            location: .zero,
-            modifierFlags: flags,
-            timestamp: 0,
-            windowNumber: 0,
-            context: nil,
-            subtype: 8,
-            data1: data1,
-            data2: -1
-        )?.cgEvent?.post(tap: .cghidEventTap)
-    }
-    send(down: true)
-    send(down: false)
-}
-
 /// Transport commands sent straight to the player over AppleScript.
 ///
-/// This is deliberately *not* `postMediaKey`. That posts a system-wide HID
-/// event, which needs Accessibility permission — and since `build.sh` re-signs
+/// Deliberately not a system-wide media key. Posting one is a HID event,
+/// which needs Accessibility permission — and since `build.sh` re-signs
 /// ad-hoc on every build, the app's identity changes each time and any grant
 /// you made is silently void. The buttons then do nothing, with no error.
 ///
@@ -486,11 +503,9 @@ func transport(_ command: TransportCommand, in app: String) {
         return
     }
     let script = "tell application \"\(app)\" to \(command.rawValue)"
-    Task.detached(priority: .userInitiated) {
-        var error: NSDictionary?
-        NSAppleScript(source: script)?.executeAndReturnError(&error)
-        if let error { NSLog("Resonata: \(command.rawValue) failed: \(error)") }
-        await MainActor.run {
+    AppleScript.queue.async {
+        _ = AppleScript.run(script, what: command.rawValue)
+        DispatchQueue.main.async {
             NotificationCenter.default.post(name: .resonataDidCommandPlayer, object: nil)
         }
     }
@@ -515,15 +530,13 @@ func seek(to position: TimeInterval, in app: String) {
     let script = """
     tell application "\(app)" to set player position to \(String(format: "%.3f", clamped))
     """
-    Task.detached(priority: .userInitiated) {
-        var error: NSDictionary?
-        NSAppleScript(source: script)?.executeAndReturnError(&error)
-        if let error { NSLog("Resonata: seek failed: \(error)") }
+    AppleScript.queue.async {
+        _ = AppleScript.run(script, what: "seek")
         // Re-sync at once. Nothing else would tell us the playhead moved, and
         // the interpolation would otherwise carry on from the pre-seek anchor
         // until the next safety-net tick — up to ten seconds of visibly wrong
         // progress bar.
-        await MainActor.run {
+        DispatchQueue.main.async {
             NotificationCenter.default.post(name: .resonataDidCommandPlayer, object: nil)
         }
     }

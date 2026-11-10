@@ -31,7 +31,8 @@ enum MusicFavorite {
         run(toggleSource, completion)
     }
 
-    private static let queue = DispatchQueue(label: "com.local.resonata.favorite", qos: .userInitiated)
+    /// The app's one AppleScript queue — see `AppleScript`.
+    private static var queue: DispatchQueue { AppleScript.queue }
 
     /// Off the main thread: `NSAppleScript` blocks.
     private static func run(_ source: String, _ completion: @escaping @MainActor (Bool?) -> Void) {

@@ -50,7 +50,7 @@ final class Updater: ObservableObject {
         return URL(string: "https://api.github.com/repos/\(repo)/releases/latest")!
     }()
     /// Once a day is plenty; the hourly timer only asks whether a day has passed.
-    private static let interval: TimeInterval = 24 * 3600
+    private nonisolated static let interval: TimeInterval = 24 * 3600
     private static let lastCheckKey = "updateLastCheck"
     private static let announcedKey = "updateAnnounced"
 
@@ -82,17 +82,35 @@ final class Updater: ObservableObject {
                 MainActor.assumeIsolated { Updater.shared.install() }
             }
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in self?.checkIfDue() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in self?.checkIfDue(atLaunch: true) }
         timer = Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.checkIfDue() }
         }
     }
 
-    private func checkIfDue() {
+    private func checkIfDue(atLaunch: Bool = false) {
         guard Preferences.checkForUpdates else { return }
-        let last = UserDefaults.standard.double(forKey: Self.lastCheckKey)
-        guard Date().timeIntervalSince1970 - last >= Self.interval else { return }
+        let defaults = UserDefaults.standard
+        guard Self.shouldCheck(atLaunch: atLaunch,
+                               lastCheck: defaults.double(forKey: Self.lastCheckKey),
+                               now: Date().timeIntervalSince1970,
+                               announced: defaults.string(forKey: Self.announcedKey),
+                               current: Self.currentVersion) else { return }
         check()
+    }
+
+    /// Whether to ask GitHub now: once a day — and at launch, at once, when a
+    /// newer version was already found and hasn't been installed since.
+    ///
+    /// What was found is only kept in memory. After a restart "Install" was
+    /// gone from the menu, and stayed gone until the next daily check, up to
+    /// a day later. The version last announced is kept, so a launch that
+    /// still runs an older one than that asks again straight away; it isn't
+    /// announced in the notch a second time.
+    nonisolated static func shouldCheck(atLaunch: Bool, lastCheck: TimeInterval, now: TimeInterval,
+                                        announced: String?, current: String) -> Bool {
+        if atLaunch, let announced, isNewer(announced, than: current) { return true }
+        return now - lastCheck >= interval
     }
 
     func check() {
@@ -116,7 +134,7 @@ final class Updater: ObservableObject {
                 }
             } catch {
                 NSLog("Resonata: update check failed: \(error)")
-                state = .failed("Nepodařilo se spojit s GitHubem.")
+                state = .failed(L.t("Couldn't reach GitHub.", "Nepodařilo se spojit s GitHubem."))
             }
         }
     }
@@ -176,7 +194,7 @@ final class Updater: ObservableObject {
                 Self.relaunch()
             } catch {
                 NSLog("Resonata: update failed: \(error)")
-                state = .failed((error as? UpdateError)?.message ?? "Aktualizace se nepovedla.")
+                state = .failed((error as? UpdateError)?.message ?? L.t("The update failed.", "Aktualizace se nepovedla."))
             }
         }
     }
@@ -198,7 +216,7 @@ final class Updater: ObservableObject {
         request.setValue("Resonata/\(currentVersion)", forHTTPHeaderField: "User-Agent")
         let (file, response) = try await URLSession.shared.download(for: request)
         guard (response as? HTTPURLResponse)?.statusCode == 200 else {
-            throw UpdateError(message: "Stažení se nepovedlo.")
+            throw UpdateError(message: L.t("The download failed.", "Stažení se nepovedlo."))
         }
         let zip = work.appendingPathComponent("update.zip")
         try fm.moveItem(at: file, to: zip)
@@ -207,17 +225,18 @@ final class Updater: ObservableObject {
         try run("/usr/bin/ditto", ["-x", "-k", zip.path, unpacked.path])
         let app = unpacked.appendingPathComponent("Resonata.app")
         guard fm.fileExists(atPath: app.path) else {
-            throw UpdateError(message: "V balíčku chybí Resonata.app.")
+            throw UpdateError(message: L.t("The package has no Resonata.app in it.", "V balíčku chybí Resonata.app."))
         }
 
         let info = NSDictionary(contentsOf: app.appendingPathComponent("Contents/Info.plist"))
         guard info?["CFBundleIdentifier"] as? String == Bundle.main.bundleIdentifier,
               let version = info?["CFBundleShortVersionString"] as? String,
               isNewer(version, than: currentVersion) else {
-            throw UpdateError(message: "Stažená aplikace není novější Resonata.")
+            throw UpdateError(message: L.t("The download isn't a newer Resonata.", "Stažená aplikace není novější Resonata."))
         }
         guard isSignedLikeMe(app) else {
-            throw UpdateError(message: "Stažená aplikace nemá správný podpis, nic jsem nevyměnil.")
+            throw UpdateError(message: L.t("The download isn't signed the right way; nothing was replaced.",
+                                      "Stažená aplikace nemá správný podpis, nic jsem nevyměnil."))
         }
 
         _ = try fm.replaceItemAt(current, withItemAt: app)
@@ -247,7 +266,7 @@ final class Updater: ObservableObject {
         try process.run()
         process.waitUntilExit()
         guard process.terminationStatus == 0 else {
-            throw UpdateError(message: "Balíček se nepodařilo rozbalit.")
+            throw UpdateError(message: L.t("The package couldn't be unpacked.", "Balíček se nepodařilo rozbalit."))
         }
     }
 

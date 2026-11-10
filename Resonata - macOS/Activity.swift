@@ -42,39 +42,40 @@ enum NotchActivity: Equatable {
     var look: ActivityLook {
         switch self {
         case .charging(let percent):
-            ActivityLook(symbol: "bolt.fill", tint: ActivityLook.green, title: "Nabíjení",
+            ActivityLook(symbol: "bolt.fill", tint: ActivityLook.green, title: L.t("Charging", "Nabíjení"),
                          detail: "\(percent) %",
                          trailing: Battery(percent: percent, charging: false).symbol)
         case .lowBattery(let percent):
             ActivityLook(symbol: "exclamationmark.triangle.fill", tint: ActivityLook.red,
-                         title: "Slabá baterie", detail: "\(percent) %",
+                         title: L.t("Low battery", "Slabá baterie"), detail: "\(percent) %",
                          trailing: Battery(percent: percent, charging: false).symbol)
         case .headphones(let name):
             ActivityLook(symbol: "headphones", tint: ActivityLook.blue, title: name,
-                         detail: "Připojeno", trailing: "speaker.wave.2.fill")
+                         detail: L.t("Connected", "Připojeno"), trailing: "speaker.wave.2.fill")
         case .meeting(let title, let start):
             ActivityLook(symbol: "calendar", tint: ActivityLook.orange, title: title,
                          detail: Self.meetingDetail(start: start, now: Date()), trailing: "clock.fill")
         case .timerDone(let minutes):
-            ActivityLook(symbol: "timer", tint: ActivityLook.orange, title: "Čas vypršel",
+            ActivityLook(symbol: "timer", tint: ActivityLook.orange, title: L.t("Time's up", "Čas vypršel"),
                          detail: "\(minutes) min", trailing: "bell.fill")
         case .pomodoro(let rest, let minutes):
             rest
-                ? ActivityLook(symbol: "cup.and.saucer.fill", tint: ActivityLook.green, title: "Pauza",
+                ? ActivityLook(symbol: "cup.and.saucer.fill", tint: ActivityLook.green, title: L.t("Break", "Pauza"),
                                detail: "\(minutes) min", trailing: "bell.fill")
-                : ActivityLook(symbol: "timer", tint: ActivityLook.orange, title: "Zpátky do práce",
+                : ActivityLook(symbol: "timer", tint: ActivityLook.orange, title: L.t("Back to work", "Zpátky do práce"),
                                detail: "\(minutes) min", trailing: "bell.fill")
         case .update(let version):
-            ActivityLook(symbol: "arrow.down.circle.fill", tint: ActivityLook.blue, title: "Nová verze \(version)",
-                         detail: "Klikni pravým", trailing: "sparkles")
+            ActivityLook(symbol: "arrow.down.circle.fill", tint: ActivityLook.blue, title: L.t("New version \(version)", "Nová verze \(version)"),
+                         detail: L.t("Right-click", "Klikni pravým"), trailing: "sparkles")
         }
     }
 
-    /// "za 5 min · 14:00", or "teď · 14:00" once it has started.
+    /// "in 5 min · 14:00" ("za 5 min · 14:00"), or "now · 14:00" once it has started.
     nonisolated static func meetingDetail(start: Date, now: Date) -> String {
         let minutes = Int((start.timeIntervalSince(now) / 60).rounded())
-        let time = start.formatted(.dateTime.hour().minute().locale(Locale(identifier: "cs_CZ")))
-        return minutes > 0 ? "za \(minutes) min · \(time)" : "teď · \(time)"
+        let time = start.formatted(.dateTime.hour().minute().locale(L.locale))
+        return minutes > 0 ? L.t("in \(minutes) min · \(time)", "za \(minutes) min · \(time)")
+                           : L.t("now · \(time)", "teď · \(time)")
     }
 }
 
@@ -106,6 +107,10 @@ final class ActivityPeek {
     private var waiting: NotchActivity?
     private var closed: AnyCancellable?
 
+    /// How long the pill takes to slide in or settle after a close, at the
+    /// animation speed chosen — a fixed 0.6 s was short of the slow one.
+    private nonisolated static var slide: TimeInterval { Preferences.animationSpeed.settleTime + 0.05 }
+
     init(model: NotchModel) {
         self.model = model
         // Each time the panel closes, show what came while it was open —
@@ -114,7 +119,7 @@ final class ActivityPeek {
             .removeDuplicates()
             .filter { !$0 }
             .sink { [weak self] _ in
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + Self.slide) {
                     MainActor.assumeIsolated { self?.showWaiting() }
                 }
             }
@@ -148,6 +153,6 @@ final class ActivityPeek {
             self.model.activity = nil
         }
         hide = clear
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: clear)
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.slide, execute: clear)
     }
 }

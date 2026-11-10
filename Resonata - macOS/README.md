@@ -97,7 +97,8 @@ keychain; `build.sh` uses it when present.
 | `Notes.swift`, `NotesView.swift` | The notes page and its local storage |
 | `QuickApps.swift`, `QuickAppsView.swift` | The app shortcuts page and its list |
 | `LyricsView.swift` | The lyric line being sung, scrolling up to the next |
-| `SpotifyVolume.swift` | Spotify's own volume over AppleScript, and its slider |
+| `PlayerVolume.swift` | Spotify's and Apple Music's own volume over AppleScript, and its slider |
+| `Language.swift` | English and Czech, side by side where each string is used |
 | `ArtworkAccent.swift` | Picks the accent colour out of the album art |
 | `Controls.swift` | Transport button press style |
 | `ResonataApp.swift` | Wires it together, sets `.accessory` activation policy |
@@ -106,7 +107,10 @@ keychain; `build.sh` uses it when present.
 ## Cost
 
 About 1.2% CPU on an M4 while something plays (the bars' display link), and
-nothing at rest: the display links stop when playback does.
+next to nothing at rest: the display links stop when playback does. What's
+left is the check for full-screen apps and Mission Control, which reads the
+window list four times a second — about 0.3 % of a core
+(`NotchPanelController.updateVisibility`).
 
 The bars used to be a SwiftUI animation, which re-ran the view graph and
 re-rasterised every frame (4.5%). They are `CALayer`s moved by a display link.
@@ -196,9 +200,67 @@ Accessibility permission), how long after a pause the notch shrinks,
 animation speed, lyrics on/off, the calendar on/off, and the wave's colour (album, white, or your
 own). Apple Music tracks get a heart button (`favorited` over AppleScript);
 Spotify has no way to like a song from the Mac short of its web API. Spotify
-tracks get a slider for Spotify's own volume instead (`sound volume` over
-AppleScript; no sign-in), leaving the rest of the Mac's sound where it is;
-its speaker mutes Spotify, and a second click brings the level back.
+and Apple Music tracks both get a slider for the player's own volume (`sound
+volume` over AppleScript; no sign-in), leaving the rest of the Mac's sound
+where it is; its speaker mutes the player, and a second click brings the
+level back (`PlayerVolume.swift`).
+
+The display chosen with the switch button is remembered across restarts, by
+the display's UUID; unplugged, the notch goes where it would by itself, and
+returns when the display does.
+
+## Language
+
+English or Czech — Settings → Jazyk / Language. Left on "Same as the Mac" it
+is Czech on a Czech Mac and English on any other. Both languages sit side by
+side where each string is used (`L.t("Music", "Hudba")` in `Language.swift`),
+the way the Windows version keeps them. Picked once at launch, so a change
+shows from the next start.
+
+## Keyboard
+
+Opened with the shortcut, the panel takes the keyboard: **Esc** closes it and
+**Space** plays and pauses. In a note Space is a space, and Esc still closes.
+Opened with the pointer it leaves the keyboard alone.
+
+A click on a button no longer takes the keyboard away from the app you were
+typing in. It used to: any click made the panel the key window, and since the
+panel never goes away it stayed the key window after it closed, so typing
+went nowhere until you clicked back into your own window. Two things fix it.
+`becomesKeyOnlyIfNeeded` on the panel plus `needsPanelToBecomeKey` false on
+the hosting view (a hosting view otherwise says *every* click needs the
+keyboard; the text fields are AppKit views of their own and still ask). And
+when the panel closes while it does hold the keyboard — after a note, or
+after the shortcut — it hands it back (`releaseKeyboard`).
+
+## Lyrics
+
+- **Only with the switch on, and only for songs.** Nothing is sent to LRCLIB
+  with "Texty písní" off — it used to be looked up and just not shown — nor
+  for anything without an artist or outside 30 s – 15 min: a podcast, a film,
+  a live stream (`LyricsStore.shouldLookUp`).
+- **The right recording.** When the exact match misses, the search returns
+  live versions and remixes too; the result nearest the song's length is
+  used, and none at all if the nearest is more than 10 s out
+  (`LyricsStore.closest`). It used to be the first one with lyrics, whose
+  lines then drifted out of time.
+- **More of the song.** Click the lyric line and the player column becomes
+  five lines of the song, the one being sung picked out in the album's
+  colour; click a line to jump there, the arrow to go back (`LyricsList`).
+
+A stream with no length — radio, a live video — shows **LIVE** in the
+scrubber's place instead of a bar stuck at 0:00.
+
+## Calendars
+
+Settings → Kalendáře lists the Mac's calendars once the calendar is
+connected: switch off the ones that shouldn't show or remind. Events you
+declined are left out too (a switch, on by default).
+
+## VoiceOver
+
+The icon-only buttons — pages, transport, heart, volume, settings, the timer's
+− and +, the to-do ticks — carry labels.
 
 ## Keeping the open panel cheap
 
@@ -210,7 +272,7 @@ looking the same (`NotchView.progressInterval`, `LyricsView.lineStarts`).
 
 ## Mission Control
 
-The panel is `.stationary` at screen-saver level, so Mission Control used to
+The panel is `.stationary`, above the menu bar, so Mission Control used to
 leave it on top of the strip of desktops. It now hides while Mission Control
 or App Exposé is up: the Dock draws those in its own windows over each
 display at layer 18 (its usual level is 20), checked with the full-screen
@@ -396,7 +458,7 @@ as before. Verified on macOS 26.5.
 - Live progress bar interpolated between syncs — `Track.position(at:)`
 - Click-and-drag scrubbing
 - Synced lyrics: LRCLIB `/get` with an exact match, falling back to `/search`
-  on title and artist; the line being sung shows under the artist. Cached under `~/Library/Caches/com.local.resonata/lyrics/`.
+  on title and artist, nearest in length; the line being sung shows under the artist. Cached under `~/Library/Caches/com.local.resonata/lyrics/`.
 
 ## License
 

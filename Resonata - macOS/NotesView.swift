@@ -25,7 +25,7 @@ struct NotesView: View {
                 .padding(.horizontal, 4)
                 .padding(.vertical, 6)
             if store.note.isEmpty {
-                Text("Poznámka…")
+                Text(L.t("Note…", "Poznámka…"))
                     .font(.system(size: 12))
                     .foregroundStyle(.white.opacity(0.3))
                     .padding(.horizontal, 9)
@@ -42,7 +42,7 @@ struct NotesView: View {
                 Image(systemName: "plus")
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.5))
-                TextField("Nový úkol", text: $newTodo)
+                TextField(L.t("New to-do", "Nový úkol"), text: $newTodo)
                     .textFieldStyle(.plain)
                     .font(.system(size: 12))
                     .onSubmit {
@@ -56,7 +56,7 @@ struct NotesView: View {
                 .fill(.white.opacity(0.06)))
 
             if store.todos.isEmpty {
-                Text("Žádné úkoly")
+                Text(L.t("No to-dos", "Žádné úkoly"))
                     .font(.system(size: 11))
                     .foregroundStyle(.white.opacity(0.3))
                     .padding(.top, 4)
@@ -82,6 +82,8 @@ struct NotesView: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(todo.done ? L.t("Mark as not done", "Označit jako nehotové")
+                                          : L.t("Mark as done", "Označit jako hotové"))
 
             Text(todo.text)
                 .font(.system(size: 12))
@@ -99,7 +101,8 @@ struct NotesView: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help("Smazat")
+            .help(L.t("Delete", "Smazat"))
+            .accessibilityLabel(L.t("Delete", "Smazat"))
         }
     }
 }

@@ -81,11 +81,12 @@ struct ShelfView: View {
                     }
                     .scrollIndicators(.never)
                     HStack {
-                        Text("Přetáhni soubor kamkoli — zkopíruje se. Klik ho otevře.")
+                        Text(L.t("Drag a file anywhere to copy it. Click to open it.",
+                                 "Přetáhni soubor kamkoli — zkopíruje se. Klik ho otevře."))
                             .font(.system(size: 10))
                             .foregroundStyle(.white.opacity(0.4))
                         Spacer()
-                        Button("Vyčistit") { shelf.clear() }
+                        Button(L.t("Clear", "Vyčistit")) { shelf.clear() }
                             .buttonStyle(.plain)
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundStyle(.white.opacity(0.6))
@@ -101,9 +102,10 @@ struct ShelfView: View {
         VStack(spacing: 8) {
             Image(systemName: "tray.and.arrow.down")
                 .font(.system(size: 26, weight: .medium))
-            Text("Přetáhni sem soubory")
+            Text(L.t("Drop files here", "Přetáhni sem soubory"))
                 .font(.system(size: 13, weight: .semibold))
-            Text("Odložíš si je tu a pak je odtáhneš, kam potřebuješ.")
+            Text(L.t("Park them here, then drag them wherever you need.",
+                     "Odložíš si je tu a pak je odtáhneš, kam potřebuješ."))
                 .font(.system(size: 11))
                 .foregroundStyle(.white.opacity(0.45))
         }
@@ -136,7 +138,8 @@ struct ShelfView: View {
                     .foregroundStyle(.white.opacity(0.55), .black.opacity(0.6))
             }
             .buttonStyle(.plain)
-            .help("Odebrat z police")
+            .help(L.t("Remove from the shelf", "Odebrat z police"))
+            .accessibilityLabel(L.t("Remove from the shelf", "Odebrat z police"))
         }
         .onTapGesture { NSWorkspace.shared.open(url) }
         // Dragging it out hands over the file itself; the place it's dropped

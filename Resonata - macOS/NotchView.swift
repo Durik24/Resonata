@@ -17,6 +17,11 @@ struct NotchView: View {
     @State var isScrubbing = false
     @State var isHoveringBar = false
 
+    /// The song has been the same one for a moment. A song's length can
+    /// arrive a beat after its title; only one still without a length once
+    /// this is set is a live stream — see `isLiveStream`.
+    @State var liveSettled = false
+
     /// Accent pulled from the album art, used for the background wash.
     // Not private: the expanded panel and its calendar take their colour
     // from it too.
@@ -262,6 +267,17 @@ struct NotchView: View {
             model.artwork = image
         }
         .animation(.easeInOut(duration: 0.5), value: accent)
+        .task(id: songIdentity) {
+            liveSettled = false
+            try? await Task.sleep(for: .milliseconds(1500))
+            guard !Task.isCancelled else { return }
+            liveSettled = true
+        }
+    }
+
+    /// The song, whatever its length turns out to be.
+    private var songIdentity: String? {
+        model.track.map { "\($0.title)\u{1F}\($0.artist)\u{1F}\($0.source)" }
     }
 
     /// Whether the panel may carry colour at all. Nothing playing means no

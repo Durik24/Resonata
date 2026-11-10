@@ -30,6 +30,12 @@ final class NotchPanel: NSPanel {
         hidesOnDeactivate = false
         acceptsMouseMovedEvents = true
         ignoresMouseEvents = false
+        // A click on a button must not take the keyboard away from the app
+        // being typed in; a click in a note still does. Without this *any*
+        // click made the panel the key window — and since it never goes
+        // away, it kept the keyboard after it closed: typing went nowhere
+        // until you clicked back into your own window.
+        becomesKeyOnlyIfNeeded = true
         level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.mainMenuWindow)) + 3)
         // The panel is black whatever the system appearance; text fields in
         // the notes page need to draw as on a dark background — light text,
@@ -103,9 +109,19 @@ final class NotchPanel: NSPanel {
     /// Whether a scroll is the notch's (`onScroll`) or the page's under the
     /// pointer — a list of to-dos has to scroll like any list.
     var takesScroll: ((NSEvent) -> Bool)?
+    /// A key pressed while the panel has the keyboard. True when it was the
+    /// panel's — Esc, Space — and goes no further.
+    var onKeyDown: ((NSEvent) -> Bool)?
+
+    /// A key nothing wanted. The default is a beep for every one of them.
+    override func keyDown(with event: NSEvent) {}
 
     override func sendEvent(_ event: NSEvent) {
         switch event.type {
+        case .keyDown where onKeyDown?(event) == true:
+            // Before the text field sees it: Esc in a note would otherwise
+            // ask for completions instead of closing the panel.
+            return
         case .rightMouseDown:
             onContextMenu?(event)
             return
@@ -178,6 +194,15 @@ final class NotchPanel: NSPanel {
 /// open it, which is indistinguishable from a bug.
 final class FirstClickHostingView<Content: View>: NSHostingView<Content> {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    /// The other half of `becomesKeyOnlyIfNeeded` on the panel. A hosting
+    /// view can't tell what was clicked inside it, so it says every click
+    /// needs the keyboard — tested: with the flag alone, a click on a button
+    /// still made the panel the key window. The text fields are AppKit views
+    /// of their own under this one and still ask for it themselves, so a
+    /// note can be typed in; a button, the scrubber or the bare panel can't
+    /// take the keyboard away from the app being typed in.
+    override var needsPanelToBecomeKey: Bool { false }
 
     /// The pointer moved over this window, entered it or left it. For
     /// hover-to-open, which then asks where the pointer is on screen.
@@ -296,6 +321,7 @@ final class NotchPanelController {
     }
 
     func show() {
+        restorePinnedScreen()
         guard let screen = targetScreen else { return }
 
         adoptGeometry(of: screen)
@@ -367,6 +393,9 @@ final class NotchPanelController {
         }
         panel.onContextMenu = { [weak self] event in
             MainActor.assumeIsolated { self?.showMenu(for: event) }
+        }
+        panel.onKeyDown = { [weak self] event in
+            MainActor.assumeIsolated { self?.handleKey(event) ?? false }
         }
         panel.takesScroll = { [weak self] event in
             MainActor.assumeIsolated { self?.takesScroll(event) ?? true }
@@ -474,6 +503,16 @@ final class NotchPanelController {
                     self.setExpanded(opening)
                     self.debugSnapshots(tag: opening ? "open" : "close")
                 }
+            }
+        }
+
+        // Debug: `com.local.resonata.open` opens the panel if it isn't open —
+        // unlike the toggle, the same whatever a click elsewhere did meanwhile.
+        if NotchPanel.debugClick {
+            DistributedNotificationCenter.default().addObserver(
+                forName: Notification.Name("com.local.resonata.open"), object: nil, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.setExpanded(true) }
             }
         }
 
@@ -595,8 +634,10 @@ final class NotchPanelController {
     }
 
     private func screensChanged() {
+        restorePinnedScreen()
         guard let screen = targetScreen else { return }
         model.isExpanded = false
+        releaseKeyboard()
         adoptGeometry(of: screen)
         reposition()
         updateVisibility()
@@ -627,29 +668,102 @@ final class NotchPanelController {
         menu.autoenablesItems = false
 
         if NSScreen.screens.count > 1 {
-            menu.addItem(ClosureMenuItem("Přepnout na další displej") { [weak self] in
+            menu.addItem(ClosureMenuItem(L.t("Move to the next display", "Přepnout na další displej")) { [weak self] in
                 self?.moveToNextScreen()
             })
         }
         if case .available(let release) = Updater.shared.state {
-            menu.addItem(ClosureMenuItem("Nainstalovat Resonata \(release.version)") { Updater.shared.install() })
+            menu.addItem(ClosureMenuItem(L.t("Install Resonata \(release.version)", "Nainstalovat Resonata \(release.version)")) { Updater.shared.install() })
             menu.addItem(.separator())
         }
-        menu.addItem(ClosureMenuItem("Nastavení…") { SettingsWindowController.shared.show() })
-        let login = ClosureMenuItem("Spouštět po přihlášení") {
+        menu.addItem(ClosureMenuItem(L.t("Settings…", "Nastavení…")) { [weak self] in
+            SettingsWindowController.shared.show()
+            // Not left open on top of the window it has just opened.
+            self?.setExpanded(false)
+        })
+        let login = ClosureMenuItem(L.t("Open at login", "Spouštět po přihlášení")) {
             LoginItem.set(!LoginItem.isEnabled)
         }
         login.state = LoginItem.isEnabled ? .on : .off
         menu.addItem(login)
         menu.addItem(.separator())
-        menu.addItem(ClosureMenuItem("Ukončit Resonata") { NSApp.terminate(nil) })
+        menu.addItem(ClosureMenuItem(L.t("Quit Resonata", "Ukončit Resonata")) { NSApp.terminate(nil) })
 
         NSMenu.popUpContextMenu(menu, with: event, for: view)
     }
 
     /// Opens the panel if closed, closes it if open — the keyboard shortcut.
-    func toggle() {
-        setExpanded(!model.isExpanded)
+    ///
+    /// Opened from the keyboard, it takes the keyboard too, so it can be
+    /// worked from there: Esc closes it, Space plays and pauses. Opened with
+    /// the pointer it doesn't — whatever you were typing in keeps the keys.
+    func toggle(fromKeyboard: Bool = false) {
+        let opening = !model.isExpanded
+        setExpanded(opening, takingKeyboard: opening && fromKeyboard)
+    }
+
+    // MARK: Keyboard
+
+    enum KeyAction: Equatable { case close, playPause }
+
+    /// What a key does on the open panel while the panel has the keyboard —
+    /// opened with the shortcut, or with a note being typed in it. Esc closes
+    /// it, except while an input method is still composing a character.
+    /// Space plays and pauses, except in a note, where it's a space. With ⌘,
+    /// ⌃ or ⌥ held, neither: those are somebody's shortcuts.
+    nonisolated static func keyAction(keyCode: UInt16, expanded: Bool, typing: Bool,
+                                      composing: Bool = false, modified: Bool = false) -> KeyAction? {
+        guard expanded, !modified else { return nil }
+        switch keyCode {
+        case 53 where !composing: return .close     // Esc
+        case 49 where !typing: return .playPause    // Space
+        default: return nil
+        }
+    }
+
+    private func handleKey(_ event: NSEvent) -> Bool {
+        let text = panel?.firstResponder as? NSTextView
+        let modified = !event.modifierFlags.intersection([.command, .control, .option]).isEmpty
+        guard let action = Self.keyAction(keyCode: event.keyCode, expanded: model.isExpanded,
+                                          typing: text != nil, composing: text?.hasMarkedText() == true,
+                                          modified: modified) else { return false }
+        if NotchPanel.debugClick { NSLog("click: key \(action)") }
+        switch action {
+        case .close:
+            setExpanded(false)
+        case .playPause:
+            if let source = model.track?.source { transport(.playPause, in: source) }
+        }
+        return true
+    }
+
+    /// Hands the keyboard back to the app that had it.
+    ///
+    /// The panel takes it when it's opened with the shortcut, or when a note
+    /// is typed in it. It never goes away, so closed it was still the key
+    /// window, and whatever you typed next went to a notch with nowhere to
+    /// put it. macOS gives the keys back when a key window leaves the screen;
+    /// this takes it off and puts it straight back, in one pass, before
+    /// anything is drawn. A click outside needs none of this: the window
+    /// clicked is the key one already.
+    private func releaseKeyboard() {
+        guard let panel, panel.isKeyWindow else { return }
+        if NotchPanel.debugClick { NSLog("click: keyboard handed back") }
+        panel.makeFirstResponder(nil)
+        let wasVisible = panel.isVisible
+        panel.orderOut(nil)
+        if wasVisible { panel.orderFrontRegardless() }
+    }
+
+    /// The display chosen with the switch button is remembered across
+    /// restarts — it used to be forgotten, and the notch went back to where
+    /// it would go by itself. Saved as the display's UUID and looked up
+    /// again whenever the displays change: unplugged, the notch goes where
+    /// it would anyway; plugged back in, it returns.
+    private func restorePinnedScreen() {
+        guard let saved = UserDefaults.standard.string(forKey: Preferences.Key.pinnedScreen)
+        else { return }
+        pinnedScreenID = NSScreen.screens.first(where: { $0.uuid == saved })?.displayID
     }
 
     /// Moves the notch to the next display in the list, wrapping around.
@@ -659,7 +773,9 @@ final class NotchPanelController {
 
         let currentID = targetScreen?.displayID
         let index = screens.firstIndex { $0.displayID == currentID } ?? 0
-        pinnedScreenID = screens[(index + 1) % screens.count].displayID
+        let next = screens[(index + 1) % screens.count]
+        pinnedScreenID = next.displayID
+        UserDefaults.standard.set(next.uuid, forKey: Preferences.Key.pinnedScreen)
 
         // Same teardown as a display change: collapse, re-read geometry for the
         // new screen, move the window. The pill's size differs between a real
@@ -682,7 +798,7 @@ final class NotchPanelController {
     /// not re-render for seconds, until some unrelated publish woke it. From
     /// the next run-loop pass it renders on the next frame, and the explicit
     /// layout removes any remaining doubt.
-    private func setExpanded(_ expanded: Bool) {
+    private func setExpanded(_ expanded: Bool, takingKeyboard: Bool = false) {
         DispatchQueue.main.async { [weak self] in
             MainActor.assumeIsolated {
                 guard let self, self.model.isExpanded != expanded else { return }
@@ -697,6 +813,11 @@ final class NotchPanelController {
                 self.panel?.contentView?.needsLayout = true
                 self.panel?.contentView?.layoutSubtreeIfNeeded()
                 self.panel?.displayIfNeeded()
+                if expanded {
+                    if takingKeyboard { self.panel?.makeKey() }
+                } else {
+                    self.releaseKeyboard()
+                }
             }
         }
     }
@@ -1103,7 +1224,10 @@ final class NotchPanelController {
             MainActor.assumeIsolated { self?.setPanelFrame(target) }
         }
         shrink = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.55, execute: work)
+        // Once the spring has landed, however slow it's set — see
+        // `AnimationSpeed.settleTime`.
+        DispatchQueue.main.asyncAfter(deadline: .now() + Preferences.animationSpeed.settleTime,
+                                      execute: work)
     }
 
     private func reposition() {

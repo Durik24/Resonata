@@ -364,8 +364,9 @@ final class MediaRemoteNowPlaying: ObservableObject, NowPlayingSource {
     private var playheadTimer: Timer?
     private var pendingPlayheadCheck: DispatchWorkItem?
     private var commandObserver: NSObjectProtocol?
-    private nonisolated static let playheadQueue = DispatchQueue(
-        label: "com.local.resonata.playhead", qos: .userInitiated)
+    /// The app's one AppleScript queue, shared with everything else that
+    /// talks to the players — see `AppleScript`.
+    private nonisolated static var playheadQueue: DispatchQueue { AppleScript.queue }
 
     /// After a payload, and steadily while a scriptable player plays.
     private func updatePlayheadChecks() {

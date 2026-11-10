@@ -25,6 +25,17 @@ final class CalendarStore: ObservableObject {
     /// Every event in the days the panel shows, earliest first.
     @Published private(set) var events: [Event] = []
 
+    /// One of the Mac's calendars, for the switches in Settings.
+    struct CalendarInfo: Identifiable, Equatable {
+        var id: String
+        var title: String
+        /// The account it belongs to: "iCloud", "Google"…
+        var account: String
+    }
+
+    /// The calendars there are, for Settings to offer. Empty without access.
+    @Published private(set) var calendars: [CalendarInfo] = []
+
     private let store = EKEventStore()
     private var observer: NSObjectProtocol?
     /// Showing `Demo`'s invented events: the real calendar isn't read.
@@ -71,16 +82,46 @@ final class CalendarStore: ObservableObject {
     func reload(now: Date = Date()) {
         guard !demo else { return }
         access = Self.currentAccess()
-        guard access == .granted else { events = []; return }
+        guard access == .granted else {
+            if !events.isEmpty { events = [] }
+            if !calendars.isEmpty { calendars = [] }
+            return
+        }
+
+        let all = store.calendars(for: .event)
+        let list = all
+            .map { CalendarInfo(id: $0.calendarIdentifier, title: $0.title, account: $0.source?.title ?? "") }
+            .sorted { ($0.account, $0.title) < ($1.account, $1.title) }
+        if list != calendars { calendars = list }
+
+        // Only the calendars left switched on in Settings. With none left,
+        // nothing — `calendars: nil` below would mean every one of them.
+        let off = Preferences.calendarsOff
+        let wanted = all.filter { !off.contains($0.calendarIdentifier) }
+        guard !wanted.isEmpty else {
+            if !events.isEmpty { events = [] }
+            return
+        }
+
         let days = Self.days(around: now)
         guard let first = days.first, let last = days.last,
               let end = Calendar.current.date(byAdding: .day, value: 1, to: last) else { return }
-        let predicate = store.predicateForEvents(withStart: first, end: end, calendars: nil)
-        events = store.events(matching: predicate)
+        let predicate = store.predicateForEvents(withStart: first, end: end, calendars: wanted)
+        let skipDeclined = Preferences.skipDeclined
+        let found = store.events(matching: predicate)
+            .filter { !(skipDeclined && Self.isDeclined($0)) }
             .map { Event(id: $0.calendarItemIdentifier + "\($0.startDate.timeIntervalSince1970)",
                          title: $0.title ?? "",
                          start: $0.startDate, end: $0.endDate, isAllDay: $0.isAllDay) }
             .sorted { ($0.isAllDay ? 0 : 1, $0.start) < ($1.isAllDay ? 0 : 1, $1.start) }
+        // The reminder re-reads every minute; published only when something
+        // has changed, so an open panel isn't redrawn for nothing.
+        if found != events { events = found }
+    }
+
+    /// You said no to this one: it's in the calendar, but you won't be there.
+    private nonisolated static func isDeclined(_ event: EKEvent) -> Bool {
+        event.attendees?.first(where: \.isCurrentUser)?.participantStatus == .declined
     }
 
     /// `Demo` only: show these instead of the calendar's events.

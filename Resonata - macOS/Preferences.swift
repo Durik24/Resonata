@@ -26,6 +26,10 @@ enum Preferences {
         static let pomodoroRounds = "pomodoroRounds"
         static let pageSwipe = "pageSwipe"
         static let checkForUpdates = "checkForUpdates"
+        static let language = "language"
+        static let pinnedScreen = "pinnedScreen"
+        static let calendarsOff = "calendarsOff"
+        static let skipDeclined = "skipDeclinedEvents"
     }
 
     /// Call before anything reads a preference.
@@ -48,6 +52,8 @@ enum Preferences {
             Key.pomodoroRounds: 4,
             Key.pageSwipe: PageSwipe.withFingers.rawValue,
             Key.checkForUpdates: true,
+            Key.language: AppLanguage.system.rawValue,
+            Key.skipDeclined: true,
             Key.openMode: OpenMode.nook.rawValue,
             Key.quickApps: QuickApps.defaultPaths().joined(separator: "\n"),
         ])
@@ -65,6 +71,21 @@ enum Preferences {
 
     /// Whether to look for a new version on GitHub once a day.
     static var checkForUpdates: Bool { UserDefaults.standard.bool(forKey: Key.checkForUpdates) }
+
+    /// Calendars switched off in Settings, by identifier. Kept as the ones
+    /// *off*, so a calendar added later counts without anyone having to
+    /// notice it and switch it on.
+    static var calendarsOff: Set<String> {
+        get { Set(UserDefaults.standard.stringArray(forKey: Key.calendarsOff) ?? []) }
+        set { UserDefaults.standard.set(newValue.sorted(), forKey: Key.calendarsOff) }
+    }
+
+    /// Events you said no to stay out of the panel and get no reminder.
+    static var skipDeclined: Bool { UserDefaults.standard.bool(forKey: Key.skipDeclined) }
+
+    static var language: AppLanguage {
+        AppLanguage(rawValue: UserDefaults.standard.string(forKey: Key.language) ?? "") ?? .system
+    }
 
     static var showLyrics: Bool { UserDefaults.standard.bool(forKey: Key.showLyrics) }
 
@@ -115,9 +136,9 @@ enum PageSwipe: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .withFingers: "Doprava = další"
-        case .reversed: "Doleva = další (jako telefon)"
-        case .off: "Vypnuto"
+        case .withFingers: L.t("Right = next", "Doprava = další")
+        case .reversed: L.t("Left = next (like a phone)", "Doleva = další (jako telefon)")
+        case .off: L.t("Off", "Vypnuto")
         }
     }
 }
@@ -134,9 +155,9 @@ enum OpenMode: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .click: "Kliknutím"
-        case .hover: "Najetím myší (jako boring.notch)"
-        case .nook: "Kliknutím a gesty (jako NotchNook)"
+        case .click: L.t("Click", "Kliknutím")
+        case .hover: L.t("Hover (like boring.notch)", "Najetím myší (jako boring.notch)")
+        case .nook: L.t("Click and gestures (like NotchNook)", "Kliknutím a gesty (jako NotchNook)")
         }
     }
 }
@@ -148,9 +169,9 @@ enum AnimationSpeed: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .fast: "Rychlé"
-        case .normal: "Normální"
-        case .slow: "Pomalé"
+        case .fast: L.t("Fast", "Rychlé")
+        case .normal: L.t("Normal", "Normální")
+        case .slow: L.t("Slow", "Pomalé")
         }
     }
 
@@ -162,6 +183,18 @@ enum AnimationSpeed: String, CaseIterable, Identifiable {
         // overshoot, so the panel lands rather than just stops.
         case .normal: .spring(response: 0.38, dampingFraction: 0.8)
         case .slow: .spring(response: 0.7, dampingFraction: 0.8)
+        }
+    }
+
+    /// How long that spring takes to land, near enough. The window is cut
+    /// down to the new shape only after this (`NotchPanelController.apply`),
+    /// and whatever waits for a slide to finish waits this long. It was one
+    /// fixed 0.55 s, right for the first two; the slow spring was still a few
+    /// points out by then, and the window clipped them off.
+    var settleTime: TimeInterval {
+        switch self {
+        case .fast, .normal: 0.55
+        case .slow: 1.0
         }
     }
 
@@ -183,9 +216,9 @@ enum WaveColour: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .album: "Podle obalu alba"
-        case .white: "Bílá"
-        case .custom: "Vlastní"
+        case .album: L.t("From the album cover", "Podle obalu alba")
+        case .white: L.t("White", "Bílá")
+        case .custom: L.t("Custom", "Vlastní")
         }
     }
 }

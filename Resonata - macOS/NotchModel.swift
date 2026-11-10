@@ -45,6 +45,10 @@ final class NotchModel: ObservableObject {
     @Published var lyrics: [LyricLine]?
     /// Lyrics are being looked up for the current track.
     @Published var lyricsPending = false
+    /// The music page shows a few lines of the lyrics at once, in the
+    /// player's place — see `NotchView.lyricsColumn`. Kept from song to song
+    /// until it's switched back; a song without lyrics shows the player.
+    @Published var showingLyrics = false
 
     /// Apple Music's heart for this track; nil hides it (any other player).
     @Published var isFavorite: Bool?
@@ -160,11 +164,11 @@ enum PanelTab: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .music: "Hudba"
-        case .notes: "Poznámky a úkoly"
-        case .apps: "Aplikace"
-        case .timer: "Časovač"
-        case .shelf: "Police"
+        case .music: L.t("Music", "Hudba")
+        case .notes: L.t("Notes and to-dos", "Poznámky a úkoly")
+        case .apps: L.t("Apps", "Aplikace")
+        case .timer: L.t("Timer", "Časovač")
+        case .shelf: L.t("Shelf", "Police")
         }
     }
 }

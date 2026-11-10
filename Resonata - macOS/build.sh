@@ -83,8 +83,8 @@ PLIST
 # The difference matters more than it looks. An ad-hoc signature is a hash of
 # the binary, so every rebuild is a brand-new identity to macOS — and
 # permissions are tied to identity. With ad-hoc signing, every build silently
-# revoked Automation and Screen Recording and the app looked broken until they
-# were granted again. Without *any* signature, macOS refuses to grant them at
+# revoked Automation and the app looked broken until it was granted again.
+# Without *any* signature, macOS refuses to grant it at
 # all.
 IDENTITY="Resonata Dev"
 if security find-identity -v -p codesigning 2>/dev/null | grep -q "$IDENTITY"; then

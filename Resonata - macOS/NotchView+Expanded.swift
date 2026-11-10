@@ -115,6 +115,7 @@ extension NotchView {
                 }
                 .buttonStyle(.plain)
                 .help(tab.title)
+                .accessibilityLabel(tab.title)
             }
         }
         .animation(Self.pageTurn, value: model.tab)
@@ -128,12 +129,17 @@ extension NotchView {
         let showPercent = buttons + 66 <= stripWidth
         return HStack(spacing: 10) {
             if model.canSwitchScreens {
-                iconButton("rectangle.on.rectangle", help: "Přepnout notch na další monitor") {
+                iconButton("rectangle.on.rectangle",
+                           help: L.t("Move the notch to the next display", "Přepnout notch na další monitor")) {
                     model.switchScreen?()
                 }
             }
-            iconButton("gearshape", help: "Nastavení") {
+            iconButton("gearshape", help: L.t("Settings", "Nastavení")) {
                 SettingsWindowController.shared.show()
+                // The panel floats above every window, the settings' too, and
+                // a click in a window of our own isn't a click "outside": left
+                // open, it sat on top of the window it had just opened.
+                model.close?()
             }
             // Re-read every half minute while the panel is open; closed, the
             // view doesn't exist and nothing is read at all.
@@ -165,6 +171,7 @@ extension NotchView {
         }
         .buttonStyle(TransportButtonStyle())
         .help(help)
+        .accessibilityLabel(help)
     }
 
     /// Player on the left, the days and their events on the right.
@@ -214,61 +221,12 @@ extension NotchView {
                     sourceBadge.offset(x: 7, y: 7)
                 }
 
-            // Centred over the bar beside the calendar, the way the layout was
-            // drawn; without the calendar the column is wide, and centred text
-            // floated off on its own in the middle of the panel — so it sits
-            // against the cover instead.
-            VStack(alignment: textAlignment.horizontal, spacing: 0) {
-                Text(model.track?.title ?? "Nic nehraje")
-                    .font(.system(size: 15, weight: .bold))
-                    .lineLimit(1)
-                    .contentTransition(.opacity)
-                    .animation(fade, value: model.track?.title)
-                Text(model.track?.artist ?? "")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(accentText ?? .white.opacity(0.55))
-                    .lineLimit(1)
-                    .contentTransition(.opacity)
-                    .animation(fade, value: model.track?.artist)
-                    .padding(.top, 2)
-                if showLyricsSetting && model.track != nil {
-                    LyricsView(lines: model.lyrics, pending: model.lyricsPending,
-                               track: model.track, alignment: textAlignment)
-                        .padding(.top, 3)
+            Group {
+                if showLyricsSetting, model.showingLyrics, let lines = model.lyrics {
+                    lyricsColumn(lines)
+                } else {
+                    playerColumn
                 }
-
-                Spacer(minLength: 6)
-
-                progress
-
-                HStack(spacing: 22) {
-                    button("backward.fill") { send(.previous) }
-                    // Standard transport convention: the glyph shows what a
-                    // click will do, so playing offers pause and vice versa.
-                    button(model.track?.isPlaying == true ? "pause.fill" : "play.fill", size: 19) {
-                        send(.playPause)
-                    }
-                    button("forward.fill") { send(.next) }
-                    Spacer(minLength: 0)
-                    if isSpotify {
-                        SpotifyVolumeControl(tint: accentText ?? .white)
-                            .layoutPriority(-1)
-                            // A new view for each song, so the level is read
-                            // again — Spotify's own slider may have moved.
-                            .id(model.track?.title)
-                    }
-                    if let favorite = model.isFavorite {
-                        button(favorite ? "heart.fill" : "heart") {
-                            MusicFavorite.toggle { value in
-                                if let value { model.isFavorite = value }
-                            }
-                        }
-                        .help(favorite ? "Odebrat z oblíbených" : "Přidat do oblíbených")
-                    }
-                }
-                // The buttons' hit areas are wider than their glyphs; this
-                // lines the first glyph up with the start of the bar.
-                .padding(.leading, -7)
             }
             .foregroundStyle(.white)
             // Exactly the cover's height, so the title starts at its top edge
@@ -281,6 +239,123 @@ extension NotchView {
             .padding(.bottom, -5)
             .frame(maxWidth: .infinity)
             .frame(height: Self.coverSize)
+        }
+    }
+
+    /// Title, artist, the line being sung, the bar and the buttons.
+    private var playerColumn: some View {
+        // Centred over the bar beside the calendar, the way the layout was
+        // drawn; without the calendar the column is wide, and centred text
+        // floated off on its own in the middle of the panel — so it sits
+        // against the cover instead.
+        VStack(alignment: textAlignment.horizontal, spacing: 0) {
+            Text(model.track?.title ?? L.t("Nothing playing", "Nic nehraje"))
+                .font(.system(size: 15, weight: .bold))
+                .lineLimit(1)
+                .contentTransition(.opacity)
+                .animation(fade, value: model.track?.title)
+            Text(model.track?.artist ?? "")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(accentText ?? .white.opacity(0.55))
+                .lineLimit(1)
+                .contentTransition(.opacity)
+                .animation(fade, value: model.track?.artist)
+                .padding(.top, 2)
+            // Only for something lyrics are looked up for: under a podcast
+            // or a film, "no lyrics found" was just noise.
+            if showLyricsSetting, let track = model.track, LyricsStore.shouldLookUp(track) {
+                lyricLine(track)
+                    .padding(.top, 3)
+            }
+
+            Spacer(minLength: 6)
+
+            progress
+
+            HStack(spacing: 6) {
+                HStack(spacing: 22) {
+                    button("backward.fill", label: L.t("Previous", "Předchozí")) { send(.previous) }
+                    // Standard transport convention: the glyph shows what a
+                    // click will do, so playing offers pause and vice versa.
+                    button(model.track?.isPlaying == true ? "pause.fill" : "play.fill", size: 19,
+                           label: model.track?.isPlaying == true ? L.t("Pause", "Pozastavit")
+                                                                 : L.t("Play", "Přehrát")) {
+                        send(.playPause)
+                    }
+                    button("forward.fill", label: L.t("Next", "Další")) { send(.next) }
+                }
+                Spacer(minLength: 0)
+                if let player = volumePlayer {
+                    PlayerVolumeControl(player: player, tint: accentText ?? .white)
+                        .layoutPriority(-1)
+                        // A new view for each song, so the level is read
+                        // again — the player's own slider may have moved.
+                        .id(model.track?.title)
+                }
+                if let favorite = model.isFavorite {
+                    let label = favorite ? L.t("Remove from favourites", "Odebrat z oblíbených")
+                                         : L.t("Add to favourites", "Přidat do oblíbených")
+                    button(favorite ? "heart.fill" : "heart", label: label) {
+                        MusicFavorite.toggle { value in
+                            if let value { model.isFavorite = value }
+                        }
+                    }
+                    .help(label)
+                }
+            }
+            // The buttons' hit areas are wider than their glyphs; this
+            // lines the first glyph up with the start of the bar.
+            .padding(.leading, -7)
+        }
+    }
+
+    /// The line being sung. With lyrics to show, a click on it brings up
+    /// more of the song — see `lyricsColumn`.
+    @ViewBuilder
+    private func lyricLine(_ track: Track) -> some View {
+        let line = LyricsView(lines: model.lyrics, pending: model.lyricsPending,
+                              track: track, alignment: textAlignment)
+        if model.lyrics != nil {
+            Button { model.showingLyrics = true } label: { line.contentShape(Rectangle()) }
+                .buttonStyle(.plain)
+                .help(L.t("Show more of the lyrics", "Zobrazit víc textu"))
+                .accessibilityLabel(L.t("Show more of the lyrics", "Zobrazit víc textu"))
+        } else {
+            line
+        }
+    }
+
+    /// A few lines of the song at once, in the player column's place: the
+    /// one being sung picked out, and a click on any line jumps the song
+    /// there. The arrow in its corner goes back to the player.
+    private func lyricsColumn(_ lines: [LyricLine]) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 6) {
+                Text(model.track?.title ?? "")
+                    .font(.system(size: 12, weight: .bold))
+                    .lineLimit(1)
+                Text(model.track?.artist ?? "")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(accentText ?? .white.opacity(0.55))
+                    .lineLimit(1)
+                    .layoutPriority(-1)
+                Spacer(minLength: 4)
+                Button { model.showingLyrics = false } label: {
+                    Image(systemName: "chevron.backward")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.6))
+                        .frame(width: 22, height: 18)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(TransportButtonStyle())
+                .help(L.t("Back to the player", "Zpět k přehrávači"))
+                .accessibilityLabel(L.t("Back to the player", "Zpět k přehrávači"))
+            }
+            .frame(height: 18)
+            LyricsList(lines: lines, track: model.track, accent: accentText ?? .white) { time in
+                guard let track = model.track else { return }
+                seek(to: time, in: track.source)
+            }
         }
     }
 
@@ -301,15 +376,14 @@ extension NotchView {
                     .contentShape(Circle())
             }
             .buttonStyle(TransportButtonStyle())
-            .help("Otevřít \(model.track?.source ?? "")")
+            .help(L.t("Open \(model.track?.source ?? "")", "Otevřít \(model.track?.source ?? "")"))
+            .accessibilityLabel(L.t("Open \(model.track?.source ?? "")", "Otevřít \(model.track?.source ?? "")"))
         }
     }
 
-    /// Spotify is the player — the slider for its own volume shows.
-    private var isSpotify: Bool {
-        guard let track = model.track else { return false }
-        return track.bundleID == SpotifyVolume.bundleID || track.source == "Spotify"
-    }
+    /// The player, when it has a volume of its own to set — Spotify or
+    /// Apple Music. Then the slider shows.
+    private var volumePlayer: PlayerVolume.Player? { PlayerVolume.player(for: model.track) }
 
     private var sourceApp: URL? {
         guard let track = model.track else { return nil }
@@ -350,7 +424,46 @@ extension NotchView {
         return (scrubFraction ?? playbackFraction(at: date)) * track.duration
     }
 
+    @ViewBuilder
     private var progress: some View {
+        if isLiveStream {
+            liveRow
+        } else {
+            timedProgress
+        }
+    }
+
+    /// Playing something with no length, even after a moment to be told it:
+    /// a radio station, a live stream. There is nowhere to scrub to, and a
+    /// bar stuck at the start over "0:00 / 0:00" read as broken.
+    private var isLiveStream: Bool {
+        guard let track = model.track else { return false }
+        return Self.isLive(duration: track.duration, settled: liveSettled)
+    }
+
+    nonisolated static func isLive(duration: TimeInterval, settled: Bool) -> Bool {
+        settled && duration <= 0
+    }
+
+    /// In the bar's place for a live stream: the same height, so nothing
+    /// around it moves.
+    private var liveRow: some View {
+        VStack(spacing: 5) {
+            Capsule().fill(.white.opacity(0.22))
+                .frame(height: 4)
+                .frame(height: 12)
+            HStack(spacing: 5) {
+                Circle().fill(ActivityLook.red).frame(width: 5, height: 5)
+                Text(L.t("LIVE", "ŽIVĚ"))
+                Spacer(minLength: 0)
+            }
+            .font(.system(size: 9, weight: .semibold))
+            .foregroundStyle(.white.opacity(0.6))
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private var timedProgress: some View {
         // The playhead is interpolated locally between syncs now, so the bar
         // needs a clock of its own.
         //
@@ -496,7 +609,8 @@ extension NotchView {
         .shadow(color: .black.opacity(0.45), radius: 5, y: 2)
     }
 
-    private func button(_ symbol: String, size: CGFloat = 15,
+    /// `label` is what VoiceOver reads: the glyph says nothing by itself.
+    private func button(_ symbol: String, size: CGFloat = 15, label: String,
                         action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
@@ -511,5 +625,6 @@ extension NotchView {
                 .contentShape(Rectangle())
         }
         .buttonStyle(TransportButtonStyle())
+        .accessibilityLabel(label)
     }
 }

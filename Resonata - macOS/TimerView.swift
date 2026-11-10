@@ -36,17 +36,18 @@ struct TimerView: View {
                 HStack(spacing: 8) {
                     if timer.isActive {
                         control(timer.isPaused ? "play.fill" : "pause.fill",
-                                timer.isPaused ? "Pokračovat" : "Pozastavit") {
+                                timer.isPaused ? L.t("Resume", "Pokračovat") : L.t("Pause", "Pozastavit")) {
                             timer.isPaused ? timer.resume() : timer.pause()
                         }
-                        control("xmark", "Zrušit") { timer.cancel() }
+                        control("xmark", L.t("Cancel", "Zrušit")) { timer.cancel() }
                     } else {
-                        control("play.fill", "Spustit \(timer.chosenMinutes) min") {
+                        control("play.fill", L.t("Start \(timer.chosenMinutes) min", "Spustit \(timer.chosenMinutes) min")) {
                             timer.start(minutes: timer.chosenMinutes)
                         }
                         let plan = Preferences.pomodoroPlan
                         control("repeat", "Pomodoro \(pomodoroWork) + \(pomodoroRest)") { timer.startPomodoro() }
-                            .help("\(plan.work) min práce a \(plan.rest) min pauza pořád dokola, každá \(plan.rounds). pauza \(plan.longRest) min. Délky nastavíš v Nastavení → Pomodoro.")
+                            .help(L.t("\(plan.work) min of work and \(plan.rest) min of break, over and over; every \(plan.rounds)th break is \(plan.longRest) min. Set the lengths in Settings → Pomodoro.",
+                                      "\(plan.work) min práce a \(plan.rest) min pauza pořád dokola, každá \(plan.rounds). pauza \(plan.longRest) min. Délky nastavíš v Nastavení → Pomodoro."))
                     }
                 }
             }
@@ -92,13 +93,13 @@ struct TimerView: View {
             // Text, read as it's typed, rather than a number field: that
             // only takes the value on Return, so typing 37 and clicking
             // "Spustit" started the old length.
-            TextField("Minuty", text: $typed)
+            TextField(L.t("Minutes", "Minuty"), text: $typed)
                 .textFieldStyle(.plain)
                 .multilineTextAlignment(.center)
                 .font(.system(size: 26, weight: .semibold).monospacedDigit())
                 .foregroundStyle(.white)
                 .frame(width: 70)
-                .help("Klikni a napiš počet minut")
+                .help(L.t("Click and type the minutes", "Klikni a napiš počet minut"))
                 .onAppear { typed = "\(timer.chosenMinutes)" }
                 .onChange(of: typed) { _, text in
                     let digits = String(text.filter(\.isWholeNumber).prefix(3))
@@ -133,15 +134,16 @@ struct TimerView: View {
         }
         .buttonStyle(TransportButtonStyle())
         .buttonRepeatBehavior(.enabled)
-        .help(delta > 0 ? "O minutu víc" : "O minutu míň")
+        .help(delta > 0 ? L.t("A minute more", "O minutu víc") : L.t("A minute less", "O minutu míň"))
+        .accessibilityLabel(delta > 0 ? L.t("A minute more", "O minutu víc") : L.t("A minute less", "O minutu míň"))
     }
 
     private var caption: String {
-        if timer.isPaused { return "pozastaveno" }
+        if timer.isPaused { return L.t("paused", "pozastaveno") }
         switch timer.phase {
-        case .work: return "práce · \(timer.round). kolo"
-        case .rest: return "pauza"
-        case nil: return timer.isActive ? "zbývá" : "časovač"
+        case .work: return L.t("work · round \(timer.round)", "práce · \(timer.round). kolo")
+        case .rest: return L.t("break", "pauza")
+        case nil: return timer.isActive ? L.t("left", "zbývá") : L.t("timer", "časovač")
         }
     }
 
