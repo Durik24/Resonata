@@ -34,6 +34,26 @@ jobs:
           dotnet-version: 10.0.x
       - name: Logic tests
         run: dotnet run --project "Resonata - win11/tests/Resonata.Tests.csproj" -c Release
+      # The real pointer on the right edge and touchpad swipes, read back from the log.
+      - name: The pointer and the touchpad
+        shell: pwsh
+        run: |
+          dotnet build "Resonata - win11/src/Resonata.csproj" -c Release -v q
+          & "Resonata - win11/tests/pointer-test.ps1" -Exe "$PWD/Resonata - win11/src/bin/Release/net10.0-windows10.0.19041.0/Resonata.exe"
+      # Copied in first: the upload takes nothing from outside the workspace.
+      - name: Gather Resonata's log
+        if: always()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force diagnostics | Out-Null
+          Copy-Item "$env:APPDATA\Resonata\resonata.log" diagnostics -ErrorAction SilentlyContinue
+      - name: Keep the log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: x64-log
+          path: diagnostics
+          if-no-files-found: ignore
 
   # The ARM64 build can't run on an x64 PC, so it's tried here on real ARM64:
   # the tests natively and as the x64 build emulated, then the app itself.
@@ -93,6 +113,32 @@ jobs:
           Start-Sleep 10
           Install (Get-Item "Resonata - win11\out\Resonata-ARM64-Setup-*.exe").FullName
           if (@(Get-ItemProperty 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*' | Where-Object DisplayName -eq 'Resonata').Count -ne 1) { throw 'not exactly one Resonata in Apps' }
+
+          # A copy that quit but never ended, as 1.1.0 did on one PC, still
+          # holding its files: Setup ends it instead of failing on them.
+          function Started($hang) {
+            $env:RESONATA_HANG_ON_EXIT = $hang
+            $run = Start-Process "$app\Resonata.exe" -PassThru
+            Remove-Item Env:RESONATA_HANG_ON_EXIT
+            $null = $run.Handle
+            Start-Sleep 10
+            $run
+          }
+          function Quit { Start-Process "$app\Resonata.exe" -ArgumentList '--quit' -Wait }
+          Start-Sleep 10
+          Quit # the copy Setup started
+          $stuck = Started 'forever'
+          Quit
+          Start-Sleep 3
+          if ($stuck.HasExited) { throw 'the copy ended by itself, so nothing was tried' }
+          Install (Get-Item "Resonata - win11\out\Resonata-ARM64-Setup-*.exe").FullName
+          if (-not $stuck.HasExited) { throw 'Setup left the copy that never ended' }
+          # And the app ends such a copy itself, 5 s after it quit.
+          Start-Sleep 10
+          Quit
+          $stuck = Started '1'
+          Quit
+          if (-not $stuck.WaitForExit(15000)) { throw 'a copy that quit never ended' }
       # The demo song, each state photographed; the app quits when it's done.
       # Setup started the installed copy, which is asked to quit first.
       - name: Run the installed copy
@@ -120,6 +166,9 @@ jobs:
           $pictures = @(Get-ChildItem snapshots -Filter *.png)
           $pictures | ForEach-Object { "$($_.Name)  $($_.Length) bytes" }
           if ($pictures.Count -lt 8) { throw "Only $($pictures.Count) snapshots" }
+      - name: The pointer and the touchpad, on the installed copy
+        shell: pwsh
+        run: '& "Resonata - win11/tests/pointer-test.ps1" -Exe "$env:ProgramFiles\Resonata\Resonata.exe"'
       - name: Gather Resonata's log
         if: always()
         shell: pwsh

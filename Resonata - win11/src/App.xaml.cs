@@ -131,9 +131,24 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        // `RESONATA_HANG_ON_EXIT`: stays after quitting, as 1.1.0 did on one PC.
+        // "1" tries what ends it, "forever" what Setup does with it.
+        var hang = Environment.GetEnvironmentVariable("RESONATA_HANG_ON_EXIT");
+        if (hang != "forever") EndIfStuck();
         _instance?.Dispose();
         base.OnExit(e);
+        if (hang is "1" or "forever") Thread.Sleep(Timeout.Infinite);
     }
+
+    /// A call into another process that never returns could keep Resonata from
+    /// ending after it had quit, with no window and its files still held, so
+    /// Setup couldn't replace them. Its notes and settings are saved by then.
+    private static void EndIfStuck() => new Thread(() =>
+    {
+        Thread.Sleep(5000);
+        Log.Write("still running 5 s after quitting; ending it");
+        Native.TerminateProcess(Native.GetCurrentProcess(), 0);
+    }) { IsBackground = true }.Start();
 
     private void ListenFor(string name, Action action)
     {

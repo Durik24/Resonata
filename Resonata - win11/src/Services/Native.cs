@@ -32,6 +32,9 @@ internal static partial class Native
 
     [LibraryImport("kernel32.dll")] public static partial IntPtr GetCurrentProcess();
 
+    [LibraryImport("kernel32.dll")] [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool TerminateProcess(IntPtr process, uint exitCode);
+
     /// The machine Windows itself runs on, whatever the calling process is.
     [LibraryImport("kernel32.dll")] [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool IsWow64Process2(IntPtr process, out ushort processMachine, out ushort nativeMachine);

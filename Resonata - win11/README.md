@@ -3,10 +3,13 @@
 The Windows version of [Resonata](<../Resonata - macOS/README.md>): now playing,
 synced lyrics, an album-coloured wave, notes, app shortcuts, a timer and a file
 shelf. Windows has no notch and its windows use the top of the screen, so here
-Resonata is **completely hidden until wanted**. Rest the pointer at the top
-centre of the screen and the pill slides out. In Hover mode, staying on it opens
-the whole panel and moving away closes it; in Click mode a click opens it and
-another closes it. A click on that edge, on the pill, the shortcut (Ctrl + Shift +
+Resonata lives on the **right edge, a third of the way down**, and is
+**completely hidden until wanted**. Rest the pointer on that edge and the pill
+slides out of it, the one the Mac has under its notch, turned into a tab. In
+Hover mode, staying on it opens the whole panel, as a little window of its own
+just off the edge, with the cover flying out of the pill into it; moving away
+closes it. In Click mode a click opens it and another closes it. A click on that
+edge, on the pill, the shortcut (Ctrl + Shift +
 Space, or Alt + Shift + N) or the tray
 icon opens the panel at once. It slides out by itself for a moment when a new
 song starts or the timer ends.
@@ -45,7 +48,15 @@ dotnet run --project tests
 ```
 
 `RESONATA_DEMO=1` shows a made-up song instead of what's playing.
-`RESONATA_SNAP=<folder>` drives every state, photographs it and quits.
+`RESONATA_SNAP=<folder>` drives every state, photographs it and quits; among
+them `opening-1`, `opening-2` and `closing`, the cover in flight.
+
+`tests\pointer-test.ps1 -Exe <Resonata.exe>` drives the real pointer and wheel:
+resting on the edge, staying, touchpad swipes on the panel and on the pill, the
+wheel. A touchpad's swipe and a Mac streaming Windows both arrive as sideways
+wheel steps, which is what it sends. It reads back what happened from the log
+(`RESONATA_TRACE=1`). It takes over the pointer, so CI runs it on both x64 and
+ARM64.
 
 ## Install, update, uninstall
 
@@ -98,10 +109,13 @@ there. A stream with no length shows **LIVE** instead of a bar stuck at 0:00.
 
 ## Differences from the Mac
 
-- Retracts fully instead of sitting in a notch, so nothing covers the top of the
-  screen. While hidden the pointer is watched by position, with no window there
-  to get in the way. Only the top two rows of pixels in the middle of the
-  screen react to a click; that click opens the panel and goes no further.
+- Retracts fully into the right edge instead of sitting in a notch, so nothing
+  covers the screen. While hidden the pointer is watched by position, with no
+  window there to get in the way. Only the last column of pixels, as tall as the
+  panel around the line it opens on, reacts to a click; that click opens the
+  panel and goes no further.
+- The open panel is a little window standing off the edge, every corner round,
+  instead of a notch grown down from the top.
 - The timer's countdown shows in the pill when it's out and in the tray tooltip,
   not permanently.
 - The calendar reads private `.ics` links. Windows has nothing a desktop app can

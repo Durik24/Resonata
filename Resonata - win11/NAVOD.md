@@ -1,6 +1,7 @@
 # Resonata pro Windows — návod
 
-Přehrávač, který se schovává za horní okraj obrazovky. Ukazuje, co zrovna hraje,
+Přehrávač, který se schovává za pravý okraj obrazovky, kousek pod horním rohem.
+Ukazuje, co zrovna hraje,
 texty písní, poznámky, zástupce aplikací, časovač a polici na soubory.
 
 Zvuk počítače **neposlouchá**. Co hraje, ví ze systémového „právě hraje“, odkud
@@ -9,10 +10,10 @@ dalších přehrávačů.
 
 ## Instalace
 
-1. Z [vydání na GitHubu](https://github.com/Durik24/Resonata/releases/tag/win-v1.2.0)
+1. Z [vydání na GitHubu](https://github.com/Durik24/Resonata/releases/tag/win-v1.3.0)
    stáhni Setup pro svůj procesor a spusť ho:
-   - `Resonata-Setup-1.2.0.exe` pro většinu počítačů, s procesorem Intel nebo AMD,
-   - `Resonata-ARM64-Setup-1.2.0.exe` pro počítače s procesorem ARM, třeba
+   - `Resonata-Setup-1.3.0.exe` pro většinu počítačů, s procesorem Intel nebo AMD,
+   - `Resonata-ARM64-Setup-1.3.0.exe` pro počítače s procesorem ARM, třeba
      Snapdragon X.
 
    Jaký procesor máš, uvidíš v **Nastavení → Systém → O systému → Typ systému**.
@@ -55,8 +56,8 @@ konci nastavení Resonaty. Odinstalátor se zeptá, jestli smazat i poznámky,
 
 | Co udělat | Co se stane |
 |---|---|
-| Najet myší nahoru doprostřed obrazovky a chvíli počkat | Vysune se pilulka |
-| Kliknout úplně nahoře uprostřed obrazovky | Rovnou se otevře velký panel |
+| Najet myší k pravému okraji, asi do třetiny výšky obrazovky, a chvíli počkat | Z okraje vykoukne pilulka |
+| Kliknout úplně na pravém okraji v tom místě | Rovnou se otevře velký panel |
 | Kliknout na pilulku | Otevře se velký panel, bez čekání |
 | Kliknout na prázdné místo v horním pruhu panelu | Panel se zavře |
 | **Ctrl + Shift + Mezerník** | Otevře nebo zavře panel odkudkoliv (v nastavení jde přepnout na Alt + Shift + N) |
@@ -66,11 +67,15 @@ konci nastavení Resonaty. Odinstalátor se zeptá, jestli smazat i poznámky,
 | Kolečko dolů na pilulce | Otevře panel |
 | Dva prsty do strany na touchpadu | Na pilulce další/předchozí skladba, v panelu další stránka |
 | Kolečko nad ikonami stránek | Přepíná stránky |
-| Přetáhnout soubor k hornímu okraji | Otevře se police, soubor na ni pustíš |
+| Přetáhnout soubor k pravému okraji | Otevře se police, soubor na ni pustíš |
 
 V **Settings → Open the panel** jsou dva režimy:
 
+Panel se otevře jako okénko kousek od okraje a obal alba do něj vyletí
+z pilulky.
+
 - **Hover** (výchozí): když na pilulce chvíli zůstaneš, panel se otevře sám.
+  Dokud na ní přepínáš skladby, počká.
   Když myší odjedeš, smrskne se do pilulky a chvíli počká. Když na ni včas
   najedeš, zase se zvětší. Během psaní poznámky zůstane otevřený.
 - **Click**: najetí vysune jen pilulku. Kliknutí panel otevře, další kliknutí
@@ -118,7 +123,7 @@ ukládá do svého nastavení v počítači. Kalendář jen čte a obnovuje se p
 ## Když to nefunguje
 
 **Nic se nevysouvá.** Podívej se na ikonu u hodin (může být schovaná pod šipkou)
-a zkus zkratku. V nastavení zkontroluj *Slide out at the top edge of the screen*.
+a zkus zkratku. V nastavení zkontroluj *Slide out at the right edge of the screen*.
 
 **Ukazuje „Nic nehraje“, i když hudba hraje.** Přehrávač se nehlásí do systému.
 Podívej se, jestli ho vidíš v panelu hlasitosti ve Windows.

@@ -382,23 +382,33 @@ public sealed class Ring : FrameworkElement
 /// The cover, or a placeholder of the same shape, so nothing shifts when it lands.
 public sealed class CoverView : Grid
 {
-    private readonly Border _picture;
+    private readonly Border _back, _picture, _edge;
     private readonly TextBlock _note;
     private readonly ImageBrush _brush = new() { Stretch = Stretch.UniformToFill };
 
     public CoverView(double size)
     {
-        Width = Height = size;
-        var radius = new CornerRadius(size * 0.09);
-        Children.Add(new Border { CornerRadius = radius, Background = Ui.White(0.1) });
+        _back = new Border { Background = Ui.White(0.1) };
+        Children.Add(_back);
         _note = Ui.Icon(Glyph.Music, size * 0.36, Ui.White(0.5));
         Children.Add(_note);
-        _picture = new Border { CornerRadius = radius, Background = _brush };
+        _picture = new Border { Background = _brush };
         Children.Add(_picture);
         // A hairline edge stops dark artwork dissolving into the panel.
-        Children.Add(new Border { CornerRadius = radius, BorderThickness = new Thickness(0.5), BorderBrush = Ui.White(0.12) });
+        _edge = new Border { BorderThickness = new Thickness(0.5), BorderBrush = Ui.White(0.12) };
+        Children.Add(_edge);
         RenderOptions.SetBitmapScalingMode(_picture, BitmapScalingMode.HighQuality);
+        SetSize(size);
         SetImage(null);
+    }
+
+    /// Corners and the placeholder note keep their share of the side, so a
+    /// cover drawn at any size looks like the resting ones at theirs.
+    public void SetSize(double size)
+    {
+        Width = Height = size;
+        _back.CornerRadius = _picture.CornerRadius = _edge.CornerRadius = new CornerRadius(size * 0.09);
+        _note.FontSize = Math.Max(1, size * 0.36);
     }
 
     public void SetImage(BitmapSource? image)

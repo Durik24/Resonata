@@ -13,7 +13,7 @@ namespace Resonata;
 /// Player on the left, the days and their events on the right.
 public sealed class MusicPage : Grid, IPage
 {
-    private const double CoverSize = 110;
+    public const double CoverSize = 110;
     private static readonly Color FallbackAccent = Color.FromRgb(92, 153, 255);
 
     private readonly PanelModel _m;
@@ -75,6 +75,7 @@ public sealed class MusicPage : Grid, IPage
         main.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
         var coverHost = new Grid { Width = CoverSize, Height = CoverSize, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
+        CoverHost = coverHost;
         coverHost.Children.Add(_cover);
         _badge = Ui.Button(new Border
         {
@@ -104,6 +105,18 @@ public sealed class MusicPage : Grid, IPage
         _m.PropertyChanged += OnModelChanged;
         Settings.Current.PropertyChanged += OnSettingsChanged;
         Refresh();
+    }
+
+    /// Where the cover sits, for the one flying between the pill and the panel to land on.
+    public FrameworkElement CoverHost { get; }
+
+    /// The flying cover stands in for this one, badge and all, while it's in
+    /// the air; the player's badge comes back once it has landed.
+    public void CoverInFlight(bool flying)
+    {
+        _cover.Opacity = flying ? 0 : 1;
+        _badge.BeginAnimation(OpacityProperty, flying ? null : Anim.To(1, 0.2, Anim.EaseOut));
+        if (flying) _badge.Opacity = 0;
     }
 
     private Grid BuildColumn()

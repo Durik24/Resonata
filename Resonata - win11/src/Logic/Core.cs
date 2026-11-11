@@ -312,6 +312,19 @@ public static class CalendarRules
     }
 }
 
+/// The cover flying between the pill and the panel: `progress` of the way from
+/// one place to the other, the shape's own share of the way from the pill to
+/// the panel, so it keeps its place in the box all the way, overshoot and all.
+public static class CoverFlight
+{
+    public static System.Windows.Rect Frame(System.Windows.Rect from, System.Windows.Rect to, double progress)
+    {
+        static double Mix(double a, double b, double t) => a + (b - a) * t;
+        return new(Mix(from.X, to.X, progress), Mix(from.Y, to.Y, progress),
+            Math.Max(0, Mix(from.Width, to.Width, progress)), Math.Max(0, Mix(from.Height, to.Height, progress)));
+    }
+}
+
 /// One page per sideways gesture, however long it runs or however many events
 /// a touchpad sends; a silence of `Gap` ends the gesture.
 public sealed class PageSwipeTracker

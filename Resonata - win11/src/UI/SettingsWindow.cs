@@ -75,7 +75,7 @@ public sealed class SettingsWindow : Window
         RebuildUpdate();
 
         Section(L.T("Sliding out", "Vysouvání"));
-        Add(Toggle(L.T("Slide out at the top edge of the screen", "Vysunout najetím k hornímu okraji"), S.EdgeTrigger, v => S.EdgeTrigger = v));
+        Add(Toggle(L.T("Slide out at the right edge of the screen", "Vysunout najetím k pravému okraji"), S.EdgeTrigger, v => S.EdgeTrigger = v));
         Combo(L.T("Open the panel", "Otevírat panel"), new[]
         {
             (OpenMode.Hover, L.T("Hover", "Najetím")),

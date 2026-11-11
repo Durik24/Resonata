@@ -13,17 +13,25 @@ using Microsoft.Win32;
 
 namespace Resonata;
 
-/// The one window: transparent, always on top, top-centre of the screen. The
-/// shape inside it grows and shrinks; the window itself never resizes.
+/// The one window: transparent, always on top, against the right edge of the
+/// screen a third of the way down. The pill comes out of that edge as a tab;
+/// the panel opens from it as a little window of its own, standing just off
+/// the edge. The shape inside grows and shrinks; the window never resizes.
 ///
 /// Transparent pixels of a layered window don't take clicks, so only the drawn
 /// shape blocks anything. And while Resonata is retracted the window is hidden
-/// outright: the pointer is watched by position instead, so the top of the
+/// outright: the pointer is watched by position instead, so the edge of the
 /// screen stays completely clickable.
 public partial class NotchWindow : Window
 {
-    private const double RetractedY = -(PanelModel.PillHeight + 34);
-    private const double EdgeZoneWidth = PanelModel.PillWidth + 80;
+    private const double RetractedX = PanelModel.PillWidth + 34;
+    /// How tall the stretch of the edge is that brings the pill out: as tall
+    /// as the panel it opens.
+    private const double EdgeZoneHeight = PanelModel.ExpandedHeight;
+    /// Where the pill comes out: this share of the way down the screen.
+    private const double AnchorShare = 0.3;
+    /// The open panel stands this far off the edge, with every corner round.
+    private const double OpenGap = 12, OpenCorner = 24, PillCorner = 12;
     /// How long the pointer rests on the edge before the pill comes out; in
     /// Hover mode, how much longer on the pill before the panel opens; and how
     /// long after leaving before it goes away.
@@ -58,7 +66,16 @@ public partial class NotchWindow : Window
     private FrameworkElement? _shownPage;
 
     private IntPtr _hwnd;
-    private Spring _width = new(PanelModel.PillWidth), _height = new(PanelModel.PillHeight), _top = new(0), _bottom = new(12), _y = new(RetractedY);
+    /// `_edge` is the corners against the screen's edge: square on the pill,
+    /// round once the panel has stood off it; `_far` the ones away from it.
+    private Spring _width = new(PanelModel.PillWidth), _height = new(PanelModel.PillHeight),
+        _edge = new(0), _far = new(PillCorner), _gap = new(0), _x = new(RetractedX);
+    /// The cover flying between the pill and the panel (see `StartFlight`).
+    private readonly CoverView _flyingCover = new(32) { HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, IsHitTestVisible = false, Visibility = Visibility.Collapsed };
+    private readonly TranslateTransform _flyingShift = new();
+    private bool _flying;
+    private Rect _flightFrom, _flightTo;
+    private static readonly bool Trace = Environment.GetEnvironmentVariable("RESONATA_TRACE") == "1";
     private bool _animating;
     private TimeSpan _lastFrame;
     private bool _windowShown;
@@ -95,6 +112,8 @@ public partial class NotchWindow : Window
         _timerBadge.VerticalAlignment = VerticalAlignment.Center;
         _timerBadge.TextTrimming = TextTrimming.None;
 
+        _flyingCover.RenderTransform = _flyingShift;
+        Shape.Children.Add(_flyingCover);
         CoverSlot.Children.Add(_pillCover);
         CoverSlot.Children.Add(_pillSymbol);
         TrailSlot.Children.Add(_bars);
@@ -179,8 +198,17 @@ public partial class NotchWindow : Window
 
     // MARK: Model
 
+    /// `RESONATA_TRACE=1`: what the pointer and the wheel did, in the log, for
+    /// a test that drives them to read back.
+    private static void TraceLog(string what)
+    {
+        if (Trace) Log.Write("trace: " + what);
+    }
+
     private void OnModelChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName is nameof(PanelModel.IsExpanded) or nameof(PanelModel.EdgeHeld) or nameof(PanelModel.Tab))
+            TraceLog($"{e.PropertyName} {typeof(PanelModel).GetProperty(e.PropertyName)!.GetValue(_m)}");
         switch (e.PropertyName)
         {
             case nameof(PanelModel.IsExpanded):
@@ -306,17 +334,19 @@ public partial class NotchWindow : Window
         {
             _width.Target = _m.ExpandedWidth;
             _height.Target = PanelModel.ExpandedHeight;
-            _top.Target = 12;
-            _bottom.Target = 24;
+            _edge.Target = OpenCorner;
+            _far.Target = OpenCorner;
+            _gap.Target = OpenGap;
         }
         else
         {
             _width.Target = PanelModel.PillWidth + (hover ? 8 : 0);
             _height.Target = PanelModel.PillHeight + (hover ? 2 : 0);
-            _top.Target = 0;
-            _bottom.Target = 12;
+            _edge.Target = 0;
+            _far.Target = PillCorner;
+            _gap.Target = 0;
         }
-        _y.Target = Wanted ? 0 : RetractedY;
+        _x.Target = Wanted ? 0 : RetractedX;
 
         if (Wanted) ShowWindowQuietly();
         StartAnimating();
@@ -354,14 +384,16 @@ public partial class NotchWindow : Window
         var (response, damping) = Anim.Spring;
         _width.Step(dt, response, damping);
         _height.Step(dt, response, damping);
-        _top.Step(dt, response, damping);
-        _bottom.Step(dt, response, damping);
-        // Coming down it bounces; leaving, a bounce would only be a hesitation.
-        _y.Step(dt, response, _y.Target < 0 ? 1 : damping);
+        _edge.Step(dt, response, damping);
+        _far.Step(dt, response, damping);
+        _gap.Step(dt, response, damping);
+        // Coming out it bounces; leaving, a bounce would only be a hesitation.
+        _x.Step(dt, response, _x.Target > 0 ? 1 : damping);
         ApplyFrame();
+        if (_flying && _height.Settled) EndFlight();
 
-        if (!(_width.Settled && _height.Settled && _top.Settled && _bottom.Settled && _y.Settled)) return;
-        _width.Snap(); _height.Snap(); _top.Snap(); _bottom.Snap(); _y.Snap();
+        if (!(_width.Settled && _height.Settled && _edge.Settled && _far.Settled && _gap.Settled && _x.Settled)) return;
+        _width.Snap(); _height.Snap(); _edge.Snap(); _far.Snap(); _gap.Snap(); _x.Snap();
         ApplyFrame();
         CompositionTarget.Rendering -= OnFrame;
         _animating = false;
@@ -391,21 +423,86 @@ public partial class NotchWindow : Window
     /// shadow and the size can never disagree mid-spring.
     private void ApplyFrame()
     {
-        var w = Math.Max(_width.Value, 1);
-        // Bouncing past the end of its slide down would open a gap under the
-        // top of the screen; instead the shape stretches, and springs back.
-        var stretch = Math.Max(_y.Value, 0);
-        var y = Math.Min(_y.Value, 0);
-        var h = Math.Max(_height.Value + stretch, 1);
-        var left = (Width - w) / 2;
-        ShapeShift.Y = y;
-        Shape.Clip = NotchGeometry.Build(w, h, _top.Value, _bottom.Value, left, 0);
-        ShadowShape.Data = NotchGeometry.Build(w, h, _top.Value, _bottom.Value, left, y);
+        // Bouncing past the end of its slide out would open a gap beside the
+        // edge of the screen; instead the shape stretches, and springs back.
+        var stretch = Math.Max(-_x.Value, 0);
+        var shift = Math.Max(_x.Value, 0);
+        var w = Math.Max(_width.Value + stretch, 1);
+        var h = Math.Max(_height.Value, 1);
+        var right = Width - Math.Max(_gap.Value, 0);
+        var left = right - w;
+        var top = (Height - h) / 2;
+        ShapeShift.X = shift;
+        Shape.Clip = EdgeGeometry.Build(left, top, w, h, _edge.Value, _far.Value);
+        ShadowShape.Data = EdgeGeometry.Build(left + shift, top, w, h, _edge.Value, _far.Value);
         // The colour's gradient runs corner to corner of the shape, not the window.
-        _wash.StartPoint = new Point(left, 0);
-        _wash.EndPoint = new Point(left + w, h);
+        _wash.StartPoint = new Point(left, top);
+        _wash.EndPoint = new Point(right, top + h);
         var scale = Math.Clamp(h / PanelModel.ExpandedHeight, 0.05, 1);
         ExpandedScale.ScaleX = ExpandedScale.ScaleY = scale;
+        if (_flying) PlaceFlyingCover();
+    }
+
+    // MARK: The flying cover
+
+    /// The cover grows out of the pill into the panel and shrinks back as one
+    /// picture, as the Mac's does, instead of the small one fading with the
+    /// pill while the big one is scaled in with the rest. A third cover, seen
+    /// only in flight: the pill's and the panel's are hidden for as long, and
+    /// it starts and lands on their places, so the swaps change nothing on
+    /// screen. Only with a cover at both ends: something playing, and the
+    /// panel on the music page.
+    private void StartFlight()
+    {
+        var music = _pages.GetValueOrDefault(PanelTab.Music) as MusicPage;
+        if (music is null || _m.Tab != PanelTab.Music || _m.Track is null || _pillSymbol.Text.Length > 0)
+        {
+            EndFlight();
+            return;
+        }
+        try
+        {
+            Expanded.UpdateLayout();
+            // Where the cover is in the panel at its full size: the panel's
+            // place in the shape, which its scale leaves alone, and the
+            // cover's in the panel.
+            var panel = VisualTreeHelper.GetOffset(Expanded);
+            var inPanel = music.CoverHost.TransformToAncestor(Expanded).Transform(new Point());
+            _flightTo = new Rect(panel.X + inPanel.X, panel.Y + inPanel.Y, MusicPage.CoverSize, MusicPage.CoverSize);
+            var pill = VisualTreeHelper.GetOffset(Pill);
+            _flightFrom = new Rect(pill.X, pill.Y, _pillCover.Width, _pillCover.Height);
+        }
+        catch (InvalidOperationException)
+        {
+            EndFlight();
+            return;
+        }
+        _flying = true;
+        _flyingCover.SetImage(_m.Artwork);
+        _flyingCover.Visibility = Visibility.Visible;
+        _pillCover.Opacity = 0;
+        music.CoverInFlight(true);
+        PlaceFlyingCover();
+    }
+
+    /// As far between its two places as the shape is between the pill and the
+    /// panel, overshoot and all, so it keeps its place in the box all the way.
+    private void PlaceFlyingCover()
+    {
+        var progress = (_height.Value - PanelModel.PillHeight) / (PanelModel.ExpandedHeight - PanelModel.PillHeight);
+        var frame = CoverFlight.Frame(_flightFrom, _flightTo, progress);
+        _flyingCover.SetSize(Math.Max(1, frame.Width));
+        _flyingShift.X = frame.X;
+        _flyingShift.Y = frame.Y;
+    }
+
+    private void EndFlight()
+    {
+        if (!_flying) return;
+        _flying = false;
+        _flyingCover.Visibility = Visibility.Collapsed;
+        _pillCover.Opacity = 1;
+        (_pages.GetValueOrDefault(PanelTab.Music) as MusicPage)?.CoverInFlight(false);
     }
 
     /// Fades an element in or out while it comes into or goes out of focus, so
@@ -456,6 +553,7 @@ public partial class NotchWindow : Window
             Transition(Expanded, _focusBlur, false, 0.2);
             Transition(Pill, _pillBlur, true, 0.32, 0.1);
         }
+        StartFlight();
         UpdateWave();
         foreach (var page in _pages.Values) (page as IPage)?.PanelVisibilityChanged(_m.IsExpanded);
     }
@@ -509,32 +607,47 @@ public partial class NotchWindow : Window
 
     private System.Drawing.Rectangle ScreenBounds => Screens.Target.Bounds;
 
-    // Snapshots photograph every state whatever is in front: on CI's ARM64
-    // machine that's Windows' first-run screen, which counts as full screen.
-    private bool IsFullScreenNow() => !Snapshots.IsOn && Native.IsFullScreen(ScreenBounds, _hwnd);
+    // Snapshots photograph every state, and the pointer test drives them,
+    // whatever is in front: on CI's ARM64 machine that's Windows' first-run
+    // screen, which counts as full screen.
+    private bool IsFullScreenNow() => !Snapshots.IsOn && !Trace && Native.IsFullScreen(ScreenBounds, _hwnd);
 
-    /// The strip along the top edge that brings the pill out.
+    /// The stretch of the right edge that brings the pill out, around the line
+    /// it comes out on.
     private bool InEdgeZone(Native.POINT p)
     {
         var bounds = ScreenBounds;
-        var half = EdgeZoneWidth * CurrentDpi / 2;
-        var mid = bounds.Left + bounds.Width / 2.0;
-        return p.Y >= bounds.Top && p.Y <= bounds.Top + 1 && p.X >= mid - half && p.X <= mid + half;
+        var half = EdgeZoneHeight * CurrentDpi / 2;
+        return p.X >= bounds.Right - 1 && p.X <= bounds.Right && Math.Abs(p.Y - AnchorY) <= half;
     }
 
     private double CurrentDpi => _hwnd == IntPtr.Zero ? 1 : DpiInfo.Of(this);
 
+    /// The line the pill comes out on and the panel is centred on, in screen
+    /// pixels: a third of the way down, clear of the buttons in the corner of
+    /// a maximized window, and never so high the panel would leave the screen.
+    private double AnchorY
+    {
+        get
+        {
+            var bounds = ScreenBounds;
+            return Math.Max(bounds.Top + bounds.Height * AnchorShare, bounds.Top + Height * CurrentDpi / 2);
+        }
+    }
+
     /// Where the shape is heading, in screen pixels. The target rather than the
-    /// current size: mid-spring the shape is about to be there anyway.
+    /// current size: mid-spring the shape is about to be there anyway. The gap
+    /// between the open panel and the edge counts as the panel, so the
+    /// pointer can go on to the edge without it closing.
     private bool InsideShape(Native.POINT p)
     {
         var bounds = ScreenBounds;
         var scale = CurrentDpi;
-        var w = _width.Target * scale;
+        var w = (_width.Target + _gap.Target) * scale;
         var h = _height.Target * scale;
-        var left = bounds.Left + (bounds.Width - w) / 2;
-        // A hair of slack: the pointer stops dead at the very top edge.
-        return p.X >= left - 2 && p.X <= left + w + 2 && p.Y >= bounds.Top - 2 && p.Y <= bounds.Top + h + 2;
+        var mid = AnchorY;
+        // A hair of slack: the pointer stops dead at the very edge.
+        return p.X >= bounds.Right - w - 2 && p.X <= bounds.Right + 2 && p.Y >= mid - h / 2 - 2 && p.Y <= mid + h / 2 + 2;
     }
 
     private void PointerTick()
@@ -628,7 +741,7 @@ public partial class NotchWindow : Window
         }
     }
 
-    // MARK: A click on the top edge
+    // MARK: A click on the edge
 
     /// Hidden, there's no window at the edge to click, so while the pointer is
     /// in that strip (and only then) a mouse hook watches for the button.
@@ -754,6 +867,16 @@ public partial class NotchWindow : Window
     private void OnWheel(object sender, MouseWheelEventArgs e)
     {
         var now = DateTime.Now;
+        TraceLog($"wheel {e.Delta}{(Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) ? " with Shift" : "")}");
+        // Shift turns the wheel sideways, as it does in most of Windows; some
+        // ways of streaming Windows to a Mac send a trackpad's sideways
+        // swipe like that.
+        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
+        {
+            e.Handled = true;
+            OnSidewaysScroll(-e.Delta);
+            return;
+        }
         if (!_m.IsExpanded)
         {
             e.Handled = true;
@@ -773,6 +896,7 @@ public partial class NotchWindow : Window
     private void OnSidewaysScroll(int delta)
     {
         var now = DateTime.Now;
+        TraceLog($"sideways {delta}");
         if (_m.IsExpanded)
         {
             if (Settings.Current.PageSwipe == PageSwipe.Off) return;
@@ -783,8 +907,14 @@ public partial class NotchWindow : Window
         }
         else
         {
+            // Swiping songs is staying on the pill too; the panel waits for the
+            // hand to rest, or it would open in the middle of the next swipe.
+            if (_holdStart is not null) _holdStart = now;
             var step = _pillSwipe.Add(delta, now);
-            if (step != 0) MediaService.Active?.Send(step < 0 ? TransportCommand.Next : TransportCommand.Previous);
+            if (step == 0) return;
+            var command = step < 0 ? TransportCommand.Next : TransportCommand.Previous;
+            TraceLog($"pill swipe {command}");
+            MediaService.Active?.Send(command);
         }
     }
 
@@ -963,33 +1093,55 @@ public partial class NotchWindow : Window
         for (var pass = 0; pass < 2; pass++)
         {
             var width = Width * CurrentDpi;
-            var x = (int)Math.Round(bounds.Left + (bounds.Width - width) / 2);
-            Native.SetWindowPos(_hwnd, IntPtr.Zero, x, bounds.Top, 0, 0, Native.SWP_NOSIZE | Native.SWP_NOZORDER | Native.SWP_NOACTIVATE);
+            var x = (int)Math.Round(bounds.Right - width);
+            var y = (int)Math.Round(AnchorY - Height * CurrentDpi / 2);
+            Native.SetWindowPos(_hwnd, IntPtr.Zero, x, y, 0, 0, Native.SWP_NOSIZE | Native.SWP_NOZORDER | Native.SWP_NOACTIVATE);
         }
+        TraceLog($"placed: screen {bounds.Left},{bounds.Top} {bounds.Width}x{bounds.Height}, edge at x {bounds.Right - 1}, line at y {AnchorY:0}, scale {CurrentDpi:0.##}");
     }
 }
 
-/// The silhouette: top corners flare outward into the screen's edge, bottom
-/// corners are ordinary rounds. A straight port of the Mac's NotchShape.
-public static class NotchGeometry
+/// The silhouette, against the screen's right edge. The far corners are
+/// ordinary rounds. The edge's own corners follow `edge`: square at 0, round
+/// above it (the panel standing off the edge), and below it flaring out along
+/// the edge (the Mac notch's corners, turned on their side), so the shape
+/// morphs from one to the other without a jump.
+public static class EdgeGeometry
 {
-    public static StreamGeometry Build(double w, double h, double top, double bottom, double x, double y)
+    public static StreamGeometry Build(double x, double y, double w, double h, double edge, double far)
     {
-        var tr = Math.Min(top, w / 2);
-        var br = Math.Min(bottom, Math.Min(w / 2, h));
-        var maxX = x + w;
-        var maxY = y + h;
         var geometry = new StreamGeometry();
+        var right = x + w;
+        var bottom = y + h;
         using (var g = geometry.Open())
         {
-            g.BeginFigure(new Point(x, y), true, true);
-            g.QuadraticBezierTo(new Point(x + tr, y), new Point(x + tr, y + tr), true, true);
-            g.LineTo(new Point(x + tr, maxY - br), true, true);
-            g.QuadraticBezierTo(new Point(x + tr, maxY), new Point(x + tr + br, maxY), true, true);
-            g.LineTo(new Point(maxX - tr - br, maxY), true, true);
-            g.QuadraticBezierTo(new Point(maxX - tr, maxY), new Point(maxX - tr, maxY - br), true, true);
-            g.LineTo(new Point(maxX - tr, y + tr), true, true);
-            g.QuadraticBezierTo(new Point(maxX - tr, y), new Point(maxX, y), true, true);
+            if (edge <= 0)
+            {
+                var f = Math.Min(-edge, Math.Min(h / 2, w));
+                var r = Math.Max(0, Math.Min(far, Math.Min((h - 2 * f) / 2, w - f)));
+                g.BeginFigure(new Point(right, y), true, true);
+                g.QuadraticBezierTo(new Point(right, y + f), new Point(right - f, y + f), true, true);
+                g.LineTo(new Point(x + r, y + f), true, true);
+                g.QuadraticBezierTo(new Point(x, y + f), new Point(x, y + f + r), true, true);
+                g.LineTo(new Point(x, bottom - f - r), true, true);
+                g.QuadraticBezierTo(new Point(x, bottom - f), new Point(x + r, bottom - f), true, true);
+                g.LineTo(new Point(right - f, bottom - f), true, true);
+                g.QuadraticBezierTo(new Point(right, bottom - f), new Point(right, bottom), true, true);
+            }
+            else
+            {
+                var c = Math.Min(edge, Math.Min(h, w) / 2);
+                var r = Math.Min(far, Math.Min(h, w) / 2);
+                g.BeginFigure(new Point(right - c, y), true, true);
+                g.LineTo(new Point(x + r, y), true, true);
+                g.QuadraticBezierTo(new Point(x, y), new Point(x, y + r), true, true);
+                g.LineTo(new Point(x, bottom - r), true, true);
+                g.QuadraticBezierTo(new Point(x, bottom), new Point(x + r, bottom), true, true);
+                g.LineTo(new Point(right - c, bottom), true, true);
+                g.QuadraticBezierTo(new Point(right, bottom), new Point(right, bottom - c), true, true);
+                g.LineTo(new Point(right, y + c), true, true);
+                g.QuadraticBezierTo(new Point(right, y), new Point(right - c, y), true, true);
+            }
         }
         geometry.Freeze();
         return geometry;

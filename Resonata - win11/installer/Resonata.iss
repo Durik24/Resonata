@@ -101,21 +101,28 @@ Filename: "{app}\Resonata.exe"; Description: "{cm:LaunchProgram,Resonata}"; Flag
 [Code]
 procedure AskResonataToQuit(Path: String);
 var
-  ResultCode: Integer;
+  ResultCode, Attempt: Integer;
 begin
-  if not FileExists(Path) then
+  if FileExists(Path) then
   begin
-    Log('Resonata not found at ' + Path);
-    Exit;
-  end;
-  if Exec(Path, '--quit', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
-    Log('Asked Resonata to quit, exit code ' + IntToStr(ResultCode))
+    if Exec(Path, '--quit', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+      Log('Asked Resonata to quit, exit code ' + IntToStr(ResultCode))
+    else
+      Log('Could not run Resonata --quit, error ' + IntToStr(ResultCode));
+  end
   else
-    Log('Could not run Resonata --quit, error ' + IntToStr(ResultCode));
+    Log('Resonata not found at ' + Path);
 
-  { Still there: left running, its files couldn't be removed. }
-  if ResultCode <> 0 then
-    Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM Resonata.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  { Whatever is left goes the hard way: a copy that wouldn't quit, and one that
+    quit but never ended, which 1.1.0 could do, still holding its files.
+    "Quit" saved its notes and settings. taskkill says 128 once none is left. }
+  for Attempt := 1 to 20 do
+  begin
+    if not Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM Resonata.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then Exit;
+    if ResultCode = 128 then Exit;
+    Log('Ended a Resonata that was still running, taskkill ' + IntToStr(ResultCode));
+    Sleep(250);
+  end;
 end;
 
 procedure DeleteWithRetries(Path: String);

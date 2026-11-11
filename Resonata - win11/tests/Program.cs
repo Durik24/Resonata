@@ -130,6 +130,25 @@ var stutter = new Spring(0) { Target = 100 };
 stutter.Step(1.0, 0.38, 0.8);
 Check(Math.Abs(stutter.Value) < 1000, "a long frame doesn't blow it up");
 
+// The shape against the right edge, and the cover flying across it
+System.Windows.Rect Box(double edge, double far = 12) => EdgeGeometry.Build(400, 100, 300, 42, edge, far).Bounds;
+Check(Box(0) == new System.Windows.Rect(400, 100, 300, 42), $"the pill fills its box ({Box(0)})");
+Check(Box(-8) == Box(0) && Box(24) == Box(0), "flared or round, the shape stays in its box");
+Check(Box(-500, 500).Width > 0 && Box(500, 500).Width > 0, "corners too big for it are made to fit");
+bool Covers(double edge, double x, double y) => EdgeGeometry.Build(400, 100, 300, 42, edge, 12).FillContains(new System.Windows.Point(x, y));
+Check(Covers(0, 699.5, 100.5), "square at the edge: its corner is filled");
+Check(!Covers(24, 699.5, 100.5), "round off the edge: its corner is not");
+Check(Covers(0, 695, 104) && !Covers(-8, 695, 104) && Covers(-8, 699.8, 104), "flared: it runs into the edge in a thinning point");
+Check(!Covers(0, 400.5, 100.5) && Covers(0, 412, 121), "the far corners are round");
+var pillCover = new System.Windows.Rect(429, 129, 32, 32);
+var panelCover = new System.Windows.Rect(258, 94, 110, 110);
+Check(CoverFlight.Frame(pillCover, panelCover, 0) == pillCover, "the flying cover starts on the pill's");
+Check(CoverFlight.Frame(pillCover, panelCover, 1) == panelCover, "and lands on the panel's");
+var half = CoverFlight.Frame(pillCover, panelCover, 0.5);
+Check(half == new System.Windows.Rect(343.5, 111.5, 71, 71), $"a straight line in between ({half})");
+Check(CoverFlight.Frame(pillCover, panelCover, 1.05).Width > 110, "it overshoots with the panel's bounce");
+Check(CoverFlight.Frame(pillCover, panelCover, -1).Width == 0, "and never turns inside out");
+
 // Rules
 Check(PowerRules.CrossesWarning(21, 20), "down past 20");
 Check(!PowerRules.CrossesWarning(20, 20) && !PowerRules.CrossesWarning(19, 20), "sitting there or rising isn't news");

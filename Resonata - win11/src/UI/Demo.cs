@@ -150,6 +150,23 @@ public static class Snapshots
         Save(window, dir, "activity");
         await Task.Delay(6800);
 
+        // The cover on its way from the pill into the panel, and back.
+        m.Tab = PanelTab.Music;
+        m.SongPeeking = true;
+        await Task.Delay(900);
+        window.Expand();
+        await Task.Delay(110);
+        Save(window, dir, "opening-1");
+        await Task.Delay(110);
+        Save(window, dir, "opening-2");
+        await Task.Delay(1000);
+        window.Collapse();
+        await Task.Delay(130);
+        Save(window, dir, "closing");
+        await Task.Delay(1800);
+        m.SongPeeking = false;
+        await Task.Delay(900);
+
         window.Expand();
         await Task.Delay(1200);
         foreach (var tab in Enum.GetValues<PanelTab>())
