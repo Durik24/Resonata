@@ -9,11 +9,10 @@ dalších přehrávačů.
 
 ## Instalace
 
-1. Ve [vydáních na GitHubu](https://github.com/Durik24/Resonata/releases) najdi
-   nejnovější Resonatu pro Windows (štítek `win-v…`), stáhni Setup pro svůj
-   procesor a spusť ho:
-   - `Resonata-Setup-<verze>.exe` pro většinu počítačů, s procesorem Intel nebo AMD,
-   - `Resonata-ARM64-Setup-<verze>.exe` pro počítače s procesorem ARM, třeba
+1. Z [vydání na GitHubu](https://github.com/Durik24/Resonata/releases/tag/win-v1.2.0)
+   stáhni Setup pro svůj procesor a spusť ho:
+   - `Resonata-Setup-1.2.0.exe` pro většinu počítačů, s procesorem Intel nebo AMD,
+   - `Resonata-ARM64-Setup-1.2.0.exe` pro počítače s procesorem ARM, třeba
      Snapdragon X.
 
    Jaký procesor máš, uvidíš v **Nastavení → Systém → O systému → Typ systému**.
