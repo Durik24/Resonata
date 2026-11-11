@@ -12,9 +12,8 @@
 #
 # Moves the real pointer, so it's for a machine nobody is using: CI's.
 #   pwsh tests\pointer-test.ps1 -Exe <Resonata.exe> [-CloseCovering]
-# -CloseCovering first ends whatever is in front where the panel opens (not
-# the desktop): on CI's ARM64 machine, Windows' first-run screen (WWAHost),
-# which takes the wheel from anything under it.
+# -CloseCovering first ends Windows' first-run screen (WWAHost), which on
+# CI's ARM64 machine covers everything and takes the wheel from it.
 param([Parameter(Mandatory)][string]$Exe, [switch]$CloseCovering)
 
 $ErrorActionPreference = 'Stop'
@@ -59,23 +58,17 @@ public static class Hand
 function Named($id) { (Get-Process -Id $id -ErrorAction SilentlyContinue).ProcessName }
 
 if ($CloseCovering) {
-  # Only what is in front where the panel opens, the window the wheel would
-  # go to: anything but the desktop. Not every screen-sized window: hidden
-  # ones count as that, the runner's own agent among them.
+  # The first-run screen by name, and nothing else: closing whatever is in
+  # front went on to the windows behind it, the runner's own among them.
+  # Anything else in front of the panel fails the test below, by name.
   $w = [Hand]::Size(0); $h = [Hand]::Size(1)
-  for ($round = 0; $round -lt 5; $round++) {
-    $ids = @([Hand]::Under($w - 200, [int]($h * 0.3)), [Hand]::Under($w - 100, [int]($h * 0.3)))
-    $closed = 0
-    foreach ($id in $ids | Select-Object -Unique) {
-      $name = Named $id
-      if ($name -in 'explorer', 'Resonata', 'pwsh', 'powershell', $null) { continue }
-      "closing what covers the screen: $name ($id)"
-      Stop-Process -Id $id -Force -ErrorAction SilentlyContinue
-      $closed++
-    }
-    if ($closed -eq 0) { break }
-    Start-Sleep 2
+  $front = Named ([Hand]::Under($w - 200, [int]($h * 0.3)))
+  "in front where the panel opens: $front"
+  Get-Process WWAHost -ErrorAction SilentlyContinue | ForEach-Object {
+    "closing Windows' first-run screen: WWAHost ($($_.Id))"
+    Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
   }
+  Start-Sleep 2
 }
 
 $log = "$env:APPDATA\Resonata\resonata.log"
