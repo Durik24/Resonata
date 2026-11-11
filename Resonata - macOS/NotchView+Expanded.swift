@@ -192,7 +192,16 @@ extension NotchView {
                     .padding(.top, 2)
             }
         }
+        // Measured inside the page, under everything that moves it — the
+        // page turn's slide, the open's zoom — so it's the layout's answer
+        // and changes only when the layout does.
+        .coordinateSpace(.named(Self.musicPageSpace))
+        .onPreferenceChange(CoverInPage.self) { frame in
+            if let frame, frame != coverInPage { coverInPage = frame }
+        }
     }
+
+    static let musicPageSpace = "musicPage"
 
     /// Today's circle and the event bars when nothing is playing to take a
     /// colour from.
@@ -217,9 +226,22 @@ extension NotchView {
     private var expandedMain: some View {
         HStack(spacing: 24) {
             artwork(size: Self.coverSize)
-                .overlay(alignment: .bottomTrailing) {
-                    sourceBadge.offset(x: 7, y: 7)
+                // Where the flying cover lands is wherever this one is.
+                .background {
+                    GeometryReader { proxy in
+                        Color.clear.preference(key: CoverInPage.self,
+                                               value: proxy.frame(in: .named(Self.musicPageSpace)))
+                    }
                 }
+                .overlay(alignment: .bottomTrailing) {
+                    sourceBadge.offset(x: Self.badgeOverhang, y: Self.badgeOverhang)
+                }
+                // The flying cover is standing in, badge and all — see
+                // `flyingCover`. At once, both ways: this sits under the
+                // close's spring (`Recede`), which took the change for its
+                // own and faded this cover out beside the flying one.
+                .opacity(coverFlies ? 0 : 1)
+                .animation(nil, value: coverFlies)
 
             Group {
                 if showLyricsSetting, model.showingLyrics, let lines = model.lyrics {
@@ -368,16 +390,28 @@ extension NotchView {
                 NSWorkspace.shared.openApplication(at: app, configuration: .init())
                 model.close?()
             } label: {
-                Image(nsImage: Self.icon(for: app))
-                    .resizable()
-                    .frame(width: 24, height: 24)
-                    .padding(2)
-                    .background(Circle().fill(Self.panelBlack))
+                sourceBadgePicture
                     .contentShape(Circle())
             }
             .buttonStyle(TransportButtonStyle())
             .help(L.t("Open \(model.track?.source ?? "")", "Otevřít \(model.track?.source ?? "")"))
             .accessibilityLabel(L.t("Open \(model.track?.source ?? "")", "Otevřít \(model.track?.source ?? "")"))
+        }
+    }
+
+    /// How far the badge hangs off the cover's bottom right corner.
+    static let badgeOverhang: CGFloat = 7
+
+    /// The badge as a picture: the button's face, and what the flying cover
+    /// carries in its corner.
+    @ViewBuilder
+    var sourceBadgePicture: some View {
+        if let app = sourceApp {
+            Image(nsImage: Self.icon(for: app))
+                .resizable()
+                .frame(width: 24, height: 24)
+                .padding(2)
+                .background(Circle().fill(Self.panelBlack))
         }
     }
 
@@ -626,5 +660,13 @@ extension NotchView {
         }
         .buttonStyle(TransportButtonStyle())
         .accessibilityLabel(label)
+    }
+}
+
+/// The big cover's frame in the music page, for the flying cover to land on.
+struct CoverInPage: PreferenceKey {
+    static let defaultValue: CGRect? = nil
+    static func reduce(value: inout CGRect?, nextValue: () -> CGRect?) {
+        value = nextValue() ?? value
     }
 }

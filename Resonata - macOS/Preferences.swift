@@ -201,11 +201,12 @@ enum AnimationSpeed: String, CaseIterable, Identifiable {
                                         damping: 2 * damping * stiffness.squareRoot(),
                                         initialVelocity: velocity)
         }
-        return switch self {
+        let spring: Animation = switch self {
         case .fast: pushed(response: 0.25, damping: 0.86, velocity: 8)
         case .normal: pushed(response: 0.38, damping: 0.8, velocity: 6)
         case .slow: pushed(response: 0.7, damping: 0.8, velocity: 3)
         }
+        return Animation(StartsOnFirstFrame(base: spring))
     }
 
     /// The spring for the open panel going back into the notch: no bounce.
@@ -243,6 +244,50 @@ enum AnimationSpeed: String, CaseIterable, Identifiable {
         case .normal: .easeInOut(duration: 0.4)
         case .slow: .easeInOut(duration: 0.65)
         }
+    }
+}
+
+/// An animation whose clock starts at the first frame it draws.
+///
+/// SwiftUI times an animation from the state change, not from its first
+/// frame. Building the open panel takes 25 to 55 ms of the main thread, and
+/// when nothing else is animating that costs nothing: the clock only starts
+/// with the display link. But opened by hover, the pill's swell is still in
+/// flight, the clock is already running, and the build comes off the spring
+/// — measured with the pointer really on the notch, the first frame of the
+/// open was 33% of the way out, and 51% on a cold start, against 11% from a
+/// click. The pill swelled and then lurched: "opening twice, and jerkily".
+///
+/// So whatever the first frame's time is, it is treated as one frame in,
+/// and the rest follow from there: the same curve, begun when it is seen.
+struct StartsOnFirstFrame: CustomAnimation {
+    let base: Animation
+
+    /// Where an animation's first frame falls when nothing held it up.
+    static let frame: TimeInterval = 1.0 / 60
+
+    /// How much of the clock to drop, given the time of the first frame.
+    static func lateness(firstFrameAt time: TimeInterval) -> TimeInterval {
+        max(0, time - frame)
+    }
+
+    private struct Late<V: VectorArithmetic>: AnimationStateKey {
+        static var defaultValue: TimeInterval? { nil }
+    }
+
+    func animate<V: VectorArithmetic>(value: V, time: TimeInterval,
+                                      context: inout AnimationContext<V>) -> V? {
+        if context.state[Late<V>.self] == nil, time > 0 {
+            context.state[Late<V>.self] = Self.lateness(firstFrameAt: time)
+        }
+        let late = context.state[Late<V>.self] ?? 0
+        return base.animate(value: value, time: max(0, time - late), context: &context)
+    }
+
+    func velocity<V: VectorArithmetic>(value: V, time: TimeInterval,
+                                       context: AnimationContext<V>) -> V? {
+        let late = context.state[Late<V>.self] ?? 0
+        return base.velocity(value: value, time: max(0, time - late), context: context)
     }
 }
 

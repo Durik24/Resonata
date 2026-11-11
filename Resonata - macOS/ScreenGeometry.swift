@@ -208,13 +208,21 @@ extension NSScreen {
     /// desktop and the Dock's level — measured at layer 18, against the
     /// Dock's usual 20, and none at all at other times. Owner names and
     /// bounds need no permission.
+    ///
+    /// macOS 27 moved Mission Control out of the Dock into WindowManager: a
+    /// screen-sized window at layer 19 (and the strip of desktops at 14).
+    /// Looking only for the Dock missed it, so the pill stayed on top of the
+    /// strip and opened and closed as the pointer crossed it.
+    static let missionControlOwners: Set<String> = ["Dock", "WindowManager"]
+
     func isShowingMissionControl(in windows: [[String: Any]]) -> Bool {
         guard let primary = NSScreen.screens.first else { return false }
         let whole = CGRect(x: frame.minX, y: primary.frame.maxY - frame.maxY,
                            width: frame.width, height: frame.height)
         let dockLevel = Int(CGWindowLevelForKey(.dockWindow))
         return windows.contains { window in
-            guard (window[kCGWindowOwnerName as String] as? String) == "Dock",
+            guard let owner = window[kCGWindowOwnerName as String] as? String,
+                  Self.missionControlOwners.contains(owner),
                   let layer = window[kCGWindowLayer as String] as? Int,
                   layer > 0, layer < dockLevel,
                   let raw = window[kCGWindowBounds as String] as? [String: Any],

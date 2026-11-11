@@ -670,6 +670,60 @@ do {
 
 // MARK: - Last: a lyrics line that used to crash the parser
 
+// The open spring's clock starts at its first drawn frame. Opened by hover,
+// the first frame came 33 to 51 ms after the state change and the panel
+// started a third to a half of the way out.
+check(StartsOnFirstFrame.lateness(firstFrameAt: 1.0 / 60) == 0,
+      "Open spring: a first frame on time drops nothing")
+check(StartsOnFirstFrame.lateness(firstFrameAt: 0.008) == 0,
+      "Open spring: an early first frame (120 Hz) drops nothing")
+check(abs(StartsOnFirstFrame.lateness(firstFrameAt: 0.051) - (0.051 - 1.0 / 60)) < 1e-9,
+      "Open spring: a late first frame is counted as one frame in")
+
+// The cover flying between the pill and the panel starts and lands on the
+// resting covers' own frames, measured from the top of the notch's centre
+// line. On the 13" Air: a 185 x 38 cutout, the pill 303 wide.
+do {
+    let notch = CGSize(width: 185, height: 38)
+    let pill = notch.width + NotchMetrics.contentWidth(scale: 1)
+    let closed = NotchView.closedCoverFrame(notch: notch, scale: 1, swollen: false)
+    check(closed == CGRect(x: -pill / 2 + 6 + NotchMetrics.collapsedInset, y: 4, width: 30, height: 30),
+          "Flying cover: starts on the pill's cover", "\(closed)")
+    let swollen = NotchView.closedCoverFrame(notch: notch, scale: 1, swollen: true)
+    check(swollen.minX == closed.minX - NotchMetrics.hoverGrowth.width / 2
+            && swollen.minY == closed.minY + NotchMetrics.hoverGrowth.height / 2
+            && swollen.size == closed.size,
+          "Flying cover: follows the pill swollen under the pointer", "\(swollen)")
+    let open = NotchView.openCoverFrame(notch: notch, panelWidth: 470,
+                                        inPage: CGRect(x: 0, y: 0, width: 110, height: 110))
+    check(open == CGRect(x: -215, y: 46, width: 110, height: 110),
+          "Flying cover: lands on the panel's cover", "\(open)")
+    let lower = NotchView.openCoverFrame(notch: notch, panelWidth: 640,
+                                         inPage: CGRect(x: 0, y: 6, width: 110, height: 110))
+    check(lower.minX == -300 && lower.minY == 52,
+          "Flying cover: lands where the page put the cover", "\(lower)")
+    func at(_ progress: CGFloat, swell: CGFloat = 0) -> CGRect {
+        FlyingCover.frame(progress: progress, swell: swell, closed: closed, swollen: swollen, open: open)
+    }
+    check(at(0) == closed && at(1) == open && at(0, swell: 1) == swollen,
+          "Flying cover: the ends are the ends")
+    check(at(1, swell: 1) == open, "Flying cover: the swell is nothing once open")
+    let half = at(0.5)
+    check(half.width == 70 && half.minX == (closed.minX + open.minX) / 2 && half.minY == 25,
+          "Flying cover: a straight line in between", "\(half)")
+    // Inside the box all the way: the box's left edge and height are
+    // straight lines in the same progress.
+    let inside = stride(from: CGFloat(0), through: 1, by: 0.1).allSatisfy { t in
+        let frame = at(t)
+        let boxLeft = -(pill + (470 - pill) * t) / 2, boxHeight = 38 + (204 - 38) * t
+        return frame.minX >= boxLeft && frame.maxY <= boxHeight
+    }
+    check(inside, "Flying cover: never outside the box it flies in")
+    check(FlyingCover.badgeOpacity(progress: 0) == 0 && FlyingCover.badgeOpacity(progress: 0.5) == 0
+            && FlyingCover.badgeOpacity(progress: 1) == 1 && FlyingCover.badgeOpacity(progress: 1.02) == 1,
+          "Flying cover: the badge is the panel's end of the flight")
+}
+
 // The stamp's end was taken as a UTF-16 offset and walked as a count of
 // characters. Anything wider than one UTF-16 unit before the stamp walked
 // past the end of the string — a crash, not a wrong answer — so this runs

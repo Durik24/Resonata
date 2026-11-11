@@ -34,6 +34,14 @@ struct NotchView: View {
     @AppStorage(Preferences.Key.animationSpeed) private var speedSetting = AnimationSpeed.normal.rawValue
     /// The open panel's content is still in the view, closing — see `content`.
     @State private var lingering = false
+    /// The cover's flight between the pill and the panel — see `flyingCover`.
+    /// `landed` is the state the last open or close has finished arriving
+    /// at; `inFlight` covers a flight turned round halfway, when the two
+    /// agree again although nothing has landed.
+    @State private var landed = false
+    @State private var inFlight = false
+    /// Where the big cover sits in the music page, as the page lays it out.
+    @State var coverInPage = CGRect(x: 0, y: 0, width: NotchView.coverSize, height: NotchView.coverSize)
     @AppStorage(Preferences.Key.waveColour) private var waveColourSetting = WaveColour.album.rawValue
     @AppStorage(Preferences.Key.customWaveColour) private var customWaveHex = "#FFFFFF"
     @AppStorage(Preferences.Key.showLyrics) var showLyricsSetting = true
@@ -410,15 +418,83 @@ struct NotchView: View {
         // the transition said — the panel's text cut off by the box closing
         // over it.
         .task(id: model.isExpanded) {
-            if model.isExpanded {
-                lingering = true
-                return
-            }
+            let expanded = model.isExpanded
+            if expanded { lingering = true }
             let wait = (AnimationSpeed(rawValue: speedSetting) ?? .normal).settleTime
             try? await Task.sleep(for: .seconds(wait))
             guard !Task.isCancelled else { return }
-            lingering = false
+            if !expanded { lingering = false }
+            landed = expanded
+            inFlight = false
         }
+        .onChange(of: model.isExpanded) { inFlight = true }
+        .overlay(alignment: .top) { flyingCover }
+    }
+
+    // MARK: The cover's flight
+
+    /// The cover is on its way between the pill and the panel.
+    ///
+    /// True from the render `isExpanded` flips in — `landed` still holds the
+    /// old state then, before any task or `onChange` has run — until the
+    /// spring has landed. Only when there is a cover at both ends: the pill
+    /// showing one, and the panel open on the music page.
+    var coverFlies: Bool {
+        (inFlight || model.isExpanded != landed)
+            && model.shownTab == .music
+            && model.track != nil && model.showsCollapsedContent && model.activity == nil
+    }
+
+    /// The cover growing out of the pill into the panel, and shrinking back.
+    ///
+    /// One picture travelling, rather than the small one vanishing with the
+    /// pill while the big one zooms in with the rest of the panel: the cover
+    /// is the one thing both states share, so it is the thing to follow.
+    ///
+    /// It is a third cover, laid over the other two, and only seen in
+    /// flight: the pill's and the panel's are hidden for exactly as long
+    /// (`coverFlies`) and it starts and lands on their frames, so the swaps
+    /// at either end change nothing on screen. Always in the view, because a
+    /// view inserted on the frame the state flips would start at its
+    /// destination. Drawn at its real size on every frame — not a scaled
+    /// picture — so its corners, hairline and shadow are the resting covers'
+    /// at both ends.
+    private var flyingCover: some View {
+        FlyingCover(progress: model.isExpanded ? 1 : 0,
+                    swell: model.hovering ? 1 : 0,
+                    closed: Self.closedCoverFrame(notch: notchSize, scale: model.pillScale, swollen: false),
+                    swollen: Self.closedCoverFrame(notch: notchSize, scale: model.pillScale, swollen: true),
+                    open: Self.openCoverFrame(notch: notchSize, panelWidth: model.expandedWidth,
+                                              inPage: coverInPage),
+                    cover: { AnyView(artwork(size: $0)) },
+                    badge: AnyView(sourceBadgePicture), badgeOverhang: Self.badgeOverhang)
+            // The box's own springs, and the swell's — see `body`.
+            .animation(model.isExpanded ? settleOpen : settleClosed, value: model.isExpanded)
+            .animation(.spring(response: 0.3, dampingFraction: 1), value: model.hovering)
+            .opacity(coverFlies ? 1 : 0)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+
+    /// The pill's cover: its left edge from the notch's centre line, its top
+    /// from the screen's, and its side. The pill is `closedRow` in its
+    /// margins (6, and the inset), the cover centred in its height; a peek
+    /// leaves the left edge where it is, so it's the same peeking or not.
+    static func closedCoverFrame(notch: CGSize, scale: CGFloat, swollen: Bool) -> CGRect {
+        let grown = swollen ? NotchMetrics.hoverGrowth : .zero
+        let width = notch.width + NotchMetrics.contentWidth(scale: scale) + grown.width
+        let height = notch.height + NotchMetrics.collapsedExtraHeight + grown.height
+        let side = notch.height - 8 * scale
+        return CGRect(x: -width / 2 + 6 + NotchMetrics.collapsedInset * scale,
+                      y: (height - side) / 2, width: side, height: side)
+    }
+
+    /// The panel's cover, in the same terms: the page starts 20 in from the
+    /// panel's edge and 8 below the cutout, and the cover is where the page
+    /// put it.
+    static func openCoverFrame(notch: CGSize, panelWidth: CGFloat, inPage: CGRect) -> CGRect {
+        CGRect(x: -panelWidth / 2 + 20 + inPage.minX, y: notch.height + 8 + inPage.minY,
+               width: inPage.width, height: inPage.height)
     }
 
     /// The closed pill's content, peeking or not.
@@ -533,6 +609,9 @@ struct NotchView: View {
                     .transition(.opacity)
             } else {
                 artwork(size: collapsedSlot)
+                    // The flying cover is standing in — see `flyingCover`.
+                    .opacity(coverFlies ? 0 : 1)
+                    .animation(nil, value: coverFlies)
                     .transition(.opacity)
             }
         }
@@ -675,5 +754,67 @@ private struct Defocus: ViewModifier {
 
     func body(content: Content) -> some View {
         content.blur(radius: radius).opacity(opacity)
+    }
+}
+
+/// The cover between the pill and the panel, for `NotchView.flyingCover`.
+///
+/// Frames are measured from the top of the notch's centre line, which is
+/// where the overlay it lives in is anchored and the one point that stays
+/// put while the box around it grows. `progress` runs on the box's spring,
+/// 0 in the pill to 1 in the panel, and the frame is a straight line in it,
+/// like the box's own size — so the cover keeps its place in the box all
+/// the way, overshoot included. `swell` is the pill grown under the
+/// pointer, on the swell's spring, so a cover landing on a swollen pill
+/// lands where that pill's cover is.
+struct FlyingCover: View, Animatable {
+    var progress: CGFloat
+    var swell: CGFloat
+    var closed: CGRect
+    var swollen: CGRect
+    var open: CGRect
+    var cover: (CGFloat) -> AnyView
+    /// The player's badge on the panel's cover, hanging off its corner.
+    var badge: AnyView
+    var badgeOverhang: CGFloat
+
+    var animatableData: AnimatablePair<CGFloat, CGFloat> {
+        get { AnimatablePair(progress, swell) }
+        set { progress = newValue.first; swell = newValue.second }
+    }
+
+    /// The frame `progress` of the way from `closed` (or `swollen`) to `open`.
+    static func frame(progress: CGFloat, swell: CGFloat,
+                      closed: CGRect, swollen: CGRect, open: CGRect) -> CGRect {
+        func mix(_ a: CGFloat, _ b: CGFloat, _ t: CGFloat) -> CGFloat { a + (b - a) * t }
+        func mix(_ a: CGRect, _ b: CGRect, _ t: CGFloat) -> CGRect {
+            CGRect(x: mix(a.minX, b.minX, t), y: mix(a.minY, b.minY, t),
+                   width: mix(a.width, b.width, t), height: mix(a.height, b.height, t))
+        }
+        return mix(mix(closed, swollen, swell), open, progress)
+    }
+
+    /// Nothing until halfway out, all there by the time the cover lands.
+    static func badgeOpacity(progress: CGFloat) -> Double {
+        Double(min(1, max(0, (progress - 0.5) / 0.4)))
+    }
+
+    var body: some View {
+        let frame = Self.frame(progress: progress, swell: swell,
+                               closed: closed, swollen: swollen, open: open)
+        let side = max(1, frame.width)
+        // The badge is the panel's, not the pill's: it keeps its share of
+        // the cover as that shrinks, and is there only for the half of the
+        // flight nearer the panel — gone before the cover is small enough
+        // for it to be a smudge on the corner.
+        let share = side / max(1, open.width)
+        cover(side)
+            .overlay(alignment: .bottomTrailing) {
+                badge
+                    .scaleEffect(share, anchor: .bottomTrailing)
+                    .offset(x: badgeOverhang * share, y: badgeOverhang * share)
+                    .opacity(Self.badgeOpacity(progress: progress))
+            }
+            .offset(x: frame.minX + side / 2, y: frame.minY)
     }
 }
