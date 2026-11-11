@@ -724,6 +724,49 @@ do {
           "Flying cover: the badge is the panel's end of the flight")
 }
 
+// MARK: - Full-screen Spaces
+
+// What macOS 27.2 reports, trimmed: the laptop's display on a Split View
+// Space (Terminal beside Discord), an external one on a desktop.
+do {
+    let laptop = "37D8832A-2D66-02CA-B9F7-8F30A301B230", monitor = "0B1C2D3E-0000-4000-8000-123456789ABC"
+    func display(_ id: String, type: Int) -> [String: Any] {
+        ["Display Identifier": id,
+         "Current Space": ["type": type, "ManagedSpaceID": 105, "uuid": "5D4CA236"] as [String: Any],
+         "Spaces": [["type": 0, "ManagedSpaceID": 3], ["type": type, "ManagedSpaceID": 105]]]
+    }
+    let both = [display(laptop, type: 4), display(monitor, type: 0)]
+    check(ManagedSpaces.showsFullScreen(displays: both, uuid: laptop) == true,
+          "Spaces: a full-screen Space on this display")
+    check(ManagedSpaces.showsFullScreen(displays: both, uuid: monitor) == false,
+          "Spaces: a desktop on the other display")
+    check(ManagedSpaces.showsFullScreen(displays: both, uuid: laptop.lowercased()) == true,
+          "Spaces: the UUID's case doesn't matter")
+    // "Displays have separate Spaces" off: one entry for every display.
+    check(ManagedSpaces.showsFullScreen(displays: [display("Main", type: 4)], uuid: monitor) == true,
+          "Spaces: one shared Space covers every display")
+    check(ManagedSpaces.showsFullScreen(displays: [display("Main", type: 0)], uuid: nil) == false,
+          "Spaces: a shared desktop")
+    // No answer — nil, so the window list is asked instead.
+    check(ManagedSpaces.showsFullScreen(displays: [], uuid: laptop) == nil, "Spaces: nothing reported")
+    check(ManagedSpaces.showsFullScreen(displays: [display(monitor, type: 4)], uuid: laptop) == nil,
+          "Spaces: this display isn't in the list")
+    check(ManagedSpaces.showsFullScreen(displays: [["Display Identifier": laptop]], uuid: laptop) == nil,
+          "Spaces: no current Space in the entry")
+}
+
+// The hidden notch comes back when the pointer is where the pill would be.
+do {
+    // The pill on the laptop at 1710x1112: 304x38 at the top, round the cutout.
+    let pill = NSRect(x: 703, y: 1074, width: 304, height: 38)
+    check(NotchPanelController.pointsAtNotch(NSPoint(x: 855, y: 1100), shape: pill), "Hidden notch: pointed at")
+    check(NotchPanelController.pointsAtNotch(NSPoint(x: 855, y: 1112), shape: pill),
+          "Hidden notch: the pointer stopped at the screen's top edge")
+    check(!NotchPanelController.pointsAtNotch(NSPoint(x: 855, y: 1060), shape: pill), "Hidden notch: below it")
+    check(!NotchPanelController.pointsAtNotch(NSPoint(x: 600, y: 1100), shape: pill),
+          "Hidden notch: in the menu bar beside it")
+}
+
 // The stamp's end was taken as a UTF-16 offset and walked as a count of
 // characters. Anything wider than one UTF-16 unit before the stamp walked
 // past the end of the string — a crash, not a wrong answer — so this runs

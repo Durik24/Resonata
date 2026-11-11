@@ -275,9 +275,24 @@ looking the same (`NotchView.progressInterval`, `LyricsView.lineStarts`).
 The panel is `.stationary`, above the menu bar, so Mission Control used to
 leave it on top of the strip of desktops. It now hides while Mission Control
 or App Exposé is up: the Dock draws those in its own windows over each
-display at layer 18 (its usual level is 20), checked with the full-screen
-test four times a second (`NSScreen.isShowingMissionControl`). Verified by
-opening Mission Control: hidden within 0.6 s, back once it closes.
+display at layer 18 (its usual level is 20) — on macOS 27 it is WindowManager
+that does, at layer 19 — checked with the full-screen test four times a
+second (`NSScreen.isShowingMissionControl`). Verified by opening Mission
+Control: hidden within 0.6 s, back once it closes.
+
+## Full screen
+
+Over a full-screen app, and over two apps in Split View, the notch hides.
+Whether a display is on a full-screen Space is read from the window
+server's own list of Spaces (`ManagedSpaces`): the window list stopped
+showing the difference on macOS 27, and never did for Split View. That list
+isn't public API, so it is looked up at run time, and the old window-list
+test answers where it's missing.
+
+Hidden isn't gone. Move the pointer up to where the notch is and it fades
+back in, and from there it behaves as on a desktop — hover or click to open
+— and hides again once it has closed and the pointer has left. The shortcut
+opens the panel there too.
 
 ## Scrolling
 
@@ -424,10 +439,13 @@ it. NotchNook itself is closed source.
 
 ## Things that will bite you
 
-- **Window level.** `.statusBar` draws *under* the menu bar. Use `.screenSaver`
-  or higher.
-- **Full-screen apps.** Without `.fullScreenAuxiliary` the panel vanishes the
-  moment you full-screen something.
+- **Window level.** `.statusBar` draws *under* the menu bar, and
+  `.screenSaver` is above the level dragged files are drawn at, so nothing
+  can be dropped on the window. Just above the menu bar (main menu + 3) does
+  both.
+- **Full-screen apps.** `.fullScreenAuxiliary` is what keeps a panel on top
+  of a full-screen app; Resonata leaves it off and hides the window itself —
+  see *Full screen* above.
 - **Resizing the window per state looks bad.** Keep the panel at a fixed large
   size and animate the SwiftUI shape inside it.
 - **Hit-testing.** `.contentShape(NotchShape())` keeps clicks on the transparent

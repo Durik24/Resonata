@@ -109,7 +109,32 @@ extension NSScreen {
         return frame.width - left.width - right.width
     }
 
-    /// True when a window is covering this whole display.
+    /// The window server's list of on-screen windows, read once per check
+    /// and handed to the questions below — each used to read its own, two
+    /// copies of the whole list four times a second. Bounds, layers and
+    /// owner names only, which need no permission.
+    static func onScreenWindows() -> [[String: Any]] {
+        CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] ?? []
+    }
+
+    /// True when this display is showing a full-screen Space — one app's, or
+    /// two side by side in Split View.
+    ///
+    /// The system's own record of the Space decides (`ManagedSpaces`); the
+    /// window list below is only asked when that has no answer.
+    func isShowingFullScreenSpace(in windows: [[String: Any]]) -> Bool {
+        ManagedSpaces.showsFullScreen(displays: ManagedSpaces.current(), uuid: uuid)
+            ?? isShowingFullScreenApp(in: windows)
+    }
+
+    /// True when a window is covering this whole display — the stand-in for
+    /// `isShowingFullScreenSpace` on a system that won't say which Space is
+    /// up. On macOS 27 it never says yes: the menu bar became one window
+    /// (MenuBarAgent's, at the status level, the width of the display) that
+    /// stays on screen in a full-screen Space too, so the status-item test
+    /// below always saw a desktop and the notch stayed up over every
+    /// full-screen app. And two apps in Split View were never covered: no
+    /// one window fills the display.
     ///
     /// Asks the window server directly rather than inferring it from
     /// `visibleFrame`. The old `visibleFrame.maxY >= frame.maxY` test had two
@@ -120,14 +145,6 @@ extension NSScreen {
     ///
     /// Only bounds and layer are read, so this needs no Screen Recording
     /// permission — that's required for window *titles*.
-    /// The window server's list of on-screen windows, read once per check
-    /// and handed to both questions below — each used to read its own, two
-    /// copies of the whole list four times a second. Bounds, layers and
-    /// owner names only, which need no permission.
-    static func onScreenWindows() -> [[String: Any]] {
-        CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] ?? []
-    }
-
     func isShowingFullScreenApp(in windows: [[String: Any]]) -> Bool {
         guard let primary = NSScreen.screens.first else { return false }
 
@@ -201,7 +218,7 @@ extension NSScreen {
 
     /// Mission Control — or App Exposé — is up on this display.
     ///
-    /// The panel is `.stationary` at screen-saver level, so Mission Control
+    /// The panel is `.stationary`, above the menu bar, so Mission Control
     /// leaves it where it is, on top of everything: the notch sat over the
     /// strip of desktops. Nothing announces Mission Control, but the Dock
     /// draws it in windows of its own covering each display, between the
@@ -314,6 +331,55 @@ extension NSScreen {
             ?? screens.first(where: { $0.hasNotch })
             ?? screens.first
             ?? main
+    }
+}
+
+/// Which Space each display is showing, from the window server's own list.
+///
+/// The one thing that tells a full-screen Space from a desktop on every
+/// system so far: the Space's `type` is 4 for a full-screen app — and for
+/// Split View, which is a full-screen Space with two tiles — and 0 for a
+/// desktop. Measured on macOS 27.2, where the window list no longer shows
+/// the difference (see `isShowingFullScreenApp`).
+///
+/// Not public API, so the two calls are looked up when first needed rather
+/// than linked: on a system without them the app still starts, and the
+/// window list is asked instead. A call takes about 0.25 ms.
+enum ManagedSpaces {
+
+    private typealias Connection = @convention(c) () -> Int32
+    private typealias CopySpaces = @convention(c) (Int32) -> Unmanaged<CFArray>?
+
+    private static let calls: (connection: Connection, copy: CopySpaces)? = {
+        let anywhere = UnsafeMutableRawPointer(bitPattern: -2)     // RTLD_DEFAULT
+        guard let connection = dlsym(anywhere, "CGSMainConnectionID"),
+              let copy = dlsym(anywhere, "CGSCopyManagedDisplaySpaces") else { return nil }
+        return (unsafeBitCast(connection, to: Connection.self),
+                unsafeBitCast(copy, to: CopySpaces.self))
+    }()
+
+    /// One entry per display: its identifier, its Spaces, the current one.
+    /// Empty when the system won't say.
+    static func current() -> [[String: Any]] {
+        guard let calls else { return [] }
+        return calls.copy(calls.connection())?.takeRetainedValue() as? [[String: Any]] ?? []
+    }
+
+    static let fullScreenType = 4
+
+    /// Whether the display with this UUID is on a full-screen Space; nil
+    /// when the list doesn't cover it, and something else has to decide.
+    ///
+    /// With "Displays have separate Spaces" off there is one entry, named
+    /// "Main", for all of them — a full-screen app there takes every display.
+    nonisolated static func showsFullScreen(displays: [[String: Any]], uuid: String?) -> Bool? {
+        let named = { (name: String) in
+            displays.first { ($0["Display Identifier"] as? String)?.caseInsensitiveCompare(name) == .orderedSame }
+        }
+        guard let display = uuid.flatMap(named) ?? named("Main"),
+              let space = display["Current Space"] as? [String: Any],
+              let type = (space["type"] as? NSNumber)?.intValue else { return nil }
+        return type == fullScreenType
     }
 }
 

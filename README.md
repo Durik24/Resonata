@@ -11,6 +11,6 @@ and its own build:
 | Folder | Platform | Written in | Start here |
 |---|---|---|---|
 | [`Resonata - macOS`](<Resonata - macOS>) | macOS 14+, on the MacBook notch | Swift 6, SwiftUI + AppKit | [README](<Resonata - macOS/README.md>) |
-| [`Resonata - win11`](<Resonata - win11>) | Windows 11, slides in from the top edge | C#, .NET 10, WPF | [README](<Resonata - win11/README.md>) |
+| [`Resonata - win11`](<Resonata - win11>) | Windows 11, slides out of the right edge | C#, .NET 10, WPF | [README](<Resonata - win11/README.md>) |
 
 MIT — see `LICENSE`.

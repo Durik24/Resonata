@@ -338,6 +338,9 @@ final class NotchPanelController {
     /// Watches the pointer *outside* our window, only while it's on the notch
     /// — see `pointerMoved(to:)`.
     private var leaveMonitor: Any?
+    /// Watches the pointer while the notch is hidden over a full-screen app
+    /// — see `watchForReturning`.
+    private var returnMonitor: Any?
     /// The song peek on show is the hover preview, not a song change — so
     /// leaving the notch takes it away again.
     private var hoverPeeking = false
@@ -650,19 +653,6 @@ final class NotchPanelController {
         }
     }
 
-    /// Hidden entirely when there's nothing to show, or when a full-screen app
-    /// owns the display.
-    ///
-    /// Hiding the *window* matters — fading the content to zero opacity, which
-    /// is what the view used to do, still leaves an empty black pill sitting on
-    /// the menu bar.
-    /// Fires when a display is added, removed, or reconfigured — closing the
-    /// lid, opening it, plugging in a monitor, changing resolution, waking.
-    ///
-    /// The target screen can change identity here, not just move, so the view's
-    /// geometry has to be refreshed before repositioning. Collapse first: a
-    /// panel left expanded across a display switch strands itself at the old
-    /// size on a screen that may not even have a notch.
     /// Catches a change of display scaling that `screensChanged` read too
     /// early. The notification can arrive before the screen reports the
     /// cutout at its new size, and the pill then kept the old one — too big
@@ -685,6 +675,13 @@ final class NotchPanelController {
         reposition()
     }
 
+    /// Fires when a display is added, removed, or reconfigured — closing the
+    /// lid, opening it, plugging in a monitor, changing resolution, waking.
+    ///
+    /// The target screen can change identity here, not just move, so the view's
+    /// geometry has to be refreshed before repositioning. Collapse first: a
+    /// panel left expanded across a display switch strands itself at the old
+    /// size on a screen that may not even have a notch.
     private func screensChanged() {
         restorePinnedScreen()
         guard let screen = targetScreen else { return }
@@ -871,6 +868,9 @@ final class NotchPanelController {
                 if FrameProbe.isOn { FrameProbe.record("setExpanded") }
                 self.panel?.movingUntil = CACurrentMediaTime() + Preferences.animationSpeed.settleTime
                 self.model.isExpanded = expanded
+                // Hidden over a full-screen app: back on screen now, not at
+                // the visibility timer's next tick, part-way into the open.
+                if expanded, self.panel?.isVisible == false { self.updateVisibility() }
                 self.panel?.contentView?.needsLayout = true
                 self.panel?.contentView?.layoutSubtreeIfNeeded()
                 if FrameProbe.isOn { FrameProbe.record("laid out") }
@@ -910,7 +910,7 @@ final class NotchPanelController {
         // screen's top edge, y == maxY, and a rect doesn't contain its own
         // max edge — without it, resting the pointer at the top of the open
         // panel counted as leaving it, and it closed under the pointer.
-        let inside = shape.insetBy(dx: -2, dy: -2).contains(point)
+        let inside = Self.pointsAtNotch(point, shape: shape)
         guard inside != pointerInside else { return }
         pointerInside = inside
         hoverTask?.cancel()
@@ -1233,6 +1233,11 @@ final class NotchPanelController {
                       width: width, height: height)
     }
 
+    /// Hidden entirely over a full-screen Space and while Mission Control is
+    /// up. Hiding the *window* matters — fading the content to zero opacity,
+    /// which is what the view used to do, still leaves an empty black pill
+    /// sitting on the menu bar.
+    ///
     /// Visibility only. This used to route through `apply`, which also owns
     /// the deferred window shrink — so every half-second tick cancelled a
     /// pending shrink and resized the window at once, cutting the close
@@ -1246,20 +1251,70 @@ final class NotchPanelController {
         // Desktop elements included, unlike before: they sit far below
         // layer 0 and the status level, the only layers either check reads.
         let windows = screen == nil ? [] : NSScreen.onScreenWindows()
-        fullScreenCovered = screen?.isShowingFullScreenApp(in: windows) ?? false
+        fullScreenCovered = screen?.isShowingFullScreenSpace(in: windows) ?? false
         let missionControl = screen?.isShowingMissionControl(in: windows) ?? false
-        // In a full-screen app the menu bar slides down when the pointer
-        // reaches the top edge — the status items are back, so the notch
-        // shows — and slides away again as the pointer moves down. Hiding
-        // then would pull the open panel out from under the pointer, which
-        // is what happened, mid-use. So never while it's open or the pointer
-        // is on it; once it has closed and the pointer has gone, it hides.
-        let inUse = model.isExpanded || pointerInside
-        if (fullScreenCovered || missionControl) && !(fullScreenCovered && !missionControl && inUse) {
+        // Over a full-screen app the notch is hidden, but pointing at it
+        // brings it back, the shortcut opens the panel there, and it can be
+        // open when an app goes full screen. Hiding then would pull it out
+        // from under the pointer, mid-use. So never while it's open, closing
+        // — the close animation plays out first — or the pointer is on it;
+        // once it has closed and the pointer has gone, it hides.
+        let inUse = model.isExpanded || pointerInside || CACurrentMediaTime() < panel.movingUntil
+        let hidden = (fullScreenCovered || missionControl) && !(fullScreenCovered && !missionControl && inUse)
+        if hidden {
             if panel.isVisible { panel.orderOut(nil) }
         } else if !panel.isVisible {
+            // Back under the pointer over a full-screen app, the pill fades
+            // in rather than popping; everywhere else it's simply there.
+            let fading = fullScreenCovered && !model.isExpanded
+            panel.alphaValue = fading ? 0 : 1
             panel.orderFrontRegardless()
+            if fading {
+                NSAnimationContext.runAnimationGroup { context in
+                    context.duration = 0.12
+                    panel.animator().alphaValue = 1
+                }
+            }
         }
+        // Hidden for a full-screen app, it comes back when the pointer goes
+        // where it would be. Not for Mission Control, which is the pointer
+        // roaming over other things.
+        watchForReturning(hidden && !missionControl)
+    }
+
+    /// While the notch is hidden over a full-screen app, follows the pointer
+    /// so the notch can come back under it: pointed at where the pill is, it
+    /// shows, and from there everything is as on a desktop — the swell, the
+    /// hover open or the click, and leaving, after which `updateVisibility`
+    /// hides it again. A hidden window gets no tracking events of its own,
+    /// hence a global monitor; mouse movement only, so no permission, and
+    /// only while hidden in a full-screen Space. Drags too: a file dragged
+    /// up to the shelf finds the notch there.
+    private func watchForReturning(_ watching: Bool) {
+        if watching, returnMonitor == nil {
+            returnMonitor = NSEvent.addGlobalMonitorForEvents(
+                matching: [.mouseMoved, .leftMouseDragged]
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.pointerMovedWhileHidden(to: NSEvent.mouseLocation) }
+            }
+        } else if !watching, let monitor = returnMonitor {
+            NSEvent.removeMonitor(monitor)
+            returnMonitor = nil
+        }
+    }
+
+    private func pointerMovedWhileHidden(to point: NSPoint) {
+        guard let panel, !panel.isVisible, let shape = shapeOnScreen,
+              Self.pointsAtNotch(point, shape: shape) else { return }
+        if NotchPanel.debugClick { NSLog("click: pointer on the hidden notch -> SHOW") }
+        pointerMoved(to: point)
+        updateVisibility()
+    }
+
+    /// Whether the pointer is on the notch's shape — with a hair of slack
+    /// all round; see `pointerMoved(to:)` for why that isn't optional.
+    nonisolated static func pointsAtNotch(_ point: NSPoint, shape: NSRect) -> Bool {
+        shape.insetBy(dx: -2, dy: -2).contains(point)
     }
 
     /// Sizes the window for a new state: grow at once, shrink afterwards.

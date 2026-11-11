@@ -28,6 +28,8 @@ clang -dynamiclib -fobjc-arc -fvisibility=default -arch "$(uname -m)" -mmacosx-v
     -o "$FW/Versions/A/MediaRemoteAdapter" \
     "$ADAPTER"/src/adapter/*.m "$ADAPTER"/src/private/*.m "$ADAPTER"/src/utility/*.m
 cp "$ADAPTER/include/MediaRemoteAdapter.h" "$FW/Versions/A/Headers/"
+# Its BSD 3-Clause license asks for the notice to travel with the binary.
+cp "$ADAPTER/LICENSE" "$FW/Versions/A/Resources/LICENSE"
 cat > "$FW/Versions/A/Resources/Info.plist" <<'FWPLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -55,8 +57,8 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <key>CFBundleName</key>              <string>Resonata</string>
     <key>CFBundleExecutable</key>        <string>Resonata</string>
     <key>CFBundleIdentifier</key>        <string>com.local.resonata</string>
-    <key>CFBundleVersion</key>           <string>12</string>
-    <key>CFBundleShortVersionString</key><string>1.0.11</string>
+    <key>CFBundleVersion</key>           <string>13</string>
+    <key>CFBundleShortVersionString</key><string>1.0.12</string>
     <key>CFBundlePackageType</key>       <string>APPL</string>
     <key>CFBundleIconFile</key>          <string>AppIcon</string>
     <key>LSMinimumSystemVersion</key>    <string>14.0</string>
