@@ -50,6 +50,8 @@ public static class Hand
     delegate bool EnumProc(IntPtr hwnd, IntPtr l);
     [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc proc, IntPtr l);
 
+    public static int Size(int index) { return GetSystemMetrics(index); }
+
     /// The process whose window the wheel goes to at this point.
     public static uint Under(int x, int y)
     {
@@ -81,13 +83,22 @@ public static class Hand
 function Named($id) { (Get-Process -Id $id -ErrorAction SilentlyContinue).ProcessName }
 
 if ($CloseCovering) {
-  foreach ($id in [Hand]::Covering()) {
-    $name = Named $id
-    if ($name -in 'explorer', 'Resonata', $null) { continue }
-    "closing what covers the screen: $name ($id)"
-    Stop-Process -Id $id -Force -ErrorAction SilentlyContinue
+  # Whatever covers the whole screen, and whatever is in front at its middle
+  # and around where the panel opens: anything but the desktop.
+  $w = [Hand]::Size(0); $h = [Hand]::Size(1)
+  for ($round = 0; $round -lt 5; $round++) {
+    $ids = @([Hand]::Covering()) + @([Hand]::Under([int]($w / 2), [int]($h / 2)), [Hand]::Under($w - 200, [int]($h * 0.3)))
+    $closed = 0
+    foreach ($id in $ids | Select-Object -Unique) {
+      $name = Named $id
+      if ($name -in 'explorer', 'Resonata', 'pwsh', 'powershell', $null) { continue }
+      "closing what covers the screen: $name ($id)"
+      Stop-Process -Id $id -Force -ErrorAction SilentlyContinue
+      $closed++
+    }
+    if ($closed -eq 0) { break }
+    Start-Sleep 2
   }
-  Start-Sleep 2
 }
 
 $log = "$env:APPDATA\Resonata\resonata.log"
