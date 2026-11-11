@@ -12,9 +12,9 @@
 #
 # Moves the real pointer, so it's for a machine nobody is using: CI's.
 #   pwsh tests\pointer-test.ps1 -Exe <Resonata.exe> [-CloseCovering]
-# -CloseCovering ends whatever covers the whole screen first (not the
-# desktop): on CI's ARM64 machine, Windows' first-run screen, which takes the
-# wheel from anything under it.
+# -CloseCovering first ends whatever is in front where the panel opens (not
+# the desktop): on CI's ARM64 machine, Windows' first-run screen (WWAHost),
+# which takes the wheel from anything under it.
 param([Parameter(Mandatory)][string]$Exe, [switch]$CloseCovering)
 
 $ErrorActionPreference = 'Stop'
@@ -40,15 +40,10 @@ public static class Hand
     public static void Vertical(int delta) { Wheel(WHEEL, delta); }
 
     [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
-    [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
     [DllImport("user32.dll")] static extern IntPtr WindowFromPoint(POINT p);
     [DllImport("user32.dll")] static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
     [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
-    [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hwnd, out RECT r);
-    [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr hwnd);
     [DllImport("user32.dll")] static extern int GetSystemMetrics(int index);
-    delegate bool EnumProc(IntPtr hwnd, IntPtr l);
-    [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc proc, IntPtr l);
 
     public static int Size(int index) { return GetSystemMetrics(index); }
 
@@ -59,35 +54,17 @@ public static class Hand
         GetWindowThreadProcessId(GetAncestor(WindowFromPoint(new POINT { X = x, Y = y }), 2), out pid);
         return pid;
     }
-
-    /// The processes of visible windows that cover the whole primary screen.
-    public static System.Collections.Generic.List<uint> Covering()
-    {
-        var found = new System.Collections.Generic.List<uint>();
-        int w = GetSystemMetrics(0), h = GetSystemMetrics(1);
-        EnumWindows((hwnd, l) =>
-        {
-            RECT r;
-            if (IsWindowVisible(hwnd) && GetWindowRect(hwnd, out r) && r.Left <= 0 && r.Top <= 0 && r.Right >= w && r.Bottom >= h)
-            {
-                uint pid;
-                GetWindowThreadProcessId(hwnd, out pid);
-                if (!found.Contains(pid)) found.Add(pid);
-            }
-            return true;
-        }, IntPtr.Zero);
-        return found;
-    }
 }
 '@
 function Named($id) { (Get-Process -Id $id -ErrorAction SilentlyContinue).ProcessName }
 
 if ($CloseCovering) {
-  # Whatever covers the whole screen, and whatever is in front at its middle
-  # and around where the panel opens: anything but the desktop.
+  # Only what is in front where the panel opens, the window the wheel would
+  # go to: anything but the desktop. Not every screen-sized window: hidden
+  # ones count as that, the runner's own agent among them.
   $w = [Hand]::Size(0); $h = [Hand]::Size(1)
   for ($round = 0; $round -lt 5; $round++) {
-    $ids = @([Hand]::Covering()) + @([Hand]::Under([int]($w / 2), [int]($h / 2)), [Hand]::Under($w - 200, [int]($h * 0.3)))
+    $ids = @([Hand]::Under($w - 200, [int]($h * 0.3)), [Hand]::Under($w - 100, [int]($h * 0.3)))
     $closed = 0
     foreach ($id in $ids | Select-Object -Unique) {
       $name = Named $id
