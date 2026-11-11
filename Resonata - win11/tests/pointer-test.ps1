@@ -12,8 +12,9 @@
 #
 # Moves the real pointer, so it's for a machine nobody is using: CI's.
 #   pwsh tests\pointer-test.ps1 -Exe <Resonata.exe> [-CloseCovering]
-# -CloseCovering first ends Windows' first-run screen (WWAHost), which on
-# CI's ARM64 machine covers everything and takes the wheel from it.
+# -CloseCovering first ends Windows' first-run screen (WWAHost) and the Start
+# menu it leaves open, which on CI's ARM64 machine cover everything and take
+# the wheel from it.
 param([Parameter(Mandatory)][string]$Exe, [switch]$CloseCovering)
 
 $ErrorActionPreference = 'Stop'
@@ -58,17 +59,21 @@ public static class Hand
 function Named($id) { (Get-Process -Id $id -ErrorAction SilentlyContinue).ProcessName }
 
 if ($CloseCovering) {
-  # The first-run screen by name, and nothing else: closing whatever is in
-  # front went on to the windows behind it, the runner's own among them.
-  # Anything else in front of the panel fails the test below, by name.
+  # The first-run screen and the Start menu it leaves open, by name, and
+  # nothing else: closing whatever was in front went on to the windows behind
+  # them, the runner's own among them. Both are Windows' shell, which starts
+  # them again when wanted. Anything else in front of the panel fails the
+  # test below, by name.
   $w = [Hand]::Size(0); $h = [Hand]::Size(1)
-  $front = Named ([Hand]::Under($w - 200, [int]($h * 0.3)))
-  "in front where the panel opens: $front"
-  Get-Process WWAHost -ErrorAction SilentlyContinue | ForEach-Object {
-    "closing Windows' first-run screen: WWAHost ($($_.Id))"
-    Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
+  foreach ($shell in 'WWAHost', 'StartMenuExperienceHost') {
+    "in front where the panel opens: $(Named ([Hand]::Under($w - 200, [int]($h * 0.3))))"
+    Get-Process $shell -ErrorAction SilentlyContinue | ForEach-Object {
+      "closing $shell ($($_.Id))"
+      Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
+    }
+    Start-Sleep 2
   }
-  Start-Sleep 2
+  "in front where the panel opens: $(Named ([Hand]::Under($w - 200, [int]($h * 0.3))))"
 }
 
 $log = "$env:APPDATA\Resonata\resonata.log"
