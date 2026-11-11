@@ -509,7 +509,9 @@ public partial class NotchWindow : Window
 
     private System.Drawing.Rectangle ScreenBounds => Screens.Target.Bounds;
 
-    private bool IsFullScreenNow() => Native.IsFullScreen(ScreenBounds, _hwnd);
+    // Snapshots photograph every state whatever is in front: on CI's ARM64
+    // machine that's Windows' first-run screen, which counts as full screen.
+    private bool IsFullScreenNow() => !Snapshots.IsOn && Native.IsFullScreen(ScreenBounds, _hwnd);
 
     /// The strip along the top edge that brings the pill out.
     private bool InEdgeZone(Native.POINT p)

@@ -9,7 +9,16 @@ dalších přehrávačů.
 
 ## Instalace
 
-1. Stáhni `Resonata-Setup-1.1.0.exe` z [vydání na GitHubu](https://github.com/Durik24/Resonata/releases/tag/win-v1.1.0) a spusť ho.
+1. Ve [vydáních na GitHubu](https://github.com/Durik24/Resonata/releases) najdi
+   nejnovější Resonatu pro Windows (štítek `win-v…`), stáhni Setup pro svůj
+   procesor a spusť ho:
+   - `Resonata-Setup-<verze>.exe` pro většinu počítačů, s procesorem Intel nebo AMD,
+   - `Resonata-ARM64-Setup-<verze>.exe` pro počítače s procesorem ARM, třeba
+     Snapdragon X.
+
+   Jaký procesor máš, uvidíš v **Nastavení → Systém → O systému → Typ systému**.
+   Na počítači s ARM běží i ta první, jen přes emulaci a pomaleji. Další
+   aktualizace ji pak sama vymění za verzi pro ARM.
 2. Když se objeví modré okno SmartScreen, klikni na **Další informace** a pak
    **Přesto spustit**. Instalátor není podepsaný placeným certifikátem.
 3. Windows se zeptá, jestli povolit aplikaci od **neznámého vydavatele**.
@@ -35,6 +44,7 @@ Setup Resonatu sám zavře, přepíše ji a znovu spustí. Poznámky a nastaven�
 
 Resonata se jednou denně podívá, jestli je nová verze. Když ano, oznámí to
 a v nastavení nebo v nabídce u ikony ji jde stáhnout a spustit jedním kliknutím.
+Sama si vybere Setup pro procesor tvého počítače.
 
 ## Odinstalace
 

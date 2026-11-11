@@ -26,9 +26,16 @@ Needs the .NET 10 SDK and Inno Setup 6.
 .\build.ps1
 ```
 
-runs the tests, publishes a self-contained build and writes
-`out\Resonata-Setup-<version>.exe`. The version is `<Version>` in
-`src\Resonata.csproj`.
+runs the tests, publishes a self-contained build for each processor and writes
+two Setups: `out\Resonata-Setup-<version>.exe` for x64 and
+`out\Resonata-ARM64-Setup-<version>.exe` for ARM64 PCs (Snapdragon X and the
+like). `-Arch x64` or `-Arch arm64` builds just one. The version is `<Version>`
+in `src\Resonata.csproj`.
+
+An x64 PC can't run the ARM64 build, so CI tries it on GitHub's
+`windows-11-arm`: the logic tests natively and as the x64 build emulated, the
+x64 Setup and then the ARM64 Setup over it, and the installed copy taking its
+snapshots, which it keeps as the run's `arm64-snapshots`.
 
 For everyday work:
 
@@ -49,7 +56,12 @@ confirmation. **An update is just the next Setup run over the top**: the same
 
 Resonata checks this repository's GitHub Releases once a day and offers to fetch
 and run the new Setup. It takes the newest release with an asset named
-`Resonata-Setup*.exe`. Tag Windows releases `win-v1.2.3` and publish them with
+`Resonata-Setup*.exe`, or on Windows on ARM64 `Resonata-ARM64-Setup*.exe` when
+the release has one. It asks Windows itself (`IsWow64Process2`), so a copy of
+the x64 build running emulated on ARM64 moves over to the native build at its
+next update. The ARM64 Setup's name doesn't start with `Resonata-Setup`, so the
+updater of 1.1.0 and older, which takes the first asset with that name, never
+fetches it. Upload both Setups to every Windows release. Tag Windows releases `win-v1.2.3` and publish them with
 "Set as latest" off (`gh release create --latest=false`): the Mac app reads the
 repository's latest release, so that has to stay the Mac's.
 

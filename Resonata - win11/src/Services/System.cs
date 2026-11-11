@@ -597,7 +597,7 @@ public sealed class Updater : Observable
             // Only an answer counts as a check. Stamped before this, a refusal
             // from GitHub — its rate limit, say — wasn't tried again for a day.
             Settings.Current.UpdateLastCheck = DateTime.Now;
-            var release = NewestSetup(await response.Content.ReadAsStringAsync());
+            var release = NewestSetup(await response.Content.ReadAsStringAsync(), OnArm64);
             if (release is null || !Versions.IsNewer(release.Version, CurrentVersion))
             {
                 State = new UpdateState.UpToDate();
@@ -632,9 +632,32 @@ public sealed class Updater : Observable
         [JsonPropertyName("assets")] public List<Asset> Assets { get; set; } = [];
     }
 
+    private const string X64Setup = "Resonata-Setup";
+    private const string Arm64Setup = "Resonata-ARM64-Setup";
+
+    /// Whether Windows itself runs on ARM64, asked of Windows: the x64 build,
+    /// emulated there, is an x64 process, and only Windows knows better.
+    public static bool OnArm64
+    {
+        get
+        {
+            try
+            {
+                return Native.IsWow64Process2(Native.GetCurrentProcess(), out _, out var machine)
+                       && machine == Native.ImageFileMachineArm64;
+            }
+            catch (EntryPointNotFoundException)
+            {
+                return false;
+            }
+        }
+    }
+
     /// The newest release in GitHub's list that has a Setup to run. Null when
     /// there is none; a release for the Mac has no Setup, so it's passed over.
-    public static UpdateState.Available? NewestSetup(string json)
+    /// An ARM64 PC takes the ARM64 Setup, which also moves a copy of the x64
+    /// build over to its own; with none in a release, the x64 one still runs.
+    public static UpdateState.Available? NewestSetup(string json, bool arm64 = false)
     {
         List<ReleaseJson>? releases;
         try
@@ -650,9 +673,10 @@ public sealed class Updater : Observable
         foreach (var release in releases ?? [])
         {
             if (release.Draft || release.Prerelease) continue;
-            var setup = release.Assets.FirstOrDefault(a =>
-                a.Name.StartsWith("Resonata-Setup", StringComparison.OrdinalIgnoreCase)
+            Asset? Named(string prefix) => release.Assets.FirstOrDefault(a =>
+                a.Name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
                 && a.Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase));
+            var setup = (arm64 ? Named(Arm64Setup) : null) ?? Named(X64Setup);
             if (setup is null) continue;
             var version = Versions.FromTag(release.Tag);
             if (newest is null || Versions.IsNewer(version, newest.Version))

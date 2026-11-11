@@ -25,6 +25,8 @@ jobs:
   windows:
     name: Windows
     runs-on: windows-latest
+    env:
+      RESONATA_EXPECT_ARM64: "0"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -32,3 +34,104 @@ jobs:
           dotnet-version: 10.0.x
       - name: Logic tests
         run: dotnet run --project "Resonata - win11/tests/Resonata.Tests.csproj" -c Release
+
+  # The ARM64 build can't run on an x64 PC, so it's tried here on real ARM64:
+  # the tests natively and as the x64 build emulated, then the app itself.
+  windows-arm64:
+    name: Windows on ARM64
+    runs-on: windows-11-arm
+    env:
+      RESONATA_EXPECT_ARM64: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Logic tests, ARM64
+        run: dotnet run --project "Resonata - win11/tests/Resonata.Tests.csproj" -c Release
+      - name: Logic tests, the x64 build emulated
+        run: dotnet run --project "Resonata - win11/tests/Resonata.Tests.csproj" -c Release -r win-x64 --self-contained
+      - name: Inno Setup
+        shell: pwsh
+        run: |
+          Invoke-WebRequest https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe -OutFile "$env:RUNNER_TEMP\is.exe"
+          Start-Process "$env:RUNNER_TEMP\is.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', '/CURRENTUSER' -Wait
+      - name: Both Setups, with build.ps1
+        shell: pwsh
+        run: '& "Resonata - win11\build.ps1" -SkipTests'
+      # As someone who had the x64 build, emulated, would: the ARM64 Setup
+      # goes over it and leaves nothing of the x64 build behind.
+      - name: Install the x64 Setup, then the ARM64 Setup over it
+        shell: pwsh
+        run: |
+          function Machine($path) {
+            $bytes = [IO.File]::ReadAllBytes($path)
+            '{0:X4}' -f [BitConverter]::ToUInt16($bytes, [BitConverter]::ToInt32($bytes, 0x3C) + 4)
+          }
+          # Not Start-Process -Wait: that waits for the Resonata Setup starts too.
+          function Install($setup) {
+            New-Item -ItemType Directory -Force diagnostics | Out-Null
+            $log = "$PWD\diagnostics\$(Split-Path -Leaf $setup).log"
+            $run = Start-Process $setup -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/LOG=$log" -PassThru
+            $null = $run.Handle
+            if (-not $run.WaitForExit(300000)) { throw "$setup never finished" }
+            if ($run.ExitCode -ne 0) { Get-Content $log -Tail 40; throw "$setup exited with $($run.ExitCode)" }
+          }
+          $app = "$env:ProgramFiles\Resonata"
+          Install (Get-Item "Resonata - win11\out\Resonata-Setup-*.exe").FullName
+          if ((Machine "$app\Resonata.exe") -ne '8664') { throw 'the x64 Setup put in no x64 build' }
+          # Setup started it; let it settle in, as it would have long before.
+          $deadline = (Get-Date).AddSeconds(60)
+          while (-not (Get-Process Resonata -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) { Start-Sleep 1 }
+          Start-Sleep 10
+          "running: $(@(Get-Process Resonata -ErrorAction SilentlyContinue).Count) Resonata"
+          Install (Get-Item "Resonata - win11\out\Resonata-ARM64-Setup-*.exe").FullName
+          if ((Machine "$app\Resonata.exe") -ne 'AA64') { throw 'the ARM64 Setup left the x64 build' }
+          $foreign = Get-ChildItem $app -Recurse -File | Where-Object { $_.Extension -in '.dll', '.exe' -and $_.Name -notlike 'unins*' -and (Machine $_.FullName) -eq '8664' }
+          if ($foreign) { throw "x64 files left behind: $($foreign.Name -join ', ')" }
+          # And an update of the ARM64 build, over the copy that's running.
+          Start-Sleep 10
+          Install (Get-Item "Resonata - win11\out\Resonata-ARM64-Setup-*.exe").FullName
+          if (@(Get-ItemProperty 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*' | Where-Object DisplayName -eq 'Resonata').Count -ne 1) { throw 'not exactly one Resonata in Apps' }
+      # The demo song, each state photographed; the app quits when it's done.
+      # Setup started the installed copy, which is asked to quit first.
+      - name: Run the installed copy
+        shell: pwsh
+        run: |
+          $exe = "$env:ProgramFiles\Resonata\Resonata.exe"
+          Start-Process $exe -ArgumentList '--quit' -Wait
+          $env:RESONATA_DEMO = '1'
+          $env:RESONATA_SNAP = "$PWD\snapshots"
+          $app = Start-Process $exe -PassThru
+          if (-not $app.WaitForExit(180000)) {
+            # Where it's stuck: each thread's managed stack, and the screen.
+            New-Item -ItemType Directory -Force diagnostics | Out-Null
+            Get-Process Resonata | Format-Table Id, StartTime, SessionId, Path -AutoSize | Out-String | Write-Host
+            dotnet tool install --global dotnet-stack | Out-Null
+            & "$env:USERPROFILE\.dotnet\tools\dotnet-stack.exe" report -p $app.Id | Tee-Object diagnostics\stacks.txt
+            Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+            $screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+            $shot = New-Object System.Drawing.Bitmap $screen.Width, $screen.Height
+            [System.Drawing.Graphics]::FromImage($shot).CopyFromScreen($screen.Location, [System.Drawing.Point]::Empty, $screen.Size)
+            $shot.Save("$PWD\diagnostics\screen.png")
+            $app.Kill()
+            throw 'Resonata never finished its snapshots'
+          }
+          $pictures = @(Get-ChildItem snapshots -Filter *.png)
+          $pictures | ForEach-Object { "$($_.Name)  $($_.Length) bytes" }
+          if ($pictures.Count -lt 8) { throw "Only $($pictures.Count) snapshots" }
+      - name: Gather Resonata's log
+        if: always()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force diagnostics | Out-Null
+          Copy-Item "$env:APPDATA\Resonata\resonata.log" diagnostics -ErrorAction SilentlyContinue
+      - name: Keep the snapshots and the logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: arm64-snapshots
+          path: |
+            snapshots
+            diagnostics
+          if-no-files-found: warn

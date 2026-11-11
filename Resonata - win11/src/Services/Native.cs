@@ -28,6 +28,14 @@ internal static partial class Native
     public const int WM_HOTKEY = 0x312, WM_MOUSEHWHEEL = 0x20E;
     public const int VK_LBUTTON = 1, VK_RBUTTON = 2, VK_MBUTTON = 4;
 
+    public const ushort ImageFileMachineArm64 = 0xAA64;
+
+    [LibraryImport("kernel32.dll")] public static partial IntPtr GetCurrentProcess();
+
+    /// The machine Windows itself runs on, whatever the calling process is.
+    [LibraryImport("kernel32.dll")] [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool IsWow64Process2(IntPtr process, out ushort processMachine, out ushort nativeMachine);
+
     [LibraryImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool GetCursorPos(out POINT point);
 

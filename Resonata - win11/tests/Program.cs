@@ -83,6 +83,19 @@ Check(Updater.NewestSetup($"[{release.Replace("1.2.0", "1.1.0")},{release}]") is
 Check(Updater.NewestSetup($"[{release.Replace("\"prerelease\":false", "\"prerelease\":true")}]") is null, "prereleases are skipped");
 Check(Updater.NewestSetup("[]") is null, "no releases at all");
 Check(Updater.NewestSetup("not json") is null, "garbage is nothing");
+// The ARM64 Setup listed first, as GitHub may list it.
+const string both = """{"tag_name":"win-v1.2.0","html_url":"h","draft":false,"prerelease":false,"assets":[{"name":"Resonata-ARM64-Setup-1.2.0.exe","browser_download_url":"https://x/arm.exe"},{"name":"Resonata-Setup-1.2.0.exe","browser_download_url":"https://x/x64.exe"}]}""";
+Check(Updater.NewestSetup($"[{both}]", arm64: false) is { Setup: "https://x/x64.exe" }, "an x64 PC takes the x64 Setup");
+Check(Updater.NewestSetup($"[{both}]", arm64: true) is { Setup: "https://x/arm.exe" }, "an ARM64 PC takes the ARM64 Setup");
+Check(Updater.NewestSetup($"[{release}]", arm64: true) is { Setup: "https://x/s.exe" }, "with no ARM64 Setup, an ARM64 PC still gets the x64 one");
+Check(Updater.NewestSetup($"[{both.Replace("Resonata-Setup-1.2.0.exe", "notes.txt")}]", arm64: false) is null, "an x64 PC never takes the ARM64 Setup");
+// CI says which Windows it is, and runs this on ARM64 natively and emulated as
+// x64 too. Run natively, the process's own processor is Windows'.
+var expectArm64 = Environment.GetEnvironmentVariable("RESONATA_EXPECT_ARM64");
+Check(Updater.OnArm64 == (expectArm64 is { Length: > 0 }
+    ? expectArm64 == "1"
+    : System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture == System.Runtime.InteropServices.Architecture.Arm64),
+    $"Windows on ARM64 is recognised, from a {System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture} process");
 Check(Updater.IsNewerSetup("Resonata".PadRight(60), "1.2.0".PadRight(50), "1.0.0"), "a Setup's padded version fields are read");
 Check(!Updater.IsNewerSetup("Resonata".PadRight(60), "1.0.0".PadRight(50), "1.0.0"), "the same version isn't an update");
 Check(!Updater.IsNewerSetup("Something else", "9.9.9", "1.0.0"), "another program's Setup is refused");

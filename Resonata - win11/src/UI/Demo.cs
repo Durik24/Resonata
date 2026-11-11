@@ -72,6 +72,8 @@ public static class Demo
 /// content, so the layout can be checked without touching the real screen.
 public static class Snapshots
 {
+    public static bool IsOn { get; } = Environment.GetEnvironmentVariable("RESONATA_SNAP") is { Length: > 0 };
+
     /// `RESONATA_ANIMTEST=1`: opens and closes a few times; the window logs how
     /// evenly the frames came.
     public static async Task RunAnimationTestAsync(NotchWindow window)
@@ -135,6 +137,7 @@ public static class Snapshots
 
     public static async Task RunAsync(PanelModel m, NotchWindow window, SongPeek songPeek, ActivityPeek activity, string dir)
     {
+        Log.Write($"snapshots into {dir}");
         Directory.CreateDirectory(dir);
         await Task.Delay(800);
         songPeek.Show();
@@ -249,5 +252,6 @@ public static class Snapshots
         encoder.Frames.Add(BitmapFrame.Create(bitmap));
         using var file = File.Create(Path.Combine(dir, name + ".png"));
         encoder.Save(file);
+        Log.Write($"snapshot {name}");
     }
 }

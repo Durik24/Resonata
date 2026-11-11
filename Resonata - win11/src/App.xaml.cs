@@ -71,12 +71,16 @@ public partial class App : Application
             _media.Start();
         }
         if (Environment.GetEnvironmentVariable("RESONATA_SNAP") is { Length: > 0 } dir)
-            _ = Snapshots.RunAsync(_model, _window, _songPeek, _activityPeek, dir);
+            Logged(Snapshots.RunAsync(_model, _window, _songPeek, _activityPeek, dir), "snapshots");
         if (Environment.GetEnvironmentVariable("RESONATA_ANIMTEST") == "1")
-            _ = Snapshots.RunAnimationTestAsync(_window);
+            Logged(Snapshots.RunAnimationTestAsync(_window), "animation test");
         if (Environment.GetEnvironmentVariable("RESONATA_VOLUMETEST") == "1")
-            _ = Snapshots.RunVolumeTestAsync();
+            Logged(Snapshots.RunVolumeTestAsync(), "volume test");
     }
+
+    /// A test run that fails says so in the log rather than stopping unseen.
+    private static void Logged(Task run, string what) =>
+        run.ContinueWith(t => Log.Write($"{what} failed: {t.Exception}"), TaskContinuationOptions.OnlyOnFaulted);
 
     private void Wire()
     {
