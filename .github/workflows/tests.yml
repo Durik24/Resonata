@@ -168,7 +168,7 @@ jobs:
           if ($pictures.Count -lt 8) { throw "Only $($pictures.Count) snapshots" }
       - name: The pointer and the touchpad, on the installed copy
         shell: pwsh
-        run: '& "Resonata - win11/tests/pointer-test.ps1" -Exe "$env:ProgramFiles\Resonata\Resonata.exe"'
+        run: '& "Resonata - win11/tests/pointer-test.ps1" -Exe "$env:ProgramFiles\Resonata\Resonata.exe" -CloseCovering'
       - name: Gather Resonata's log
         if: always()
         shell: pwsh

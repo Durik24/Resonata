@@ -25,7 +25,7 @@ internal static partial class Native
     public static readonly IntPtr HWND_TOPMOST = new(-1);
     public const int WH_MOUSE_LL = 14;
     public const int WM_LBUTTONDOWN = 0x201, WM_LBUTTONUP = 0x202, WM_RBUTTONDOWN = 0x204, WM_MBUTTONDOWN = 0x207;
-    public const int WM_HOTKEY = 0x312, WM_MOUSEHWHEEL = 0x20E;
+    public const int WM_HOTKEY = 0x312, WM_MOUSEWHEEL = 0x20A, WM_MOUSEHWHEEL = 0x20E, MK_SHIFT = 0x0004;
     public const int VK_LBUTTON = 1, VK_RBUTTON = 2, VK_MBUTTON = 4;
 
     public const ushort ImageFileMachineArm64 = 0xAA64;

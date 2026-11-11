@@ -11,8 +11,11 @@
 # trackpad the same way, as injected input: exactly what this sends.
 #
 # Moves the real pointer, so it's for a machine nobody is using: CI's.
-#   pwsh tests\pointer-test.ps1 -Exe <Resonata.exe>
-param([Parameter(Mandatory)][string]$Exe)
+#   pwsh tests\pointer-test.ps1 -Exe <Resonata.exe> [-CloseCovering]
+# -CloseCovering ends whatever covers the whole screen first (not the
+# desktop): on CI's ARM64 machine, Windows' first-run screen, which takes the
+# wheel from anything under it.
+param([Parameter(Mandatory)][string]$Exe, [switch]$CloseCovering)
 
 $ErrorActionPreference = 'Stop'
 Add-Type @'
@@ -35,8 +38,57 @@ public static class Hand
     }
     public static void Sideways(int delta) { Wheel(HWHEEL, delta); }
     public static void Vertical(int delta) { Wheel(WHEEL, delta); }
+
+    [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
+    [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
+    [DllImport("user32.dll")] static extern IntPtr WindowFromPoint(POINT p);
+    [DllImport("user32.dll")] static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
+    [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
+    [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hwnd, out RECT r);
+    [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr hwnd);
+    [DllImport("user32.dll")] static extern int GetSystemMetrics(int index);
+    delegate bool EnumProc(IntPtr hwnd, IntPtr l);
+    [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc proc, IntPtr l);
+
+    /// The process whose window the wheel goes to at this point.
+    public static uint Under(int x, int y)
+    {
+        uint pid;
+        GetWindowThreadProcessId(GetAncestor(WindowFromPoint(new POINT { X = x, Y = y }), 2), out pid);
+        return pid;
+    }
+
+    /// The processes of visible windows that cover the whole primary screen.
+    public static System.Collections.Generic.List<uint> Covering()
+    {
+        var found = new System.Collections.Generic.List<uint>();
+        int w = GetSystemMetrics(0), h = GetSystemMetrics(1);
+        EnumWindows((hwnd, l) =>
+        {
+            RECT r;
+            if (IsWindowVisible(hwnd) && GetWindowRect(hwnd, out r) && r.Left <= 0 && r.Top <= 0 && r.Right >= w && r.Bottom >= h)
+            {
+                uint pid;
+                GetWindowThreadProcessId(hwnd, out pid);
+                if (!found.Contains(pid)) found.Add(pid);
+            }
+            return true;
+        }, IntPtr.Zero);
+        return found;
+    }
 }
 '@
+function Named($id) { (Get-Process -Id $id -ErrorAction SilentlyContinue).ProcessName }
+
+if ($CloseCovering) {
+  foreach ($id in [Hand]::Covering()) {
+    $name = Named $id
+    if ($name -in 'explorer', 'Resonata', $null) { continue }
+    "closing what covers the screen: $name ($id)"
+    Stop-Process -Id $id -Force -ErrorAction SilentlyContinue
+  }
+  Start-Sleep 2
+}
 
 $log = "$env:APPDATA\Resonata\resonata.log"
 $from = if (Test-Path $log) { (Get-Content $log).Count } else { 0 }
@@ -80,6 +132,8 @@ try {
   Mark
   [Hand]::SetCursorPos($edge - [int](200 * $scale), $line) | Out-Null
   Start-Sleep -Milliseconds 300
+  $under = Named ([Hand]::Under($edge - [int](200 * $scale), $line))
+  if ($under -ne 'Resonata') { throw "the wheel would go to $under, which is in front of the panel" }
   Swipe -1
   Expect 'trace: Tab Notes' 'a swipe turns to the next page'
   Start-Sleep -Milliseconds 600
@@ -99,13 +153,15 @@ try {
   Start-Sleep -Milliseconds 300
   Swipe -1
   Expect 'trace: pill swipe Next' 'a swipe on the pill skips the song'
-  Start-Sleep -Milliseconds 500
+  Start-Sleep -Milliseconds 300
   if (Lines | Select-String -SimpleMatch 'trace: IsExpanded True') { throw 'the panel opened in the middle of swiping songs' }
   'ok: the panel waited while songs were swiped'
   # The wheel turned down on the pill opens the panel, at once: before
-  # staying on the pill would have.
+  # staying on the pill would have. The pointer hasn't moved since the pill
+  # came out under it, which is when the wheel used to get lost.
   Mark
   for ($i = 0; $i -lt 3; $i++) { [Hand]::Vertical(-120); Start-Sleep -Milliseconds 20 }
+  Expect 'on the pill' 'the wheel reaches the pill under a pointer standing still' 0.25
   Expect 'trace: IsExpanded True' 'the wheel down on the pill opens the panel' 0.25
 }
 finally {

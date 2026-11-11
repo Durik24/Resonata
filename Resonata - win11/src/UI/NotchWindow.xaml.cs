@@ -193,6 +193,18 @@ public partial class NotchWindow : Window
             OnSidewaysScroll(delta);
             handled = true;
         }
+        else if (msg == Native.WM_MOUSEWHEEL && !_m.IsExpanded)
+        {
+            // On the pill, straight from Windows rather than through WPF: the
+            // pill comes out under a pointer that's standing still, WPF hasn't
+            // seen it arrive, and drops a wheel it thinks is over nothing.
+            var delta = (short)((wParam.ToInt64() >> 16) & 0xFFFF);
+            var shift = (wParam.ToInt64() & Native.MK_SHIFT) != 0;
+            TraceLog($"wheel {delta}{(shift ? " with Shift" : "")} on the pill");
+            if (shift) OnSidewaysScroll(-delta);
+            else OnPillWheel(delta);
+            handled = true;
+        }
         return IntPtr.Zero;
     }
 
@@ -880,7 +892,7 @@ public partial class NotchWindow : Window
         if (!_m.IsExpanded)
         {
             e.Handled = true;
-            if (_pillWheel.Add(-e.Delta, now) > 0) Expand();
+            OnPillWheel(e.Delta);
             return;
         }
         // Along the strip of icons, the wheel turns the page; a mouse has no
@@ -891,6 +903,12 @@ public partial class NotchWindow : Window
             var step = _wheelStrip.Add(-e.Delta, now);
             if (step != 0) TurnPage(step);
         }
+    }
+
+    /// The wheel turned down on the pill opens the panel.
+    private void OnPillWheel(int delta)
+    {
+        if (_pillWheel.Add(-delta, DateTime.Now) > 0) Expand();
     }
 
     private void OnSidewaysScroll(int delta)
