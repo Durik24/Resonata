@@ -173,6 +173,24 @@ final class NotchPanel: NSPanel {
         case .leftMouseDown:
             if Self.debugClick {
                 NSLog("click: mouse-down reached the panel at %@", NSStringFromPoint(event.locationInWindow))
+                let hit = contentView?.hitTest(event.locationInWindow)
+                NSLog("click: hit %@ needsKey=%d key=%d first=%@", hit.map { String(describing: type(of: $0)) } ?? "nil",
+                      hit?.needsPanelToBecomeKey == true ? 1 : 0, isKeyWindow ? 1 : 0,
+                      firstResponder.map { String(describing: type(of: $0)) } ?? "nil")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+                    guard let self else { return }
+                    NSLog("click: +0.25s key=%d first=%@", self.isKeyWindow ? 1 : 0,
+                          self.firstResponder.map { String(describing: type(of: $0)) } ?? "nil")
+                }
+            }
+            // A click in the note or a to-do field while some other app has
+            // the keyboard. AppKit spends that click on making the panel the
+            // key window and passes nothing on, so the field got no caret
+            // and the typing went nowhere until a second click — logged:
+            // key window after the first, first responder only after the
+            // second. Key first, and the same click then lands in the field.
+            if !isKeyWindow, contentView?.hitTest(event.locationInWindow)?.needsPanelToBecomeKey == true {
+                makeKey()
             }
             onMouseDown?(event.locationInWindow)
         case .scrollWheel where takesScroll?(event) ?? true:
@@ -423,6 +441,14 @@ final class NotchPanelController {
                     // for seconds — until some unrelated publish woke it. From
                     // outside the dispatch it renders on the next frame; the
                     // explicit layout below makes sure of it.
+                    // A Claude Code or Vibe message is out: the click goes
+                    // to the session it is about — its terminal, brought forward.
+                    if self.model.activityShown, let pid = self.model.activity?.sessionPid,
+                       let app = ClaudeMonitor.hostApp(of: pid) {
+                        if NotchPanel.debugClick { NSLog("click: to the session's app, %@", app.localizedName ?? "?") }
+                        app.activate()
+                        return
+                    }
                     if NotchPanel.debugClick { NSLog("click: EXPAND") }
                     self.setExpanded(true)
                     if NotchPanel.debugClick { self.debugSnapshots(tag: "open") }
@@ -480,8 +506,9 @@ final class NotchPanelController {
         // Things that put content in the pill whatever the music is doing.
         // Mirrors `NotchModel.showsCollapsedContent`.
         let extras = model.$activity.map { $0 != nil }
-            .combineLatest(model.$timerRunning)
-            .map { $0 || $1 }
+            .combineLatest(model.$timerRunning, model.$claude.map { $0?.showsInPill == true },
+                           model.$vibe.map { $0?.showsInPill == true })
+            .map { $0 || $1 || $2 || $3 }
         let collapsedContentVisible = model.$track.map { $0 != nil }
             .combineLatest(model.$isIdle, extras)
             .map { hasTrack, idle, extra in (hasTrack && !idle) || extra }

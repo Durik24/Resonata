@@ -99,6 +99,8 @@ keychain; `build.sh` uses it when present.
 | `LyricsView.swift` | The lyric line being sung, scrolling up to the next |
 | `PlayerVolume.swift` | Spotify's and Apple Music's own volume over AppleScript, and its slider |
 | `Language.swift` | English and Czech, side by side where each string is used |
+| `Vibe.swift` | Mistral Vibe beside it: the month's Vibe allowance as a ring, the same two messages. Off by default; reads `~/.vibe/logs/session/` and asks Mistral's billing through Vibe's own Python |
+| `Claude.swift` | Claude Code in the notch: its limit as a ring, a message when a session stops to ask or finishes. Off by default; reads `~/.claude/sessions/` and `claude /usage` |
 | `ArtworkAccent.swift` | Picks the accent colour out of the album art |
 | `Controls.swift` | Transport button press style |
 | `ResonataApp.swift` | Wires it together, sets `.accessory` activation policy |

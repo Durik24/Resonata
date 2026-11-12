@@ -62,8 +62,16 @@ struct QuickAppsView: View {
             Text(title)
                 .font(.system(size: 10))
                 .foregroundStyle(.white.opacity(0.75))
-                .lineLimit(1)
+                // A name too long for the tile goes onto a second line —
+                // "System Settings" was cut to "System Se…". The second
+                // line hangs below the tile, in the gap between the rows,
+                // and takes no room of its own: every tile stays the same
+                // height and the icons stay in line.
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
                 .truncationMode(.tail)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(height: 12, alignment: .top)
         }
         .frame(width: 62)
         .contentShape(Rectangle())

@@ -38,6 +38,8 @@ struct SettingsView: View {
     @AppStorage(Preferences.Key.showChargingPeek) private var showChargingPeek = true
     @AppStorage(Preferences.Key.showHeadphonesPeek) private var showHeadphonesPeek = true
     @AppStorage(Preferences.Key.meetingReminder) private var meetingReminder = true
+    @AppStorage(Preferences.Key.showClaude) private var showClaude = false
+    @AppStorage(Preferences.Key.showVibe) private var showVibe = false
     @AppStorage(Preferences.Key.pomodoroWork) private var pomodoroWork = 25
     @AppStorage(Preferences.Key.pomodoroRest) private var pomodoroRest = 5
     @AppStorage(Preferences.Key.pomodoroLongRest) private var pomodoroLongRest = 15
@@ -169,6 +171,28 @@ struct SettingsView: View {
             } footer: {
                 Text(L.t("They slide out of the closed notch for a moment. While the panel is open, a reminder, low battery or the end of the timer wait until you close it.",
                          "Na chvíli se vysunou ze zavřeného notche. Když je panel zrovna otevřený, připomínka, slabá baterie a konec časovače počkají, až ho zavřeš."))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
+                Toggle(L.t("Claude Code in the notch", "Claude Code v notchi"), isOn: $showClaude)
+            } header: {
+                Text("Claude Code")
+            } footer: {
+                Text(L.t("A ring showing how much of the session limit is used. It sits beside the notch while a session is working or waiting for you, and in the open panel; a session that stops to ask something, or finishes, slides out a message. Read from Claude Code on this Mac: its session files and its own /usage.",
+                         "Kroužek ukazuje, kolik z limitu relace je využito. Je vedle notche, dokud nějaká relace pracuje nebo na tebe čeká, a v otevřeném panelu; když se relace na něco zeptá nebo skončí, vysune se zpráva. Čte se z Claude Code na tomhle Macu: ze souborů relací a z jeho vlastního /usage."))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
+                Toggle(L.t("Mistral Vibe in the notch", "Mistral Vibe v notchi"), isOn: $showVibe)
+            } header: {
+                Text("Mistral Vibe")
+            } footer: {
+                Text(L.t("The same for Vibe: a ring showing how much of the month's Vibe allowance is used, and a message when a session asks for an approval or finishes. Read from Vibe on this Mac: its session files, and the allowance from Mistral through Vibe's own code and sign-in — Resonata never sees the key.",
+                         "Totéž pro Vibe: kroužek ukazuje, kolik z měsíčního limitu Vibe je využito, a když relace požádá o schválení nebo skončí, vysune se zpráva. Čte se z Vibe na tomhle Macu: ze souborů relací, a limit od Mistralu přes vlastní kód a přihlášení Vibe — Resonata klíč nikdy nevidí."))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

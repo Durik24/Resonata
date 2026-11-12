@@ -195,6 +195,9 @@ final class MediaRemoteNowPlaying: ObservableObject, NowPlayingSource {
         startupTimer = nil
         idleTimer?.invalidate()
         idleTimer = nil
+        expectationTimer?.invalidate()
+        expectationTimer = nil
+        expectedPlaying = nil
         if let process, process.isRunning { process.terminate() }
         process = nil
         if Self.active === self { Self.active = nil }
@@ -260,11 +263,72 @@ final class MediaRemoteNowPlaying: ObservableObject, NowPlayingSource {
         } else {
             state = payload.filter { !($0.value is NSNull) }
         }
-        apply()
+        apply(elapsedIsNew: Self.bringsElapsedTime(payload, diff: diff))
     }
 
-    private func apply() {
+    /// Whether a payload says where the playhead is, or only repeats what an
+    /// earlier one said. A full payload always does; a diff only when the
+    /// elapsed time is among the things it changes.
+    ///
+    /// Spotify announces a pause in three diffs: `playing: false`, then a new
+    /// timestamp, then — half a second later — the elapsed time. Until that
+    /// last one the elapsed time in hand is the one from the last seek, resume
+    /// or song start, and read as the playhead it put the bar back there:
+    /// 0:00 for half a second on every pause, filmed.
+    nonisolated static func bringsElapsedTime(_ payload: [String: Any], diff: Bool) -> Bool {
+        guard diff else { return true }
+        return payload["elapsedTimeMicros"] != nil || payload["elapsedTime"] != nil
+    }
+
+    // MARK: Play and pause, shown at once
+
+    /// What the play/pause button was just asked for, until the player says
+    /// the same or `until` passes. Spotify takes 0.5–0.8 s to report a pause
+    /// it has already made, and the button used to wait for the report: the
+    /// click looked ignored for most of a second.
+    private var expectedPlaying: (value: Bool, until: Date)?
+    private var expectationTimer: Timer?
+    /// Long enough for a slow player to answer; short enough that a command
+    /// that never landed doesn't leave the button lying for long.
+    private static let expectationTime: TimeInterval = 2
+
+    /// The play/pause command has just been sent: show its result now.
+    func expectPlayPauseToggle() {
+        guard let track else { return }
+        expectedPlaying = (!track.isPlaying, Date().addingTimeInterval(Self.expectationTime))
+        expectationTimer?.invalidate()
+        expectationTimer = Timer.scheduledTimer(withTimeInterval: Self.expectationTime + 0.05,
+                                                repeats: false) { [weak self] _ in
+            // Nothing came of it: back to what the player says.
+            MainActor.assumeIsolated { self?.apply(elapsedIsNew: false) }
+        }
+        apply(elapsedIsNew: false)
+    }
+
+    /// `playing` as the player reports it, unless a toggle is still expected
+    /// — see `expectedPlaying`.
+    nonisolated static func shownPlaying(reported: Bool, expected: (value: Bool, until: Date)?,
+                                         now: Date) -> (playing: Bool, stillExpected: Bool) {
+        guard let expected, now < expected.until, reported != expected.value else {
+            return (reported, false)
+        }
+        return (expected.value, true)
+    }
+
+    private func apply(elapsedIsNew: Bool = true) {
         var track = Self.track(from: state)
+
+        if let reported = track?.isPlaying {
+            let shown = Self.shownPlaying(reported: reported, expected: expectedPlaying, now: Date())
+            track?.isPlaying = shown.playing
+            if !shown.stillExpected {
+                expectedPlaying = nil
+                expectationTimer?.invalidate()
+                expectationTimer = nil
+            }
+        } else {
+            expectedPlaying = nil
+        }
 
         // Same idle rule as the AppleScript source: a paused track stays for
         // a while, so the pill doesn't vanish the moment you pause to talk.
@@ -284,7 +348,7 @@ final class MediaRemoteNowPlaying: ObservableObject, NowPlayingSource {
                 idleTimer = Timer.scheduledTimer(
                     withTimeInterval: Self.pausedTimeout - elapsed + 0.1, repeats: false
                 ) { [weak self] _ in
-                    MainActor.assumeIsolated { self?.apply() }
+                    MainActor.assumeIsolated { self?.apply(elapsedIsNew: false) }
                 }
             }
         } else {
@@ -326,11 +390,15 @@ final class MediaRemoteNowPlaying: ObservableObject, NowPlayingSource {
         // itself confirmed (`checkPlayhead`) is kept over whatever the
         // payload says: Spotify's Now Playing position can be minutes out,
         // and a real seek is caught by the check each payload brings on.
+        //
+        // A payload that says nothing new about the playhead doesn't move it
+        // either — see `bringsElapsedTime`. Play and pause arrive that way:
+        // the playhead stops, or starts, from wherever it had got to.
         if var t = track, let previous = self.track, t.isSameTrack(as: previous),
-           t.isPlaying == previous.isPlaying,
-           playheadConfirmed || abs(previous.position(at: t.sampledAt) - t.sampledPosition) < 1.5 {
-            t.sampledPosition = previous.sampledPosition
-            t.sampledAt = previous.sampledAt
+           let anchor = Self.anchor(for: t, after: previous, elapsedIsNew: elapsedIsNew,
+                                    confirmed: playheadConfirmed, now: Date()) {
+            t.sampledPosition = anchor.position
+            t.sampledAt = anchor.at
             track = t
         } else {
             playheadConfirmed = false
@@ -338,6 +406,22 @@ final class MediaRemoteNowPlaying: ObservableObject, NowPlayingSource {
 
         if self.track != track { self.track = track }
         updatePlayheadChecks()
+    }
+
+    /// Where the playhead of `track` is anchored, given the same song as it
+    /// was a moment ago (`previous`): nil to take the payload's own elapsed
+    /// time and timestamp, which is right only when the player really jumped.
+    nonisolated static func anchor(for track: Track, after previous: Track, elapsedIsNew: Bool,
+                                   confirmed: Bool, now: Date) -> (position: TimeInterval, at: Date)? {
+        if track.isPlaying != previous.isPlaying {
+            // Paused or resumed. With no new elapsed time, from where it was.
+            return elapsedIsNew ? nil : (previous.position(at: now), now)
+        }
+        if !elapsedIsNew || confirmed
+            || abs(previous.position(at: track.sampledAt) - track.sampledPosition) < 1.5 {
+            return (previous.sampledPosition, previous.sampledAt)
+        }
+        return nil
     }
 
     // MARK: Playhead, from the player itself

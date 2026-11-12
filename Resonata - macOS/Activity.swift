@@ -19,13 +19,40 @@ enum NotchActivity: Equatable {
     case pomodoro(rest: Bool, minutes: Int)
     /// A newer Resonata is out; installed from the right-click menu.
     case update(version: String)
+    /// A Claude Code session has stopped to ask you something.
+    case claudeWaiting(session: String, wants: String?, pid: Int32? = nil)
+    /// A Claude Code session has finished what it was doing.
+    case claudeDone(session: String, pid: Int32? = nil)
+    /// A Mistral Vibe session has stopped to ask for an approval.
+    case vibeWaiting(session: String, wants: String?, pid: Int32? = nil)
+    /// A Mistral Vibe session has finished what it was doing.
+    case vibeDone(session: String, pid: Int32? = nil)
+
+    /// The process of the Claude Code or Vibe session this is about, for a
+    /// click to go to.
+    var sessionPid: Int32? {
+        switch self {
+        case .claudeWaiting(_, _, let pid), .claudeDone(_, let pid),
+             .vibeWaiting(_, _, let pid), .vibeDone(_, let pid): pid
+        default: nil
+        }
+    }
+
+    /// One of Claude Code's: its ring goes in the cover's place.
+    var isClaude: Bool {
+        switch self {
+        case .claudeWaiting, .claudeDone: true
+        default: false
+        }
+    }
 
     /// How long it stays out. Long enough to read; a meeting or a finished
     /// timer is worth a little longer.
     var duration: TimeInterval {
         switch self {
         case .charging, .lowBattery, .headphones: 3
-        case .meeting, .timerDone, .pomodoro, .update: 6
+        case .meeting, .timerDone, .pomodoro, .update, .claudeWaiting, .claudeDone,
+             .vibeWaiting, .vibeDone: 6
         }
     }
 
@@ -34,8 +61,9 @@ enum NotchActivity: Equatable {
     /// close, while "charging" or "headphones connected" is old news by then.
     var waitsForClose: Bool {
         switch self {
-        case .lowBattery, .meeting, .timerDone, .pomodoro, .update: true
-        case .charging, .headphones: false
+        case .lowBattery, .meeting, .timerDone, .pomodoro, .update, .claudeWaiting, .vibeWaiting: true
+        // Finished while the panel was open: you were here, and saw it.
+        case .charging, .headphones, .claudeDone, .vibeDone: false
         }
     }
 
@@ -67,6 +95,28 @@ enum NotchActivity: Equatable {
         case .update(let version):
             ActivityLook(symbol: "arrow.down.circle.fill", tint: ActivityLook.blue, title: L.t("New version \(version)", "Nová verze \(version)"),
                          detail: L.t("Right-click", "Klikni pravým"), trailing: "sparkles")
+        case .claudeWaiting(let session, let wants, _):
+            // Which session, and what it wants when it says. Nothing in the
+            // bars' place: the text has the room.
+            ActivityLook(symbol: "hand.raised.fill", tint: ActivityLook.amber,
+                         title: L.t("Claude Code is waiting", "Claude Code čeká"),
+                         detail: session + (wants.flatMap { $0.isEmpty ? nil : " · \($0)" } ?? ""),
+                         trailing: "")
+        case .claudeDone(let session, _):
+            ActivityLook(symbol: "checkmark.circle.fill", tint: ActivityLook.green,
+                         title: L.t("Claude Code has finished", "Claude Code dokončil"), detail: session,
+                         trailing: "")
+        case .vibeWaiting(let session, let wants, _):
+            // The same two messages for Vibe: which session, and the
+            // command it asks to run.
+            ActivityLook(symbol: "hand.raised.fill", tint: ActivityLook.amber,
+                         title: L.t("Vibe is waiting", "Vibe čeká"),
+                         detail: session + (wants.flatMap { $0.isEmpty ? nil : " · \($0)" } ?? ""),
+                         trailing: "")
+        case .vibeDone(let session, _):
+            ActivityLook(symbol: "checkmark.circle.fill", tint: ActivityLook.green,
+                         title: L.t("Vibe has finished", "Vibe dokončil"), detail: session,
+                         trailing: "")
         }
     }
 
@@ -93,6 +143,7 @@ struct ActivityLook {
     static let red = Color(red: 1, green: 0.32, blue: 0.3)
     static let blue = Color(red: 0.36, green: 0.62, blue: 1)
     static let orange = Color(red: 1, green: 0.62, blue: 0.25)
+    static let amber = Color(red: 0.96, green: 0.65, blue: 0.14)
 }
 
 /// Shows an activity in the closed notch for its `duration`, then slides it

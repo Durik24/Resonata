@@ -25,6 +25,8 @@ enum Preferences {
         static let pomodoroLongRest = "pomodoroLongRest"
         static let pomodoroRounds = "pomodoroRounds"
         static let pageSwipe = "pageSwipe"
+        static let showClaude = "showClaude"
+        static let showVibe = "showVibe"
         static let checkForUpdates = "checkForUpdates"
         static let language = "language"
         static let pinnedScreen = "pinnedScreen"
@@ -51,6 +53,9 @@ enum Preferences {
             Key.pomodoroLongRest: 15,
             Key.pomodoroRounds: 4,
             Key.pageSwipe: PageSwipe.withFingers.rawValue,
+            // Off until asked for: it reads another app's files and runs it.
+            Key.showClaude: false,
+            Key.showVibe: false,
             Key.checkForUpdates: true,
             Key.language: AppLanguage.system.rawValue,
             Key.skipDeclined: true,
@@ -98,6 +103,12 @@ enum Preferences {
     static var showHeadphonesPeek: Bool { UserDefaults.standard.bool(forKey: Key.showHeadphonesPeek) }
 
     static var meetingReminder: Bool { UserDefaults.standard.bool(forKey: Key.meetingReminder) }
+
+    /// Claude Code's ring and messages in the notch — see `ClaudeMonitor`.
+    static var showClaude: Bool { UserDefaults.standard.bool(forKey: Key.showClaude) }
+
+    /// Mistral Vibe's ring and messages in the notch — see `VibeMonitor`.
+    static var showVibe: Bool { UserDefaults.standard.bool(forKey: Key.showVibe) }
 
     /// The Pomodoro lengths the user has set — see `PomodoroPlan`.
     static var pomodoroPlan: PomodoroPlan {

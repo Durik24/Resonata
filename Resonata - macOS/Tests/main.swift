@@ -262,6 +262,454 @@ do {
           "playhead: 0.6 s behind is put right")
 }
 
+// MARK: - Pause and resume, as Spotify reports them
+
+MainActor.assumeIsolated {
+    // Recorded from `stream --micros`: a pause is `playing: false`, then a
+    // new timestamp, then — half a second later — the elapsed time. Until
+    // that last one the elapsed time in hand is the song's start.
+    let source = MediaRemoteNowPlaying()
+    let started = Date().addingTimeInterval(-48)
+    func micros(_ date: Date) -> Double { (date.timeIntervalSince1970 * 1_000_000).rounded() }
+    source.ingest(streamLine(["type": "data", "diff": false, "payload": [
+        "title": "Tak To Jsme My!", "artist": "X", "album": "Y", "playing": true,
+        "bundleIdentifier": "com.example.player",
+        "durationMicros": 183_000_000, "elapsedTimeMicros": 0,
+        "timestampEpochMicros": micros(started),
+    ]]))
+    check(approx(source.track?.position(at: Date()) ?? -1, 48, 0.5), "pause: playing, 48 s in")
+
+    source.ingest(streamLine(["type": "data", "diff": true, "payload": ["playing": false]]))
+    check(source.track?.isPlaying == false, "pause: shown as paused")
+    check(approx(source.track?.position(at: Date()) ?? -1, 48, 0.5),
+          "pause: the bar stays where the song was, not back at 0:00",
+          "\(source.track?.position(at: Date()) ?? -1)")
+    source.ingest(streamLine(["type": "data", "diff": true, "payload": [
+        "timestampEpochMicros": micros(Date())]]))
+    check(approx(source.track?.position(at: Date()) ?? -1, 48, 0.5),
+          "pause: nor when only the timestamp follows",
+          "\(source.track?.position(at: Date()) ?? -1)")
+    source.ingest(streamLine(["type": "data", "diff": true, "payload": [
+        "elapsedTimeMicros": 47_600_000, "playbackRate": NSNull(),
+        "timestampEpochMicros": micros(Date())]]))
+    check(approx(source.track?.position(at: Date()) ?? -1, 48, 0.5), "pause: the elapsed time agrees")
+
+    // Resuming: `playing: true` first, the paused elapsed time still in hand.
+    source.ingest(streamLine(["type": "data", "diff": true, "payload": ["playing": true]]))
+    check(source.track?.isPlaying == true, "resume: shown as playing")
+    check(approx(source.track?.position(at: Date()) ?? -1, 48, 0.5),
+          "resume: carries on from where it was paused",
+          "\(source.track?.position(at: Date()) ?? -1)")
+
+    // A real jump still moves the bar: a seek arrives with its elapsed time.
+    source.ingest(streamLine(["type": "data", "diff": true, "payload": [
+        "elapsedTimeMicros": 120_000_000, "timestampEpochMicros": micros(Date())]]))
+    check(approx(source.track?.position(at: Date()) ?? -1, 120, 0.5), "seek in the player: the bar follows")
+
+    // The button: its click shows at once, before the player reports it.
+    source.expectPlayPauseToggle()
+    check(source.track?.isPlaying == false, "play/pause: the click shows at once")
+    check(approx(source.track?.position(at: Date()) ?? -1, 120, 0.5), "play/pause: paused where it was")
+    source.ingest(streamLine(["type": "data", "diff": true, "payload": [
+        "timestampEpochMicros": micros(Date())]]))
+    check(source.track?.isPlaying == false, "play/pause: a payload still saying playing doesn't undo it")
+    source.ingest(streamLine(["type": "data", "diff": true, "payload": ["playing": false]]))
+    check(source.track?.isPlaying == false, "play/pause: and the player's report agrees")
+    source.ingest(streamLine(["type": "data", "diff": true, "payload": ["playing": true]]))
+    check(source.track?.isPlaying == true, "play/pause: a later change in the player is followed")
+    source.stop()
+}
+
+do {
+    let now = Date(timeIntervalSince1970: 5_000)
+    let waiting = (value: false, until: now.addingTimeInterval(2))
+    check(MediaRemoteNowPlaying.shownPlaying(reported: true, expected: waiting, now: now) == (false, true),
+          "play/pause: expected, not yet reported")
+    check(MediaRemoteNowPlaying.shownPlaying(reported: false, expected: waiting, now: now) == (false, false),
+          "play/pause: reported, nothing left to expect")
+    check(MediaRemoteNowPlaying.shownPlaying(reported: true, expected: waiting,
+                                             now: now.addingTimeInterval(2.1)) == (true, false),
+          "play/pause: never reported — back to what the player says")
+    check(MediaRemoteNowPlaying.shownPlaying(reported: true, expected: nil, now: now) == (true, false),
+          "play/pause: nothing expected")
+
+    check(MediaRemoteNowPlaying.bringsElapsedTime(["playing": false], diff: true) == false,
+          "stream: a diff without the elapsed time says nothing about the playhead")
+    check(MediaRemoteNowPlaying.bringsElapsedTime(["elapsedTimeMicros": 5], diff: true),
+          "stream: a diff with it does")
+    check(MediaRemoteNowPlaying.bringsElapsedTime(["title": "A"], diff: false),
+          "stream: a full payload always does")
+
+    // The same song, both ways round.
+    let playing = track(10, playing: true), paused = track(10, playing: false)
+    let later = t0 + 30
+    let stopped = MediaRemoteNowPlaying.anchor(for: paused, after: playing, elapsedIsNew: false,
+                                               confirmed: false, now: later)
+    check(stopped?.position == 40 && stopped?.at == later, "anchor: paused where the playhead had got to")
+    let resumed = MediaRemoteNowPlaying.anchor(for: playing, after: paused, elapsedIsNew: false,
+                                               confirmed: true, now: later)
+    check(resumed?.position == 10 && resumed?.at == later, "anchor: resumed from where it was paused")
+    check(MediaRemoteNowPlaying.anchor(for: paused, after: playing, elapsedIsNew: true,
+                                       confirmed: true, now: later) == nil,
+          "anchor: a pause that brings its own elapsed time uses it")
+    var jumped = playing
+    jumped.sampledPosition = 80
+    check(MediaRemoteNowPlaying.anchor(for: jumped, after: playing, elapsedIsNew: true,
+                                       confirmed: false, now: later) == nil,
+          "anchor: a jump the player reports is taken")
+    check(MediaRemoteNowPlaying.anchor(for: jumped, after: playing, elapsedIsNew: false,
+                                       confirmed: false, now: later)?.position == 10,
+          "anchor: stale elapsed time is not a jump")
+
+    check(PlayerVolumeControl.disagrees(shown: 50, player: 100), "volume: the player didn't take it")
+    check(!PlayerVolumeControl.disagrees(shown: 50, player: 49), "volume: Spotify's 49 for 50 is agreement")
+
+    let radio = Track(title: "T", artist: "A", album: "B", duration: 0, sampledPosition: 0, sampledAt: t0,
+                      isPlaying: true, artworkURL: nil, source: "Safari", bundleID: "com.apple.Safari")
+    check(scriptName(for: radio) == nil, "seek: a browser tab goes through MediaRemote")
+}
+
+// MARK: - Claude Code in the notch
+
+do {
+    var prague = Calendar(identifier: .gregorian)
+    prague.timeZone = TimeZone(identifier: "Europe/Prague")!
+    func at(_ y: Int, _ mo: Int, _ d: Int, _ h: Int, _ mi: Int) -> Date {
+        prague.date(from: DateComponents(year: y, month: mo, day: d, hour: h, minute: mi))!
+    }
+    let now = at(2026, 11, 12, 13, 50)
+
+    // Exactly what `claude /usage` printed on 12 November 2026.
+    let text = """
+    You are currently using your subscription to power your Claude Code usage
+
+    Current session: 6% used · resets Nov 12 at 6:39pm (Europe/Prague)
+    Current week (all models): 1% used · resets Nov 13 at 6:59pm (Europe/Prague)
+    Current week (Fable): 2% used · resets Nov 13 at 6:59pm (Europe/Prague)
+
+    What's contributing to your usage?
+      77%  Start fresh when you switch tasks · run /clear
+    """
+    let usage = ClaudeUsage.parse(text, now: now)
+    check(usage?.sessionPercent == 6, "claude: the session's share is read", "\(String(describing: usage))")
+    check(usage?.sessionResets == at(2026, 11, 12, 18, 39), "claude: and when it resets",
+          "\(String(describing: usage?.sessionResets))")
+    check(usage?.weekPercent == 1, "claude: the week is the line for all models, not one model's")
+    check(usage?.weekResets == at(2026, 11, 13, 18, 59), "claude: the week's reset")
+    check(usage?.models == [.init(name: "Fable", percent: 2, resets: at(2026, 11, 13, 18, 59))],
+          "claude: one model's week is kept beside it, by name")
+    check(ClaudeUsage.parse("Current week (Fable): 2% used\nCurrent session: 100% used", now: now)
+            == ClaudeUsage(sessionPercent: 100, sessionResets: nil, weekPercent: 2, weekResets: nil),
+          "claude: no reset said, one model's week when that is all there is")
+    check(ClaudeUsage.parse("Not logged in · Please run /login", now: now) == nil,
+          "claude: no session line, nothing to show")
+    check(ClaudeUsage.parse("  77%  Start fresh when you switch tasks", now: now) == nil,
+          "claude: a percentage that isn't a limit is not one")
+
+    check(ClaudeUsage.resetDate("5:30pm (Europe/Prague)", now: now) == at(2026, 11, 12, 17, 30),
+          "claude: a bare time is later today")
+    check(ClaudeUsage.resetDate("9:05am (Europe/Prague)", now: now) == at(2026, 11, 13, 9, 5),
+          "claude: or tomorrow, once it has passed today")
+    check(ClaudeUsage.resetDate("6pm (Europe/Prague)", now: now) == at(2026, 11, 12, 18, 0),
+          "claude: a time without minutes")
+    check(ClaudeUsage.resetDate("Jan 2 at 9:00am (Europe/Prague)", now: at(2026, 12, 30, 12, 0))
+            == at(2027, 1, 2, 9, 0), "claude: a date in January, read in December, is next year's")
+    check(ClaudeUsage.resetDate("soon", now: now) == nil, "claude: unreadable reset, no date")
+
+    L.isCzech = false
+    check(ClaudeStatus.countdown(to: at(2026, 11, 12, 16, 8), now: now) == "resets in 2 h 18 min",
+          "claude: hours and minutes to the reset")
+    check(ClaudeStatus.countdown(to: at(2026, 11, 12, 14, 20), now: now) == "resets in 30 min",
+          "claude: under an hour, minutes only")
+    check(ClaudeStatus.countdown(to: at(2026, 11, 12, 15, 50), now: now) == "resets in 2 h",
+          "claude: whole hours")
+    check(ClaudeStatus.countdown(to: now.addingTimeInterval(-5), now: now) == "resets now",
+          "claude: a reset already due")
+    L.isCzech = true
+    let shown = ClaudeStatus(state: .working, session: "resonata", usage: usage).summary(now: now)
+    check(shown.hasPrefix("Claude · pracuje\n") && shown.contains("využito 6 %")
+            && shown.contains("reset za 4 h 49 min") && shown.contains("Týden: 1 %")
+            && shown.hasSuffix("\nresonata"),
+          "claude: the card says the state, both limits and the session", shown)
+    let placed = ClaudeStatus(state: .working, session: "resonata", usage: usage,
+                              sessions: [.init(pid: 1, name: "resonata", state: .working, app: "Terminál")])
+    check(placed.summary(now: now).hasSuffix("\nresonata · Terminál"), "claude: and the app it runs in, when known")
+    check(ClaudeStatus(usage: usage).weekFraction == 0.01 && ClaudeStatus(state: .working).weekFraction == nil,
+          "claude: the week's ring is as full as the week")
+    check(ClaudeStatus(usage: usage).showsInPill && ClaudeStatus(state: .waiting).showsInPill
+            && !ClaudeStatus().showsInPill,
+          "claude: limits, or a session at work, are something to show; neither is not")
+    check(ClaudeStatus(state: .idle).fraction == nil && ClaudeStatus(usage: usage).fraction == 0.06,
+          "claude: the ring is as full as the session is used")
+
+    // The session files, as Claude Code 2.1 writes them.
+    func record(_ fields: [String: Any]) -> ClaudeSessionRecord? {
+        var json: [String: Any] = ["pid": 7534, "cwd": "/Users/someone/Projects/resonata",
+                                   "name": "resonata-16", "nameSource": "derived", "entrypoint": "cli"]
+        for (key, value) in fields { json[key] = value }
+        return ClaudeSessionRecord(json: json)
+    }
+    let busy = record(["status": "busy"])
+    check(busy?.state == .working && busy?.pid == 7534, "claude: a busy session is working")
+    check(busy?.name == "resonata", "claude: a made-up name gives way to the folder")
+    check(record(["status": "busy", "name": "Release", "nameSource": "user"])?.name == "Release",
+          "claude: a name somebody gave is kept")
+    let asking = record(["status": "waiting", "waitingFor": "permission to edit"])
+    check(asking?.state == .waiting && asking?.wants == "permission to edit", "claude: a waiting session and what for")
+    check(record(["tempo": "blocked", "status": "busy"])?.state == .waiting, "claude: `tempo` is believed over `status`")
+    check(record(["status": "idle"])?.state == .idle && record([:])?.state == .idle,
+          "claude: idle, and no status at all, are idle")
+    check(record(["entrypoint": "sdk-cli", "status": "busy"])?.isHelper == true,
+          "claude: a `--print` run is not a session")
+    check(ClaudeSessionRecord(json: ["cwd": "/tmp"]) == nil, "claude: a file with no pid is no session")
+
+    if let busy, let asking, let idle = record(["pid": 9, "status": "idle"]) {
+        check(ClaudeSessionRecord.summary(of: [idle, busy, asking]).state == .waiting
+                && ClaudeSessionRecord.summary(of: [idle, busy, asking]).wants == "permission to edit",
+              "claude: one waiting for you comes before one working")
+        check(ClaudeSessionRecord.summary(of: [idle, busy]).state == .working
+                && ClaudeSessionRecord.summary(of: [idle, busy]).session == "resonata",
+              "claude: one working makes the notch show work")
+        check(ClaudeSessionRecord.summary(of: [idle]).state == .idle && ClaudeSessionRecord.summary(of: []).session == nil,
+              "claude: nothing working, nothing shown")
+
+        check(ClaudeSessionRecord.event(from: .working, to: asking, workedFor: 2)
+                == .claudeWaiting(session: "resonata", wants: "permission to edit", pid: 7534),
+              "claude: stopping to ask is said, however short the work")
+        check(ClaudeSessionRecord.event(from: .working, to: idle, workedFor: 40)
+                == .claudeDone(session: "resonata", pid: 9),
+              "claude: finishing is said, with the session to go to")
+        check(ClaudeSessionRecord.event(from: .working, to: idle, workedFor: 3) == nil,
+              "claude: a three-second answer ends without a word")
+        check(ClaudeSessionRecord.event(from: nil, to: asking, workedFor: 0) == nil,
+              "claude: a session first seen waiting isn't news — nothing at launch")
+        check(ClaudeSessionRecord.event(from: .waiting, to: busy, workedFor: 0) == nil
+                && ClaudeSessionRecord.event(from: .waiting, to: idle, workedFor: 0) == nil,
+              "claude: an answered question is not a piece of work ending")
+    }
+    check(NotchActivity.claudeWaiting(session: "resonata", wants: nil).look.detail == "resonata"
+            && NotchActivity.claudeWaiting(session: "resonata", wants: "Povolit?").look.detail == "resonata · Povolit?",
+          "claude: the message says which session, and what it wants when it says")
+    check(NotchActivity.claudeWaiting(session: "a", wants: nil, pid: 42).sessionPid == 42
+            && NotchActivity.claudeDone(session: "a").sessionPid == nil
+            && NotchActivity.charging(percent: 5).sessionPid == nil,
+          "claude: a message knows the session a click on it goes to")
+    check(NotchActivity.claudeWaiting(session: "a", wants: nil).waitsForClose
+            && !NotchActivity.claudeDone(session: "a").waitsForClose,
+          "claude: a question waits for the panel to close; a finish seen in the panel doesn't")
+}
+
+// MARK: - Mistral Vibe in the notch
+
+do {
+    // What the helper printed on 12 November 2026, off a Student plan.
+    let usage = VibeUsage.parse(#"{"percent": 2.9651639733333335, "resets": "2026-12-01T00:00:00Z", "payg": false, "plan": "EDU"}"#)
+    check(usage?.percent == 2, "vibe: the month's share is read in whole per cents, as Vibe shows it", "\(String(describing: usage))")
+    check(VibeUsage.parse(#"{"percent": 2.998338653333333}"#)?.percent == 2 && VibeUsage.parse(#"{"percent": 3.0}"#)?.percent == 3,
+          "vibe: 2.99 is still 2, not rounded up to a 3 Vibe doesn't show")
+    check(usage?.resets == Date(timeIntervalSince1970: 1_796_083_200), "vibe: and when it resets")
+    check(usage?.plan == "Student" && usage?.payAsYouGo == false, "vibe: the plan by the name Vibe gives it")
+    check(VibeUsage.parse("Reading API keys\n{\"percent\": 140.2, \"resets\": null, \"payg\": true, \"plan\": \"INDIVIDUAL\"}\n")
+            == VibeUsage(percent: 140, resets: nil, plan: "Pro", payAsYouGo: true),
+          "vibe: past the allowance on a plan that bills the rest; a line printed before it is passed over")
+    check(VibeUsage.parse("") == nil && VibeUsage.parse("{\"plan\": \"EDU\"}") == nil
+            && VibeUsage.parse("Traceback (most recent call last):") == nil,
+          "vibe: nothing printed, or no share in it, nothing to show")
+    check(VibeUsage.planTitle("Scale") == "Scale" && VibeUsage.planTitle(" ") == nil,
+          "vibe: a plan it has no name for keeps billing's; none is none")
+
+    check(VibeStatus(usage: usage).fraction == 0.02 && VibeStatus(state: .working).fraction == nil,
+          "vibe: the ring is as full as the month is used")
+    check(VibeStatus(usage: VibeUsage(percent: 140)).fraction == 1, "vibe: and no fuller than full")
+    check(VibeStatus(usage: usage).showsInPill && VibeStatus(state: .waiting).showsInPill && !VibeStatus().showsInPill,
+          "vibe: the allowance, or a session at work, is something to show; neither is not")
+    let shown = VibeStatus(state: .waiting, session: "milionar", usage: usage,
+                           sessions: [.init(pid: 7, name: "milionar", state: .waiting, app: "Terminál", key: "s1")])
+        .summary(now: Date())
+    check(shown.hasPrefix("Vibe · čeká na tebe\nMěsíc: využito 2 % · reset ") && shown.contains("\nTarif: Student\n")
+            && shown.hasSuffix("\nmilionar · Terminál"),
+          "vibe: the card says the state, the month, the plan and the session", shown)
+
+    // Journal lines as Vibe 3.1 writes them, cut down to what is read.
+    func line(_ type: String, _ payload: [String: Any]) -> String {
+        let data = try! JSONSerialization.data(withJSONObject: ["type": type, "payload": payload, "sequence": 1])
+        return String(decoding: data, as: UTF8.self) + "\n"
+    }
+    func envelope(_ status: String, title: String? = nil, source: String = "auto") -> String {
+        var session: [String: Any] = ["status": ["type": status], "titleSource": source]
+        if let title { session["title"] = title }
+        return line("projection_delta", ["delta": [["op": "append_entry", "entry": ["text": "…"]],
+                                                   ["op": "set_envelope", "state": ["session": session]]]])
+    }
+    func asked(_ id: String, command: String) -> String {
+        line("callback_registered", ["callback_id": id, "kind": "approval",
+                                     "routing": ["title": "Approve file_system.bash",
+                                                 "detail": ["effect": ["toolName": "file_system.bash",
+                                                                       "input": ["command": command]]]]])
+    }
+    func answered(_ id: String) -> String {
+        line("callback_resolved", ["callback_id": id, "state": "resolved"])
+    }
+    func journal(_ lines: String...) -> VibeJournal {
+        var journal = VibeJournal()
+        journal.read(Data(lines.joined().utf8))
+        return journal
+    }
+    check(VibeJournal().state == .idle, "vibe: an empty journal is a session at rest")
+    check(journal(line("command_reserved", ["method": "turn/start"]), envelope("running")).state == .working,
+          "vibe: a turn under way is working")
+    let waiting = journal(envelope("running"), asked("a1", command: "python3 --version\necho more"), envelope("running"))
+    check(waiting.state == .waiting && waiting.wants == "python3 --version",
+          "vibe: an approval asked for and not answered is waiting, and the command's first line is what for")
+    check(journal(envelope("running"), asked("a1", command: "ls"), answered("a1"), envelope("running")).state == .working,
+          "vibe: answered, it is back at work")
+    check(journal(envelope("running"), envelope("idle")).state == .idle, "vibe: the newest envelope is the one that counts")
+    check(journal(envelope("running"), asked("a1", command: "ls"), envelope("idle")).state == .idle,
+          "vibe: a turn stopped with its question open is at rest, not waiting for ever")
+    check(journal(envelope("idle"), asked("a1", command: "ls")).state == .waiting,
+          "vibe: a question put after the last envelope still stands")
+    check(journal(envelope("running"), line("action_result", ["result": "it said set_envelope and callback_registered"]))
+            .state == .working, "vibe: a tool's output quoting those words is not one of them")
+    var grown = journal(envelope("running"), asked("a1", command: "mkdir x"))
+    grown.read(Data(answered("a1").utf8))
+    check(grown.state == .working, "vibe: read a piece at a time, as it is written")
+    grown.read(Data(envelope("idle", title: "Kvíz", source: "user").utf8))
+    check(grown.state == .idle && grown.title == "Kvíz" && grown.titleGiven, "vibe: a name somebody gave is known as one")
+    grown.read(Data(envelope("running", title: "Kvíz", source: "user").utf8))
+    grown.startOver()
+    check(grown.state == .idle && grown.title == "Kvíz", "vibe: a new journal file is a session come to rest; its name stays")
+    check(journal(envelope("running", title: "C# quiz game")).titleGiven == false,
+          "vibe: Vibe's own title is not a given one")
+
+    func wants(_ effect: [String: Any], title: String? = nil) -> String? {
+        var routing: [String: Any] = ["detail": ["effect": effect]]
+        if let title { routing["title"] = title }
+        return VibeJournal.wants(["routing": routing])
+    }
+    check(wants(["toolName": "file_system.write_file", "input": ["path": "/Users/a/hra/main.py", "content": "…"]]) == "main.py",
+          "vibe: an edit wants its file, by name")
+    check(wants(["toolName": "web.fetch", "input": ["url": "x"]]) == "fetch", "vibe: any other tool, the tool")
+    check(wants([:], title: "Approve plan") == "Approve plan" && wants([:]) == nil, "vibe: else the title, else nothing")
+    check(wants(["input": ["command": String(repeating: "x", count: 90)]])?.count == 60,
+          "vibe: a long command is cut to fit the notch")
+
+    check(VibeSessionRecord.name(title: "C# quiz game", given: false, folder: "/Users/a/milionar") == "milionar",
+          "vibe: a session goes by its folder, like Claude Code's")
+    check(VibeSessionRecord.name(title: "Kvíz", given: true, folder: "/Users/a/milionar") == "Kvíz",
+          "vibe: unless somebody named it")
+    check(VibeSessionRecord.name(title: "C# quiz game", given: false, folder: nil) == "C# quiz game"
+            && VibeSessionRecord.name(title: nil, given: false, folder: nil) == "Vibe",
+          "vibe: no folder known, Vibe's title; neither, just Vibe")
+    check(VibeSessionReader.isSessionID("8c357c8a-7665-1c01-07b9-0577799f693f")
+            && !VibeSessionReader.isSessionID("../../etc") && !VibeSessionReader.isSessionID("")
+            && !VibeSessionReader.isSessionID("a/b"),
+          "vibe: a session id that would leave its folder is not one")
+
+    let idle = VibeSessionRecord(id: "s0", pid: 9, name: "milionar", state: .idle)
+    let busy = VibeSessionRecord(id: "s1", pid: 10, name: "web", state: .working)
+    let asking = VibeSessionRecord(id: "s2", pid: 11, name: "milionar", state: .waiting, wants: "mkdir x")
+    check(VibeSessionRecord.summary(of: [idle, busy, asking]).state == .waiting
+            && VibeSessionRecord.summary(of: [idle, busy, asking]).wants == "mkdir x",
+          "vibe: one waiting for you comes before one working")
+    check(VibeSessionRecord.summary(of: [idle, busy]).session == "web" && VibeSessionRecord.summary(of: [idle]).state == .idle,
+          "vibe: one working makes the notch show work; none, nothing")
+    check(VibeSessionRecord.event(from: .working, to: asking, workedFor: 2)
+            == .vibeWaiting(session: "milionar", wants: "mkdir x", pid: 11),
+          "vibe: stopping to ask is said, however short the work")
+    check(VibeSessionRecord.event(from: .working, to: idle, workedFor: 40) == .vibeDone(session: "milionar", pid: 9)
+            && VibeSessionRecord.event(from: .working, to: idle, workedFor: 3) == nil,
+          "vibe: finishing is said after real work, not after a three-second answer")
+    check(VibeSessionRecord.event(from: nil, to: asking, workedFor: 0) == nil
+            && VibeSessionRecord.event(from: .waiting, to: idle, workedFor: 0) == nil,
+          "vibe: a session first seen waiting, or an answered question, isn't news")
+    check(NotchActivity.vibeWaiting(session: "milionar", wants: "mkdir x").look.detail == "milionar · mkdir x"
+            && NotchActivity.vibeWaiting(session: "milionar", wants: nil, pid: 11).sessionPid == 11
+            && NotchActivity.vibeWaiting(session: "a", wants: nil).waitsForClose
+            && !NotchActivity.vibeDone(session: "a").waitsForClose,
+          "vibe: its messages say what Claude Code's do, and go to the session's app")
+
+    check(VibeMonitor.interpreter(inFirstLine: "#!/Users/a/.local/share/uv/tools/mistral-vibe/bin/python3\n# -*- coding: utf-8 -*-")
+            == "/Users/a/.local/share/uv/tools/mistral-vibe/bin/python3",
+          "vibe: its Python is the one its command names")
+    check(VibeMonitor.interpreter(inFirstLine: "#!/usr/bin/env python3\n") == nil
+            && VibeMonitor.interpreter(inFirstLine: "#!/bin/sh\nexec python") == nil
+            && VibeMonitor.interpreter(inFirstLine: "\u{7f}ELF") == nil,
+          "vibe: some other Python, a shell or a binary is not it")
+
+    // Who gets which place in the closed notch and in the top bar.
+    let claude = ClaudeStatus(usage: ClaudeUsage(sessionPercent: 6, weekPercent: 20))
+    let vibe = VibeStatus(usage: usage)
+    let both = PillRing.placed(claude: claude, vibe: vibe, musicLive: false)
+    check(both.cover?.tool == .claude && both.bars?.tool == .vibe && both.bars?.fraction == 0.02,
+          "rings: nothing playing, Claude Code's session on the left and Vibe's month on the right")
+    let alone = PillRing.placed(claude: claude, vibe: nil, musicLive: false)
+    check(alone.cover?.tool == .claude && alone.bars == PillRing(tool: .claudeWeek, fraction: 0.2),
+          "rings: Claude Code alone keeps its week opposite its session")
+    check(PillRing.placed(claude: ClaudeStatus(), vibe: vibe, musicLive: false).cover?.tool == .vibe
+            && PillRing.placed(claude: nil, vibe: vibe, musicLive: false).bars == nil,
+          "rings: Vibe alone goes where the cover is, with nothing opposite")
+    check(PillRing.placed(claude: claude, vibe: vibe, musicLive: true).bars == nil
+            && PillRing.placed(claude: claude, vibe: vibe, musicLive: true).cover == nil,
+          "rings: music playing and nobody at work, the cover and the bars stay")
+    var working = claude, stopped = vibe
+    working.state = .working
+    stopped.state = .waiting
+    check(PillRing.placed(claude: working, vibe: vibe, musicLive: true).bars?.tool == .claude
+            && PillRing.placed(claude: claude, vibe: stopped, musicLive: true).bars?.state == .waiting,
+          "rings: over music, a session at work or waiting takes the bars' place")
+    check(PillRing.placed(claude: working, vibe: stopped, musicLive: true).bars?.tool == .vibe,
+          "rings: of two, the one waiting for you")
+    check(PillRing.inTopBar(claude: claude, vibe: vibe, room: 3).map(\.tool) == [.claude, .claudeWeek, .vibe]
+            && PillRing.inTopBar(claude: claude, vibe: vibe, room: 2).map(\.tool) == [.claude, .vibe]
+            && PillRing.inTopBar(claude: claude, vibe: nil, room: 2).map(\.tool) == [.claude, .claudeWeek],
+          "rings: the top bar has each tool's ring, and the week's where there is room left")
+    check(PillRing.inTopBar(claude: claude, vibe: vibe, room: 1).map(\.tool) == [.claude]
+            && PillRing.inTopBar(claude: claude, vibe: stopped, room: 1).map(\.tool) == [.vibe]
+            && PillRing.inTopBar(claude: claude, vibe: vibe, room: 0).count == 1
+            && PillRing.inTopBar(claude: nil, vibe: nil, room: 3).isEmpty,
+          "rings: room for one, the tool that is busy has it — Claude Code's otherwise; none switched on, none")
+
+    let rows = ClaudeUsagePage.rows(
+        claude: ClaudeStatus(sessions: [.init(pid: 1, name: "resonata", state: .idle, app: "Terminál")]),
+        vibe: VibeStatus(sessions: [.init(pid: 1, name: "milionar", state: .working, app: nil, key: "s1")]))
+    check(rows.map(\.session.name) == ["milionar", "resonata"] && Set(rows.map(\.id)).count == 2,
+          "sessions: both tools' in one list, the one at work first, told apart even on one pid")
+    check(ClaudeUsagePage.doing(rows[0]) == "Vibe · pracuje" && ClaudeUsagePage.doing(rows[1]) == "Claude · volno · Terminál",
+          "sessions: with both switched on, each line says whose it is")
+    check(ClaudeUsagePage.rows(claude: nil, vibe: VibeStatus(sessions: [.init(pid: 1, name: "a", state: .idle)]))
+            .map(ClaudeUsagePage.doing) == ["volno"], "sessions: one tool, no need to say")
+}
+
+MainActor.assumeIsolated {
+    let model = NotchModel()
+    check(!model.showsCollapsedContent, "claude: nothing playing, nothing in the pill")
+    model.claude = ClaudeStatus(state: .working, session: "resonata")
+    check(model.showsCollapsedContent, "claude: a working session puts its ring in the closed notch")
+    model.claude = ClaudeStatus(state: .idle, usage: ClaudeUsage(sessionPercent: 6))
+    check(model.showsCollapsedContent && !model.musicLive,
+          "claude: nothing playing, the limits have the closed notch")
+    model.claude = ClaudeStatus(state: .idle)
+    check(!model.showsCollapsedContent, "claude: idle and no limits read, the notch is a notch again")
+
+    // The sixth page is there only while Claude Code is switched on.
+    UserDefaults.standard.set(false, forKey: Preferences.Key.showClaude)
+    check(PanelTab.shown == [.music, .notes, .apps, .timer, .shelf] && PanelTab.shelf.neighbour(1) == nil,
+          "page: without Claude Code, five pages and the shelf is the last")
+    UserDefaults.standard.set(true, forKey: Preferences.Key.showClaude)
+    check(PanelTab.shown.last == .usage && PanelTab.shelf.neighbour(1) == .usage
+            && PanelTab.usage.neighbour(-1) == .shelf && PanelTab.usage.neighbour(1) == nil,
+          "page: with it, the usage page follows the shelf")
+    UserDefaults.standard.removeObject(forKey: Preferences.Key.showClaude)
+    // Or Mistral Vibe: either one brings the page, and names it.
+    UserDefaults.standard.set(true, forKey: Preferences.Key.showVibe)
+    check(PanelTab.shown.last == .usage && PanelTab.usage.title == "Limity Mistral Vibe",
+          "page: Vibe alone brings the usage page too, under its own name")
+    UserDefaults.standard.set(true, forKey: Preferences.Key.showClaude)
+    check(PanelTab.usage.title == "Limity Claude Code a Vibe", "page: both, and it says both")
+    UserDefaults.standard.removeObject(forKey: Preferences.Key.showClaude)
+    UserDefaults.standard.removeObject(forKey: Preferences.Key.showVibe)
+}
+
 // MARK: - Notes and to-dos
 
 MainActor.assumeIsolated {

@@ -97,12 +97,43 @@ struct PlayerVolumeControl: View {
         _volume = State(initialValue: Self.lastKnown[player.bundleID])
     }
 
+    /// Counts the moves, so a check asked for after one move is dropped
+    /// when another has followed it.
+    @State private var moves = 0
+
     private func setVolume(_ new: Double) {
         moved = true
         if new < 1, let volume, volume >= 1 { Self.beforeMute[player.bundleID] = volume }
         volume = new
         Self.lastKnown[player.bundleID] = new
         PlayerVolume.set(Int(new.rounded()), for: player)
+        confirmSoon()
+    }
+
+    /// A moment after the last move, asks the player what it made of it and
+    /// shows that. The slider used to take its own word for it: with Spotify
+    /// playing on another device, which the Mac can't set the volume of, it
+    /// sat at 50 % while Spotify stayed at 100 % — tested. Now it slides back
+    /// to where the player really is.
+    private func confirmSoon() {
+        moves += 1
+        let mine = moves
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(600))
+            guard mine == moves else { return }
+            PlayerVolume.read(player) { value in
+                guard mine == moves, let value, let shown = volume,
+                      Self.disagrees(shown: shown, player: value) else { return }
+                withAnimation(.easeOut(duration: 0.2)) { volume = Double(value) }
+                Self.lastKnown[player.bundleID] = Double(value)
+            }
+        }
+    }
+
+    /// Whether the player's level is not the one the slider shows. Two points
+    /// of slack: Spotify answers 49 after being set to 50.
+    nonisolated static func disagrees(shown: Double, player: Int) -> Bool {
+        abs(shown - Double(player)) > 2
     }
 
     /// The speaker click: down to 0 from any level, and from 0 back to the

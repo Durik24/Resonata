@@ -496,7 +496,11 @@ func transport(_ command: TransportCommand, in app: String) {
     // player, not just the two with AppleScript dictionaries.
     if let adapter = MediaRemoteNowPlaying.active {
         switch command {
-        case .playPause: adapter.send(.togglePlayPause)
+        case .playPause:
+            adapter.send(.togglePlayPause)
+            // The glyph changes with the click, not with the player's report
+            // of it most of a second later.
+            adapter.expectPlayPauseToggle()
         case .next: adapter.send(.nextTrack)
         case .previous: adapter.send(.previousTrack)
         }
@@ -511,27 +515,33 @@ func transport(_ command: TransportCommand, in app: String) {
     }
 }
 
-/// Jumps the player to `position` seconds. `player position` is settable in both
-/// Spotify's and Music's dictionaries, which is what makes drag-scrubbing work
-/// — media keys can't express "seek".
+/// Jumps the player to `position` seconds.
 ///
-/// Runs off the main thread: `NSAppleScript` blocks, and a scrub sends one of
-/// these per drag update.
+/// Spotify and Music are asked directly: `player position` is settable in
+/// both their dictionaries. Everything else goes through MediaRemote. It
+/// used to be MediaRemote for every player whenever it was streaming, and
+/// Spotify simply ignores that seek — tested, `seek` through the adapter left
+/// the song where it was while the same position over AppleScript moved it at
+/// once. The scrubber slid back a second after every drag.
+///
+/// Runs off the main thread: `NSAppleScript` blocks.
 @MainActor
-func seek(to position: TimeInterval, in app: String) {
-    if let adapter = MediaRemoteNowPlaying.active {
-        adapter.seek(to: position)
+func seek(to position: TimeInterval, in track: Track) {
+    let clamped = max(0, position)
+    let adapter = MediaRemoteNowPlaying.active
+    guard let app = scriptName(for: track) else {
+        adapter?.seek(to: clamped)
         NotificationCenter.default.post(name: .resonataDidCommandPlayer, object: nil)
         return
     }
-    let clamped = max(0, position)
     // %.3f formats POSIX-style regardless of locale. Handing AppleScript a
     // comma-separated number here would be a syntax error.
     let script = """
     tell application "\(app)" to set player position to \(String(format: "%.3f", clamped))
     """
     AppleScript.queue.async {
-        _ = AppleScript.run(script, what: "seek")
+        // Automation refused, say: MediaRemote is still worth a try.
+        if AppleScript.run(script, what: "seek") == nil { adapter?.seek(to: clamped) }
         // Re-sync at once. Nothing else would tell us the playhead moved, and
         // the interpolation would otherwise carry on from the pre-seek anchor
         // until the next safety-net tick — up to ten seconds of visibly wrong
@@ -540,4 +550,17 @@ func seek(to position: TimeInterval, in app: String) {
             NotificationCenter.default.post(name: .resonataDidCommandPlayer, object: nil)
         }
     }
+}
+
+/// What AppleScript calls the player `track` came from, when it is one of the
+/// two with a scripting dictionary and is running — `tell application` would
+/// otherwise launch it. By bundle ID where there is one: the name shown is
+/// "Hudba" for Music on a Czech Mac.
+func scriptName(for track: Track) -> String? {
+    let players = MediaRemoteNowPlaying.scriptablePlayers
+    let bundle = track.bundleID ?? players.first { $0.value == track.source }?.key
+    guard let bundle, let name = players[bundle],
+          !NSRunningApplication.runningApplications(withBundleIdentifier: bundle).isEmpty
+    else { return nil }
+    return name
 }

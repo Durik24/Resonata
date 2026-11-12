@@ -57,13 +57,18 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <key>CFBundleName</key>              <string>Resonata</string>
     <key>CFBundleExecutable</key>        <string>Resonata</string>
     <key>CFBundleIdentifier</key>        <string>com.local.resonata</string>
-    <key>CFBundleVersion</key>           <string>13</string>
-    <key>CFBundleShortVersionString</key><string>1.0.12</string>
+    <key>CFBundleVersion</key>           <string>14</string>
+    <key>CFBundleShortVersionString</key><string>1.0.13</string>
     <key>CFBundlePackageType</key>       <string>APPL</string>
     <key>CFBundleIconFile</key>          <string>AppIcon</string>
     <key>LSMinimumSystemVersion</key>    <string>14.0</string>
     <!-- No Dock icon, no app switcher entry — it lives in the notch. -->
     <key>LSUIElement</key>               <true/>
+    <!-- The bundle has no .lproj folders, so macOS took it for English-only
+         and gave it English names for everything it names itself: "Notes"
+         and "Calendar" on the apps page of a Czech Mac, where Finder and the
+         Dock say "Poznámky" and "Kalendář". -->
+    <key>CFBundleAllowMixedLocalizations</key> <true/>
     <!-- Never App Nap: a napped agent draws a click's result seconds late. -->
     <key>NSAppSleepDisabled</key>          <true/>
     <!-- No audio-capture key: Resonata never listens to the computer's sound. -->

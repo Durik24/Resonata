@@ -23,6 +23,17 @@ extension NotchView {
                 .padding(.bottom, model.shownTab == .music ? Self.waveHeight + 10 : 18)
             topBar
         }
+        // What the ring under the pointer has to say, hung under the top bar.
+        .overlay(alignment: .topTrailing) {
+            if claudeHover, model.claude != nil || model.vibe != nil {
+                // A block for each tool switched on, whichever rings found room.
+                ClaudeHoverCard(sections: [model.claude?.summary(now: Date()), model.vibe?.summary(now: Date())]
+                    .compactMap { $0?.components(separatedBy: "\n") })
+                    .padding(.top, notchSize.height - 2)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.12), value: claudeHover)
         // Laid out at the final width from frame one — see `clipShape` above.
         .frame(width: model.expandedWidth - 40, alignment: .leading)
     }
@@ -66,6 +77,8 @@ extension NotchView {
             TimerView(timer: .shared, accent: ActivityLook.orange)
         case .shelf:
             ShelfView(shelf: .shared, width: model.expandedWidth - 40)
+        case .usage:
+            ClaudeUsagePage(status: model.claude, vibe: model.vibe, wide: model.expandedWidth >= NotchView.expandedWidth)
         }
     }
 
@@ -92,12 +105,12 @@ extension NotchView {
     }
 
     private var pageSwitcher: some View {
-        let count = CGFloat(PanelTab.allCases.count)
+        let count = CGFloat(PanelTab.shown.count)
         let gap: CGFloat = 3
         // As wide as there's room for, up to the usual 28.
         let iconWidth = min(28, ((stripWidth - gap * (count - 1)) / count).rounded(.down))
         return HStack(spacing: gap) {
-            ForEach(PanelTab.allCases) { tab in
+            ForEach(PanelTab.shown) { tab in
                 Button { model.tab = tab } label: {
                     Image(systemName: tab.symbol)
                         .font(.system(size: 11, weight: .semibold))
@@ -125,9 +138,39 @@ extension NotchView {
         // The percentage goes first when room is short — the battery symbol
         // says much the same. Widths: icon buttons 22, the battery with its
         // percentage about 66, without it 20.
-        let buttons: CGFloat = (model.canSwitchScreens ? 32 : 0) + 32
+        // Claude Code's and Vibe's rings, when they are switched on and
+        // have something to say: 18 wide each, and a gap. As many as there
+        // is room for — not three next to the switch-display button on the
+        // narrow panel; see `PillRing.inTopBar` for which.
+        let tightGap: CGFloat = 7
+        let fixed: CGFloat = (model.canSwitchScreens ? 22 + tightGap : 0) + 22 + tightGap + 20
+        let shown = PillRing.inTopBar(claude: model.claude, vibe: model.vibe,
+                                      room: Int(((stripWidth - fixed) / (18 + tightGap)).rounded(.down)))
+        let rings = CGFloat(shown.count) * 28
+        let buttons: CGFloat = (model.canSwitchScreens ? 32 : 0) + 32 + rings
         let showPercent = buttons + 66 <= stripWidth
-        return HStack(spacing: 10) {
+        // With no calendar the strip is 103 pt; a little closer, they fit.
+        let tight = buttons + 20 > stripWidth
+        return HStack(spacing: tight ? tightGap : 10) {
+            if !shown.isEmpty {
+                // One button, all the rings: a click reads the limits again,
+                // and the pointer resting on it brings up what they say.
+                Button { model.refreshClaude?() } label: {
+                    HStack(spacing: tight ? tightGap : 10) {
+                        ForEach(Array(shown.enumerated()), id: \.offset) { _, ring in
+                            ClaudeRing(fraction: ring.fraction, state: ring.state, lineWidth: 2.2,
+                                       showsNumber: true, tint: ring.tint)
+                                .frame(width: 18, height: 18)
+                        }
+                    }
+                    .frame(height: 20)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(TransportButtonStyle())
+                .onHover { claudeHover = $0 }
+                .accessibilityLabel([model.claude?.summary(now: Date()), model.vibe?.summary(now: Date())]
+                    .compactMap { $0 }.joined(separator: "\n"))
+            }
             if model.canSwitchScreens {
                 iconButton("rectangle.on.rectangle",
                            help: L.t("Move the notch to the next display", "Přepnout notch na další monitor")) {
@@ -376,7 +419,7 @@ extension NotchView {
             .frame(height: 18)
             LyricsList(lines: lines, track: model.track, accent: accentText ?? .white) { time in
                 guard let track = model.track else { return }
-                seek(to: time, in: track.source)
+                seek(to: time, in: track)
             }
         }
     }
@@ -569,7 +612,7 @@ extension NotchView {
                             scrubFraction = target
                             isScrubbing = false
                             if let track = model.track, track.duration > 0 {
-                                seek(to: target * track.duration, in: track.source)
+                                seek(to: target * track.duration, in: track)
                             }
                             releaseScrubWhenPollCatchesUp()
                         }

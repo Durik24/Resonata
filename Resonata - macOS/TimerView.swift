@@ -33,14 +33,21 @@ struct TimerView: View {
                         }
                         .buttonStyle(TransportButtonStyle())
                 }
-                HStack(spacing: 8) {
-                    if timer.isActive {
+                // Both rows are always laid out and only one shown. The
+                // rows differ in width — "Start 5 min" and Pomodoro are 70 pt
+                // wider than Pause and Cancel — and the page is centred, so
+                // swapping one for the other moved the ring and everything
+                // else sideways the moment a timer started.
+                ZStack(alignment: .leading) {
+                    HStack(spacing: 8) {
                         control(timer.isPaused ? "play.fill" : "pause.fill",
                                 timer.isPaused ? L.t("Resume", "Pokračovat") : L.t("Pause", "Pozastavit")) {
                             timer.isPaused ? timer.resume() : timer.pause()
                         }
                         control("xmark", L.t("Cancel", "Zrušit")) { timer.cancel() }
-                    } else {
+                    }
+                    .shown(timer.isActive)
+                    HStack(spacing: 8) {
                         control("play.fill", L.t("Start \(timer.chosenMinutes) min", "Spustit \(timer.chosenMinutes) min")) {
                             timer.start(minutes: timer.chosenMinutes)
                         }
@@ -49,6 +56,7 @@ struct TimerView: View {
                             .help(L.t("\(plan.work) min of work and \(plan.rest) min of break, over and over; every \(plan.rounds)th break is \(plan.longRest) min. Set the lengths in Settings → Pomodoro.",
                                       "\(plan.work) min práce a \(plan.rest) min pauza pořád dokola, každá \(plan.rounds). pauza \(plan.longRest) min. Délky nastavíš v Nastavení → Pomodoro."))
                     }
+                    .shown(!timer.isActive)
                 }
             }
         }
@@ -163,5 +171,14 @@ struct TimerView: View {
                 .contentShape(Capsule())
         }
         .buttonStyle(TransportButtonStyle())
+    }
+}
+
+private extension View {
+    /// In the layout either way; seen, clicked and read out only when `visible`.
+    func shown(_ visible: Bool) -> some View {
+        opacity(visible ? 1 : 0)
+            .allowsHitTesting(visible)
+            .accessibilityHidden(!visible)
     }
 }

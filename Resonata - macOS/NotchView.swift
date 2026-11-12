@@ -33,6 +33,8 @@ struct NotchView: View {
     // Settings, read here so a change in the settings window re-renders.
     @AppStorage(Preferences.Key.animationSpeed) private var speedSetting = AnimationSpeed.normal.rawValue
     /// The open panel's content is still in the view, closing — see `content`.
+    /// The pointer is on one of Claude Code's rings in the top bar.
+    @State var claudeHover = false
     @State private var lingering = false
     /// The cover's flight between the pill and the panel — see `flyingCover`.
     /// `landed` is the state the last open or close has finished arriving
@@ -531,7 +533,8 @@ struct NotchView: View {
                     // A fixed width, not "whatever is left": a flexible one
                     // re-truncated the title on every frame of the slide back.
                     peekText
-                        .frame(width: Self.peekExtraWidth - Self.peekTextGap - Self.peekTextIndent,
+                        .frame(width: Self.peekExtraWidth - Self.peekTextGap - Self.peekTextIndent
+                                      + peekTextSpare,
                                alignment: .leading)
                         // The fade is scoped to the opacity alone. An
                         // `.animation` keyed on `peeking` around the row also
@@ -549,7 +552,7 @@ struct NotchView: View {
                     }
                 }
                 .padding(.leading, collapsedSlot + collapsedMiddleWidth + Self.peekTextIndent)
-                .padding(.trailing, collapsedSlot + NotchMetrics.waveformNudge
+                .padding(.trailing, collapsedSlot - peekTextSpare + NotchMetrics.waveformNudge
                                     + Self.peekTextGap)
         }
         // The bars are laid over the row against its trailing edge, which is
@@ -594,7 +597,14 @@ struct NotchView: View {
     /// The cover, or an activity's picture in its place.
     private var coverSlot: some View {
         ZStack {
-            if let look = model.activity?.look {
+            if case .claudeWaiting = model.activity {
+                // Its ring, amber and pulsing, with the limit in it.
+                pillRing(fraction: model.claude?.fraction, state: .waiting)
+                    .transition(.opacity)
+            } else if case .vibeWaiting = model.activity {
+                pillRing(fraction: model.vibe?.fraction, state: .waiting)
+                    .transition(.opacity)
+            } else if let look = model.activity?.look {
                 Image(systemName: look.symbol)
                     .font(.system(size: 15, weight: .semibold))
                     .symbolRenderingMode(.monochrome)
@@ -606,6 +616,11 @@ struct NotchView: View {
                 Image(systemName: "timer")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(ActivityLook.orange)
+                    .transition(.opacity)
+            } else if let ring = model.pillRings.cover {
+                // Nothing playing: a ring where the cover goes, and another
+                // opposite it — see `PillRing.placed`.
+                pillRing(ring)
                     .transition(.opacity)
             } else {
                 artwork(size: collapsedSlot)
@@ -620,6 +635,34 @@ struct NotchView: View {
         // slot, so it can't animate anything's position — see the note on
         // the peek text below.
         .animation(fade, value: model.activity)
+        .animation(fade, value: model.musicLive)
+    }
+
+    /// A ring is what stands in the bars' place right now — the same
+    /// conditions, in the same order, as `waveform` chooses by.
+    private var ringInBarsPlace: Bool {
+        model.activity == nil && !model.timerRunning && model.pillRings.bars != nil
+    }
+
+    /// A ring as `PillRing.placed` hands it out, in its tool's colour and
+    /// with what it stands for said to VoiceOver.
+    private func pillRing(_ ring: PillRing) -> some View {
+        let label = switch ring.tool {
+        case .claude: model.claude?.summary(now: Date()) ?? "Claude"
+        case .claudeWeek: L.t("Week: \(model.claude?.usage?.weekPercent ?? 0) %",
+                              "Týden: \(model.claude?.usage?.weekPercent ?? 0) %")
+        case .vibe: model.vibe?.summary(now: Date()) ?? "Vibe"
+        }
+        return pillRing(fraction: ring.fraction, state: ring.state, tint: ring.tint)
+            .accessibilityLabel(label)
+    }
+
+    /// One of Claude Code's or Vibe's rings in the closed pill, with its
+    /// number in it.
+    private func pillRing(fraction: Double?, state: ClaudeStatus.State = .idle,
+                          tint: NSColor = ClaudeRingView.tint) -> some View {
+        ClaudeRing(fraction: fraction, state: state, lineWidth: 2.5, showsNumber: true, tint: tint)
+            .frame(width: collapsedSlot - 8, height: collapsedSlot - 8)
     }
 
     /// The time left, in the bars' place while the timer runs.
@@ -651,6 +694,13 @@ struct NotchView: View {
         }
         .lineLimit(1)
         .truncationMode(.tail)
+    }
+
+    /// The bars' slot, when the message out has nothing to put in it —
+    /// Claude Code's, which say which session and what it wants and need
+    /// the width: without it "Claude Code čeká" ran into the fade.
+    private var peekTextSpare: CGFloat {
+        model.activity?.look.trailing.isEmpty == true ? collapsedSlot : 0
     }
 
     /// How far past the cutout's gap the peek text starts. Flush with the
@@ -685,14 +735,25 @@ struct NotchView: View {
         let live = isLive
         return Group {
             if let look = model.activity?.look {
-                Image(systemName: look.trailing)
-                    .font(.system(size: 13))
-                    // One colour for outline and fill alike. (The debug
-                    // snapshots draw battery symbols white; the screen doesn't.)
-                    .symbolRenderingMode(.monochrome)
-                    .foregroundStyle(look.tint)
+                // Claude Code's messages leave this side to their text.
+                if !look.trailing.isEmpty {
+                    Image(systemName: look.trailing)
+                        .font(.system(size: 13))
+                        // One colour for outline and fill alike. (The debug
+                        // snapshots draw battery symbols white; the screen doesn't.)
+                        .symbolRenderingMode(.monochrome)
+                        .foregroundStyle(look.tint)
+                }
             } else if model.timerRunning {
                 timerBadge
+            } else if let ring = model.pillRings.bars {
+                // Music, and a session working or waiting: its ring takes
+                // the bars' place until it is done. Nothing playing: the
+                // ring opposite the one in the cover's place.
+                pillRing(ring)
+            } else if model.pillRings.cover != nil {
+                // A ring on its own, with nothing to put opposite it.
+                EmptyView()
             } else {
                 MusicBars(barCount: 3,
                           isAnimating: live,
@@ -704,7 +765,10 @@ struct NotchView: View {
             // unequal widths put them at unequal distances from the cutout —
             // 7pt one side, 13pt the other. Matching widths is the only way to
             // have the outer margins *and* the gaps to the notch both line up.
-            .frame(width: collapsedSlot, height: 16)
+            // The bars are 16 high, and fill whatever height they are given;
+            // only a ring gets the cover's height. Keyed on Claude Code
+            // being switched on, the bars stood the full height of the pill.
+            .frame(width: collapsedSlot, height: ringInBarsPlace ? collapsedSlot : 16)
             // Trailing padding shifts only the wave inward — the artwork sits
             // on the far side of the cutout and stays put.
             .padding(.trailing, NotchMetrics.waveformNudge)

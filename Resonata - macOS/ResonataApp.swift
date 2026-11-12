@@ -19,6 +19,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var songPeek = SongPeek(model: model)
     private lazy var activityPeek = ActivityPeek(model: model)
     private let meetingReminder = MeetingReminder()
+    private let claude = ClaudeMonitor()
+    private let vibe = VibeMonitor()
     /// MediaRemote first — it sees every player. If the adapter can't start
     /// or MediaRemote won't answer on this macOS, the AppleScript source takes
     /// over and the app behaves exactly as it did before Phase 5.
@@ -97,6 +99,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.activityPeek.show(.meeting(title: event.title, start: event.start))
         }
         meetingReminder.start()
+
+        // Claude Code: its limit as a ring, and a word when a session stops
+        // to ask something or finishes. Off unless switched on in Settings.
+        claude.$status
+            .sink { [weak self] status in self?.model.claude = status }
+            .store(in: &cancellables)
+        claude.onEvent = { [weak self] activity in self?.activityPeek.show(activity) }
+        // Mistral Vibe, the same way: its month's allowance and its sessions.
+        vibe.$status
+            .sink { [weak self] status in self?.model.vibe = status }
+            .store(in: &cancellables)
+        vibe.onEvent = { [weak self] activity in self?.activityPeek.show(activity) }
+        model.refreshClaude = { [weak self] in
+            self?.claude.refreshUsage()
+            self?.vibe.refreshUsage()
+        }
+        // The panel opening is somebody about to read the ring.
+        model.$isExpanded
+            .removeDuplicates()
+            .filter { $0 }
+            .sink { [weak self] _ in
+                self?.claude.refreshUsage(ifOlderThan: 60)
+                self?.vibe.refreshUsage(ifOlderThan: 60)
+            }
+            .store(in: &cancellables)
+        if !Demo.isOn {
+            claude.setEnabled(Preferences.showClaude)
+            vibe.setEnabled(Preferences.showVibe)
+        }
 
         // A new version on GitHub, said once in the notch.
         Updater.shared.onFound = { [weak self] release in
@@ -195,6 +226,68 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                object: nil, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated { self?.model.track?.duration = 0 }
             }
+            // `com.local.resonata.claude` with working, waiting, done, idle
+            // or off: Claude Code's ring and messages, without a session.
+            center.addObserver(forName: Notification.Name("com.local.resonata.claude"),
+                               object: nil, queue: .main) { [weak self] note in
+                let kind = note.object as? String
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    let usage = ClaudeUsage(sessionPercent: 62, sessionResets: Date().addingTimeInterval(8280),
+                                            weekPercent: 18, weekResets: Date().addingTimeInterval(250_000),
+                                            models: [.init(name: "Fable", percent: 27, resets: nil)])
+                    func sessions(_ state: ClaudeStatus.State) -> [ClaudeStatus.Session] {
+                        [.init(pid: 1, name: "resonata", state: state, app: "Terminál"),
+                         .init(pid: 2, name: "web", state: .idle, app: "Visual Studio Code")]
+                    }
+                    let asks = L.t("Allow the edit?", "Povolit úpravu?")
+                    switch kind {
+                    case "working":
+                        self.model.claude = ClaudeStatus(state: .working, session: "resonata", usage: usage,
+                                                         sessions: sessions(.working))
+                    case "waiting":
+                        self.model.claude = ClaudeStatus(state: .waiting, session: "resonata", wants: asks,
+                                                         usage: usage, sessions: sessions(.waiting))
+                        self.activityPeek.show(.claudeWaiting(session: "resonata", wants: asks))
+                    case "done":
+                        self.model.claude = ClaudeStatus(state: .idle, usage: usage, sessions: sessions(.idle))
+                        self.activityPeek.show(.claudeDone(session: "resonata"))
+                    case "idle":
+                        self.model.claude = ClaudeStatus(state: .idle, usage: usage, sessions: sessions(.idle))
+                    default:
+                        self.model.claude = nil
+                    }
+                }
+            }
+            // `com.local.resonata.vibe`, with the same words: Mistral Vibe's.
+            center.addObserver(forName: Notification.Name("com.local.resonata.vibe"),
+                               object: nil, queue: .main) { [weak self] note in
+                let kind = note.object as? String
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    let usage = VibeUsage(percent: 34, resets: Date().addingTimeInterval(1_600_000), plan: "Student")
+                    func sessions(_ state: ClaudeStatus.State) -> [ClaudeStatus.Session] {
+                        [.init(pid: 3, name: "milionar", state: state, app: "Terminál", key: "demo")]
+                    }
+                    let asks = "python3 --version"
+                    switch kind {
+                    case "working":
+                        self.model.vibe = VibeStatus(state: .working, session: "milionar", usage: usage,
+                                                     sessions: sessions(.working))
+                    case "waiting":
+                        self.model.vibe = VibeStatus(state: .waiting, session: "milionar", wants: asks,
+                                                     usage: usage, sessions: sessions(.waiting))
+                        self.activityPeek.show(.vibeWaiting(session: "milionar", wants: asks))
+                    case "done":
+                        self.model.vibe = VibeStatus(state: .idle, usage: usage, sessions: sessions(.idle))
+                        self.activityPeek.show(.vibeDone(session: "milionar"))
+                    case "idle":
+                        self.model.vibe = VibeStatus(state: .idle, usage: usage, sessions: sessions(.idle))
+                    default:
+                        self.model.vibe = nil
+                    }
+                }
+            }
             center.addObserver(forName: Notification.Name("com.local.resonata.page"),
                                object: nil, queue: .main) { [weak self] note in
                 let name = note.object as? String
@@ -220,6 +313,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             MainActor.assumeIsolated {
                 guard let self, !Demo.isOn else { return }
                 self.loadLyrics(for: self.model.track)
+                self.claude.setEnabled(Preferences.showClaude)
+                self.vibe.setEnabled(Preferences.showVibe)
+                // Switched off while its page was open: back to the music.
+                if !PanelTab.shown.contains(.usage), self.model.tab == .usage { self.model.tab = .music }
             }
         }
 
