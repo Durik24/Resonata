@@ -23,8 +23,8 @@ namespace Resonata;
 /// resizes.
 ///
 /// Transparent pixels of a layered window don't take clicks, so only the drawn
-/// shape blocks anything: at rest, the tab. With the tab switched off, or
-/// under a game or a film, the window is hidden outright.
+/// shape blocks anything: at rest, the tab. Under a game or a film
+/// the window is hidden outright.
 public partial class NotchWindow : Window
 {
     private const double RetractedX = PanelModel.PillWidth + 34;
@@ -41,7 +41,7 @@ public partial class NotchWindow : Window
     /// how much longer before the panel opens; and how long after leaving
     /// before it stops counting.
     private const double DwellSeconds = 0.1, HoldSeconds = 0.35, LeaveSeconds = 0.25;
-    /// With the tab switched off: how long it stays once the panel has
+    /// With the tab away: how long it stays once the panel has
     /// finished shrinking into it.
     private const double LingerPauseSeconds = 0.6;
 
@@ -316,7 +316,6 @@ public partial class NotchWindow : Window
                 UpdateExpandedWidth();
                 UpdateTargets();
                 break;
-            case nameof(Settings.EdgeTrigger):
             case nameof(Settings.HideWhenIdle):
                 Wake();
                 UpdateTargets();
@@ -443,8 +442,8 @@ public partial class NotchWindow : Window
     /// pointer, where it's also a way to read what's playing.
     private Look WantedLook => _m.IsExpanded ? Look.Panel : (_m.Peeking && !_peekSuppressed) || _m.Hovering ? Look.Pill : Look.Nub;
 
-    /// The tab is there to stay: switched on, and nothing full screen in front.
-    private bool NubShown => Settings.Current.EdgeTrigger && !_fullScreen && !_asleep;
+    /// The tab is there to stay: nothing full screen in front, and not slid away.
+    private bool NubShown => !_fullScreen && !_asleep;
 
     /// Something is going on that the tab is there to show.
     private bool Lively => _m.Track?.IsPlaying == true || NowForcedLive || _m.AiActive || _m.TimerRunning || _m.Peeking;
@@ -463,7 +462,7 @@ public partial class NotchWindow : Window
     /// on the very edge of the screen, nearer than the tab itself reaches.
     private void WatchIdle(Native.POINT p, DateTime now, bool inside)
     {
-        if (!Settings.Current.HideWhenIdle || !Settings.Current.EdgeTrigger || Snapshots.IsOn)
+        if (!Settings.Current.HideWhenIdle || Snapshots.IsOn)
         {
             if (_asleep) { Wake(); UpdateTargets(); }
             return;

@@ -11,10 +11,10 @@ dalších přehrávačů.
 
 ## Instalace
 
-1. Z [vydání na GitHubu](https://github.com/Durik24/Resonata/releases/tag/win-v1.4.0)
-   stáhni `Resonata-Setup-1.4.0.exe` a spusť ho. Je pro počítače s procesorem
+1. Z [vydání na GitHubu](https://github.com/Durik24/Resonata/releases/tag/win-v1.4.1)
+   stáhni `Resonata-Setup-1.4.1.exe` a spusť ho. Je pro počítače s procesorem
    Intel nebo AMD. Na počítači s procesorem ARM (třeba Snapdragon X) běží taky,
-   jen přes emulaci a pomaleji; verze 1.4.0 vlastní Setup pro ARM nemá.
+   jen přes emulaci a pomaleji; verze 1.4.1 vlastní Setup pro ARM nemá.
 2. Když se objeví modré okno SmartScreen, klikni na **Další informace** a pak
    **Přesto spustit**. Instalátor není podepsaný placeným certifikátem.
 3. Windows se zeptá, jestli povolit aplikaci od **neznámého vydavatele**.
@@ -146,7 +146,7 @@ ukládá do svého nastavení v počítači. Kalendář jen čte a obnovuje se p
 ## Když to nefunguje
 
 **Nic se nevysouvá.** Podívej se na ikonu u hodin (může být schovaná pod šipkou)
-a zkus zkratku. V nastavení zkontroluj *Show the tab on the right edge of the screen*.
+a zkus zkratku.
 Když se nic neděje, výstupek po půl minutě zajede: najeď kurzorem úplně na okraj.
 
 **Ukazuje „Nic nehraje“, i když hudba hraje.** Přehrávač se nehlásí do systému.

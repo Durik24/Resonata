@@ -83,7 +83,7 @@ the x64 build running emulated on ARM64 moves over to the native build at its
 next update. The ARM64 Setup's name doesn't start with `Resonata-Setup`, so the
 updater of 1.1.0 and older, which takes the first asset with that name, never
 fetches it. An ARM64 PC takes the x64 Setup from a release that has no ARM64
-one (1.4.0 is x64 only). Tag Windows releases `win-v1.2.3` and publish them with
+one (1.4.0 and 1.4.1 are x64 only). Tag Windows releases `win-v1.2.3` and publish them with
 "Set as latest" off (`gh release create --latest=false`): the Mac app reads the
 repository's latest release, so that has to stay the Mac's.
 

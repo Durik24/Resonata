@@ -82,7 +82,6 @@ public sealed class SettingsWindow : Window
         RebuildUpdate();
 
         Section(L.T("Sliding out", "Vysouvání"));
-        Add(Toggle(L.T("Show the tab on the right edge of the screen", "Ukazovat výstupek na pravém okraji obrazovky"), S.EdgeTrigger, v => S.EdgeTrigger = v));
         Add(Toggle(L.T("Hide the tab while nothing is going on", "Schovat výstupek, když se nic neděje"), S.HideWhenIdle, v => S.HideWhenIdle = v));
         Add(Note(L.T(
             "With nothing playing, no timer running and no Claude Code or Vibe session at work, the tab slides away after half a minute. It comes back when something happens, or when the pointer goes to its place on the very edge of the screen.",

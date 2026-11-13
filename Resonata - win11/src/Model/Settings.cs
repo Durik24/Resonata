@@ -161,9 +161,6 @@ public sealed class Settings : Observable
     [JsonConverter(typeof(OpenModeConverter))]
     public OpenMode OpenMode { get => _openMode; set => Set(ref _openMode, value); }
 
-    private bool _edgeTrigger = true;
-    public bool EdgeTrigger { get => _edgeTrigger; set => Set(ref _edgeTrigger, value); }
-
     /// With nothing playing and nothing going on, the tab slides away
     /// altogether, and comes back when the pointer goes to its place on the edge.
     private bool _hideWhenIdle = true;
