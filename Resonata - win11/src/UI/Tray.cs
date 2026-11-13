@@ -4,7 +4,7 @@ using Forms = System.Windows.Forms;
 
 namespace Resonata;
 
-/// The icon by the clock. With the pill hidden most of the time, it's how you
+/// The icon by the clock. With the tab switched off or hidden, it's how you
 /// find Resonata at all, and the one way to quit it.
 public sealed class Tray : IDisposable
 {

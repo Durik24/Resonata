@@ -9,6 +9,7 @@ public partial class App : Application
     private const string MutexName = @"Local\Resonata.SingleInstance";
     private const string ShowEvent = @"Local\Resonata.Show";
     private const string QuitEvent = @"Local\Resonata.Quit";
+    private const string SettingsEvent = @"Local\Resonata.Settings";
 
     private Mutex? _instance;
     private PanelModel _model = null!;
@@ -21,6 +22,8 @@ public partial class App : Application
     private readonly PowerWatcher _power = new();
     private readonly OutputWatcher _output = new();
     private readonly MeetingReminder _reminder = new();
+    private ClaudeMonitor _claude = null!;
+    private VibeMonitor _vibe = null!;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -37,7 +40,8 @@ public partial class App : Application
         _instance = new Mutex(true, MutexName, out var first);
         if (!first)
         {
-            Signal(ShowEvent);
+            // `--settings`: the running copy opens its settings instead of the panel.
+            Signal(e.Args.Contains("--settings") ? SettingsEvent : ShowEvent);
             Shutdown();
             return;
         }
@@ -51,6 +55,7 @@ public partial class App : Application
         Settings.Load();
         ListenFor(ShowEvent, () => _model.Open?.Invoke());
         ListenFor(QuitEvent, Quit);
+        ListenFor(SettingsEvent, () => SettingsWindow.ShowShared(MainWindow));
 
         _model = new PanelModel();
         _songPeek = new SongPeek(_model);
@@ -109,6 +114,39 @@ public partial class App : Application
         CalendarStore.Shared.Start();
         _reminder.OnReminder = ev => _activityPeek.Show(new NotchActivity.Meeting(ev.Title, ev.Start));
         _reminder.Start();
+
+        // Claude Code and Mistral Vibe, each only while switched on.
+        _claude = new ClaudeMonitor(_model) { OnEvent = _activityPeek.Show };
+        _vibe = new VibeMonitor(_model) { OnEvent = _activityPeek.Show };
+        if (!Demo.IsOn)
+        {
+            // `RESONATA_DEBUG_CLAUDE=1`: what Claude Code's monitor reads on
+            // this PC, in the log, without switching it on in Settings.
+            var debugClaude = Environment.GetEnvironmentVariable("RESONATA_DEBUG_CLAUDE") == "1";
+            if (debugClaude)
+            {
+                _model.PropertyChanged += (_, e) =>
+                {
+                    if (e.PropertyName == nameof(PanelModel.Claude) && _model.Claude is { } c)
+                        Log.Write($"claude: {c.State}, {c.Session}, limits {(c.Usage is null ? "unread" : c.Usage.SessionPercent + " %")}, "
+                                  + string.Join("; ", c.Sessions.Select(s => $"{s.Name} {s.State} in {s.App}")));
+                };
+            }
+            _claude.SetEnabled(Settings.Current.ShowClaude || debugClaude);
+            _vibe.SetEnabled(Settings.Current.ShowVibe);
+            Settings.Current.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(Settings.ShowClaude)) _claude.SetEnabled(Settings.Current.ShowClaude || debugClaude);
+                if (e.PropertyName == nameof(Settings.ShowVibe)) _vibe.SetEnabled(Settings.Current.ShowVibe);
+            };
+            // The panel opening is a good moment to have the limits fresh.
+            _model.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName != nameof(PanelModel.IsExpanded) || !_model.IsExpanded) return;
+                _claude.RefreshUsage(60);
+                _vibe.RefreshUsage(60);
+            };
+        }
 
         Updater.Shared.OnFound = version => _activityPeek.Show(new NotchActivity.Update(version));
         Updater.Shared.Start();

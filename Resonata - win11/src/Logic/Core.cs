@@ -325,28 +325,93 @@ public static class CoverFlight
     }
 }
 
-/// One page per sideways gesture, however long it runs or however many events
-/// a touchpad sends; a silence of `Gap` ends the gesture.
+/// One page per gesture, however long it runs or however many events a
+/// touchpad sends. A silence of `Gap` ends the gesture; so does the hand
+/// pushing again. A touchpad goes on sending a swipe's momentum for a second
+/// or two after the fingers have lifted, ever weaker, and a new swipe in the
+/// middle of that used to be taken for more of the old one: nothing turned
+/// until the pointer was moved, which is what stops the momentum.
 public sealed class PageSwipeTracker
 {
-    public const double Reach = 80;
+    public const double Reach = 60;
     public static readonly TimeSpan Gap = TimeSpan.FromMilliseconds(260);
 
     private double _travel;
     private bool _turned;
+    private int _direction;
+    /// The strongest step of this gesture, and the weakest since it.
+    private double _peak, _low;
     private DateTime _last = DateTime.MinValue;
 
     /// `delta` as WM_MOUSEHWHEEL reports it, positive meaning scrolling right.
     /// Returns +1 or -1 once when the gesture has gone far enough, else 0.
     public int Add(double delta, DateTime now)
     {
-        if (now - _last > Gap) { _travel = 0; _turned = false; }
+        var size = Math.Abs(delta);
+        if (now - _last > Gap) Start(size);
         _last = now;
-        if (_turned) return 0;
+        if (_turned)
+        {
+            if (!PushedAgain(delta, size))
+            {
+                if (Math.Sign(delta) == _direction) Follow(size);
+                return 0;
+            }
+            Start(size);
+        }
+        else Follow(size);
         _travel += delta;
         if (Math.Abs(_travel) < Reach) return 0;
         _turned = true;
-        return _travel > 0 ? 1 : -1;
+        _direction = Math.Sign(_travel);
+        return _direction;
+    }
+
+    private void Start(double size)
+    {
+        _travel = 0;
+        _turned = false;
+        _peak = _low = size;
+    }
+
+    private void Follow(double size)
+    {
+        if (size > _peak) _peak = _low = size;
+        else if (size < _low) _low = size;
+    }
+
+    /// Momentum only ever fades, and never turns round. Having faded to half
+    /// or less, a step well above where it had got to is the fingers again;
+    /// so is a firm one the other way.
+    private bool PushedAgain(double delta, double size)
+    {
+        if (Math.Sign(delta) != _direction) return size >= Math.Max(4, _peak * 0.25);
+        return _low <= _peak * 0.5 && size >= _low * 2.5 + 6;
+    }
+}
+
+/// The wheel over an open page. The pages are stacked the way the wheel
+/// turns, so it turns them; but a list under the pointer scrolls first, for
+/// as long as it has further to go that way. One gesture never does both:
+/// having run a list to its end it takes a new one to go on to the next
+/// page, and the tail of a page turn doesn't scroll the list it arrives on.
+public sealed class WheelRoute
+{
+    private DateTime _scrolled = DateTime.MinValue, _turned = DateTime.MinValue;
+
+    /// True when this step of the wheel turns the page, false when it
+    /// belongs to the list under the pointer.
+    public bool TurnsPage(bool listCanScroll, DateTime now)
+    {
+        var scrolling = now - _scrolled <= PageSwipeTracker.Gap;
+        var turning = now - _turned <= PageSwipeTracker.Gap;
+        if (turning || (!listCanScroll && !scrolling))
+        {
+            _turned = now;
+            return true;
+        }
+        _scrolled = now;
+        return false;
     }
 }
 

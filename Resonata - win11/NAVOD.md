@@ -1,8 +1,9 @@
 # Resonata pro Windows — návod
 
-Přehrávač, který se schovává za pravý okraj obrazovky, kousek pod horním rohem.
-Ukazuje, co zrovna hraje,
+Přehrávač na pravém okraji obrazovky, kousek pod horním rohem: úzký výstupek
+s obalem, názvem skladby a pruhy. Ukazuje, co zrovna hraje,
 texty písní, poznámky, zástupce aplikací, časovač a polici na soubory.
+Kdo chce, zapne si i limity a stav Claude Code a Mistral Vibe.
 
 Zvuk počítače **neposlouchá**. Co hraje, ví ze systémového „právě hraje“, odkud
 to čte i panel médií ve Windows. Funguje se Spotify, s prohlížečem a s většinou
@@ -10,15 +11,10 @@ dalších přehrávačů.
 
 ## Instalace
 
-1. Z [vydání na GitHubu](https://github.com/Durik24/Resonata/releases/tag/win-v1.3.0)
-   stáhni Setup pro svůj procesor a spusť ho:
-   - `Resonata-Setup-1.3.0.exe` pro většinu počítačů, s procesorem Intel nebo AMD,
-   - `Resonata-ARM64-Setup-1.3.0.exe` pro počítače s procesorem ARM, třeba
-     Snapdragon X.
-
-   Jaký procesor máš, uvidíš v **Nastavení → Systém → O systému → Typ systému**.
-   Na počítači s ARM běží i ta první, jen přes emulaci a pomaleji. Další
-   aktualizace ji pak sama vymění za verzi pro ARM.
+1. Z [vydání na GitHubu](https://github.com/Durik24/Resonata/releases/tag/win-v1.4.0)
+   stáhni `Resonata-Setup-1.4.0.exe` a spusť ho. Je pro počítače s procesorem
+   Intel nebo AMD. Na počítači s procesorem ARM (třeba Snapdragon X) běží taky,
+   jen přes emulaci a pomaleji; verze 1.4.0 vlastní Setup pro ARM nemá.
 2. Když se objeví modré okno SmartScreen, klikni na **Další informace** a pak
    **Přesto spustit**. Instalátor není podepsaný placeným certifikátem.
 3. Windows se zeptá, jestli povolit aplikaci od **neznámého vydavatele**.
@@ -56,32 +52,36 @@ konci nastavení Resonaty. Odinstalátor se zeptá, jestli smazat i poznámky,
 
 | Co udělat | Co se stane |
 |---|---|
-| Najet myší k pravému okraji, asi do třetiny výšky obrazovky, a chvíli počkat | Z okraje vykoukne pilulka |
-| Kliknout úplně na pravém okraji v tom místě | Rovnou se otevře velký panel |
-| Kliknout na pilulku | Otevře se velký panel, bez čekání |
+| Najet myší na výstupek na pravém okraji a chvíli počkat | Otevře se velký panel |
+| Kliknout na výstupek | Otevře se velký panel, bez čekání |
 | Kliknout na prázdné místo v horním pruhu panelu | Panel se zavře |
 | **Ctrl + Shift + Mezerník** | Otevře nebo zavře panel odkudkoliv (v nastavení jde přepnout na Alt + Shift + N) |
 | Levý klik na ikonu u hodin | Otevře nebo zavře panel |
-| Pravý klik na ikonu nebo na pilulku | Nabídka: nastavení, spuštění po přihlášení, ukončení |
+| Pravý klik na ikonu nebo na výstupek | Nabídka: nastavení, spuštění po přihlášení, ukončení |
 | Kliknout kamkoliv mimo panel | Panel se zavře |
-| Kolečko dolů na pilulce | Otevře panel |
-| Dva prsty do strany na touchpadu | Na pilulce další/předchozí skladba, v panelu další stránka |
-| Kolečko nad ikonami stránek | Přepíná stránky |
+| Kolečko dolů na výstupku | Otevře panel |
+| Kolečko nebo dva prsty nahoru a dolů v panelu | Další nebo předchozí stránka |
+| Dva prsty do strany na touchpadu | Na výstupku další/předchozí skladba, v panelu další stránka |
 | Přetáhnout soubor k pravému okraji | Otevře se police, soubor na ni pustíš |
 
 V **Settings → Open the panel** jsou dva režimy:
 
-Panel se otevře jako okénko kousek od okraje a obal alba do něj vyletí
-z pilulky.
+Panel se otevře jako okénko na výšku kousek od okraje a obal alba do něj
+vyletí z výstupku. Stránky jsou pod sebou.
 
-- **Hover** (výchozí): když na pilulce chvíli zůstaneš, panel se otevře sám.
-  Dokud na ní přepínáš skladby, počká.
-  Když myší odjedeš, smrskne se do pilulky a chvíli počká. Když na ni včas
-  najedeš, zase se zvětší. Během psaní poznámky zůstane otevřený.
-- **Click**: najetí vysune jen pilulku. Kliknutí panel otevře, další kliknutí
-  mimo panel nebo na prázdné místo v jeho horním pruhu ho zavře.
+- **Hover** (výchozí): když na výstupku chvíli zůstaneš, panel se otevře sám.
+  Dokud na něm přepínáš skladby, počká.
+  Když myší odjedeš, zavře se. Během psaní poznámky zůstane otevřený.
+- **Click**: najetí na výstupek jen ukáže, co hraje. Kliknutí panel otevře,
+  další kliknutí mimo panel nebo na prázdné místo v jeho horním pruhu ho zavře.
 
-Sama se pilulka vysune jen na chvíli: při nové skladbě, po skončení časovače,
+**Když se nic neděje**, tedy nic nehraje, neběží časovač a nepracuje žádná
+relace Claude Code ani Vibe, výstupek po půl minutě zajede celý. Vrátí se, když
+se něco stane, nebo když kurzorem najedeš na jeho místo úplně u okraje
+obrazovky. Vypíná se to v **Settings → Sliding out → Hide the tab while nothing
+is going on**.
+
+Výstupek se sám na chvíli rozšíří do pruhu, který řekne víc: při nové skladbě, po skončení časovače,
 5 minut před událostí, při připojení Bluetooth sluchátek, při zapojení nabíječky
 a při slabé baterii. Všechno jde vypnout v nastavení. Ve hrách a filmech přes
 celou obrazovku se sama nevysouvá.
@@ -99,6 +99,29 @@ celou obrazovku se sama nevysouvá.
 - **Časovač**: 5–60 minut jedním klepnutím, libovolná délka v kruhu, nebo Pomodoro.
 - **Police**: soubory si tu odložíš a pak je odtáhneš, kam potřebuješ. Kliknutím
   se otevřou. Ukládá se jen cesta, ne kopie souboru.
+- **Limity**: jen se zapnutým Claude Code nebo Vibe, viz níž.
+
+## Claude Code a Mistral Vibe
+
+Volitelné a ve výchozím stavu vypnuté. Zapínají se každý zvlášť v **Settings →
+Claude Code and Mistral Vibe**.
+
+- Na výstupku přibude kroužek a výstupek se o něj prodlouží. Kroužek ukazuje,
+  kolik z limitu je využito. Točí se, dokud nějaká relace pracuje, a je
+  jantarový, když na tebe čeká.
+- Když se relace na něco zeptá nebo dokončí delší práci, vysune se zpráva.
+  Kliknutí na ni přepne do aplikace, kde relace běží.
+- V panelu přibude stránka **Limity**: limit relace a týdne, kdy se obnoví,
+  a seznam relací.
+- Když nic nehraje, limity se ukážou na výstupku i na stránce Hudba místo
+  prázdného obalu. Jakmile začne hrát hudba, místo si vezme zpátky.
+
+Čte se jen z tohohle počítače. U Claude Code ze souborů relací a limity z jeho
+vlastního `/usage`: k tomu musí být nainstalovaný a přihlášený příkaz `claude`.
+Samotná desktopová aplikace Claude dá stavy relací a zprávy, limity ne. U Vibe
+se limit ptá vlastní kód a přihlášení Vibe. Resonata žádný klíč ani přihlášení
+nevidí a neukládá. Část pro Vibe je napsaná podle verze pro Mac a na Windows
+zatím nebyla vyzkoušená.
 
 ## Kalendář
 
@@ -123,7 +146,8 @@ ukládá do svého nastavení v počítači. Kalendář jen čte a obnovuje se p
 ## Když to nefunguje
 
 **Nic se nevysouvá.** Podívej se na ikonu u hodin (může být schovaná pod šipkou)
-a zkus zkratku. V nastavení zkontroluj *Slide out at the right edge of the screen*.
+a zkus zkratku. V nastavení zkontroluj *Show the tab on the right edge of the screen*.
+Když se nic neděje, výstupek po půl minutě zajede: najeď kurzorem úplně na okraj.
 
 **Ukazuje „Nic nehraje“, i když hudba hraje.** Přehrávač se nehlásí do systému.
 Podívej se, jestli ho vidíš v panelu hlasitosti ve Windows.

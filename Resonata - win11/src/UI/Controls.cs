@@ -201,6 +201,31 @@ public sealed class MusicBars : AnimatedElement
     }
 }
 
+/// The same bars turned on their side, for the tab on the screen's edge: a
+/// column of them, each growing sideways out of its middle. Still, they're
+/// little more than dots.
+public sealed class EdgeBars : AnimatedElement
+{
+    private const int Count = 7;
+    private const double Thickness = 2.5, Spacing = 3.5;
+
+    private Brush _tint = Ui.White(0.4);
+    public Brush Tint { get => _tint; set { _tint = value; InvalidateVisual(); } }
+
+    protected override void OnRender(DrawingContext dc)
+    {
+        var total = Thickness * Count + Spacing * (Count - 1);
+        var y = (ActualHeight - total) / 2;
+        for (var i = 0; i < Count; i++)
+        {
+            var level = IsAnimating ? Math.Max(Motion.BarLevel(i, Time), 0.16) : 0.3;
+            var length = Math.Max(ActualWidth * level, Thickness);
+            dc.DrawRoundedRectangle(_tint, null, new Rect((ActualWidth - length) / 2, y, length, Thickness), Thickness / 2, Thickness / 2);
+            y += Thickness + Spacing;
+        }
+    }
+}
+
 public sealed class MusicWave : AnimatedElement
 {
     private double[] _shown = [];
@@ -448,4 +473,111 @@ public static class Anim
         AnimationSpeed.Slow => (0.72, 0.66),
         _ => (0.44, 0.66),
     };
+}
+
+/// Claude Code's or Vibe's ring: how much of the limit is used, with a small
+/// arc turning inside it while a session works, or the whole ring pulsing
+/// amber while one waits for you. The turning and the pulsing run only while
+/// the ring is on screen, at a rate a ring that small needs.
+public sealed class AiRing : Grid
+{
+    private readonly double _size, _thickness;
+    private readonly System.Windows.Shapes.Ellipse _track;
+    private readonly System.Windows.Shapes.Path _progress, _spinner;
+    private readonly RotateTransform _turn;
+    private readonly TextBlock _number;
+    private double? _fraction;
+    private AiState _state;
+    private Color _tint;
+    private bool _showsNumber, _shown;
+
+    public AiRing(double size, double thickness)
+    {
+        _size = size;
+        _thickness = thickness;
+        Width = Height = size;
+        IsHitTestVisible = false;
+        _track = new System.Windows.Shapes.Ellipse { Stroke = Ui.White(0.18), StrokeThickness = thickness };
+        _progress = new System.Windows.Shapes.Path { StrokeThickness = thickness, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round };
+        _turn = new RotateTransform(0, size / 2, size / 2);
+        _spinner = new System.Windows.Shapes.Path
+        {
+            Stroke = Ui.White(0.85), StrokeThickness = Math.Max(thickness * 0.6, 1),
+            StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round,
+            // Inside the ring where there is room; on a ring too small for
+            // that, a bright stretch going round the ring itself.
+            Data = Arc(size < 20 ? size / 2 - thickness / 2 : size / 2 - thickness * 1.5 - 1.5, size < 20 ? 0.22 : 0.28),
+            RenderTransform = _turn, Visibility = Visibility.Collapsed,
+        };
+        _number = Ui.Label("", 9, FontWeights.Bold, Brushes.White);
+        _number.HorizontalAlignment = HorizontalAlignment.Center;
+        _number.VerticalAlignment = VerticalAlignment.Center;
+        _number.TextTrimming = TextTrimming.None;
+        Children.Add(_track);
+        Children.Add(_progress);
+        Children.Add(_spinner);
+        Children.Add(_number);
+        IsVisibleChanged += (_, _) => Animate();
+    }
+
+    /// From twelve o'clock, clockwise, this share of the way round.
+    private Geometry Arc(double radius, double share)
+    {
+        var centre = new Point(_size / 2, _size / 2);
+        if (share >= 0.9999) return new EllipseGeometry(centre, radius, radius);
+        var angle = 2 * Math.PI * share - Math.PI / 2;
+        var geometry = new StreamGeometry();
+        using (var g = geometry.Open())
+        {
+            g.BeginFigure(new Point(centre.X, centre.Y - radius), false, false);
+            g.ArcTo(new Point(centre.X + radius * Math.Cos(angle), centre.Y + radius * Math.Sin(angle)),
+                new Size(radius, radius), 0, share > 0.5, SweepDirection.Clockwise, true, false);
+        }
+        geometry.Freeze();
+        return geometry;
+    }
+
+    /// `number`: the percentage written in the middle, where the ring is big
+    /// enough to read it and nothing is turning there.
+    public void Show(double? fraction, AiState state, Color tint, bool number = false)
+    {
+        if (_shown && fraction == _fraction && state == _state && tint == _tint && number == _showsNumber) return;
+        _shown = true;
+        _fraction = fraction;
+        _state = state;
+        _tint = tint;
+        _showsNumber = number;
+
+        var waiting = state == AiState.Waiting;
+        // Waiting, the whole ring, amber: it wants you, however full it is.
+        var share = waiting ? 1 : Math.Clamp(fraction ?? 0, 0, 1);
+        _progress.Stroke = Ui.Solid(waiting ? ActivityLook.Amber : tint);
+        _progress.Data = share <= 0 ? null : Arc(_size / 2 - _thickness / 2, share);
+        _spinner.Visibility = state == AiState.Working ? Visibility.Visible : Visibility.Collapsed;
+
+        var text = number && state != AiState.Working && fraction is { } f ? ((int)Math.Round(f * 100)).ToString() : "";
+        _number.Text = text;
+        _number.FontSize = (_size - 2 * _thickness) * (text.Length > 2 ? 0.4 : 0.5);
+        Animate();
+    }
+
+    private void Animate()
+    {
+        var turning = IsVisible && _state == AiState.Working;
+        var pulsing = IsVisible && _state == AiState.Waiting;
+        if (turning)
+        {
+            var turn = new DoubleAnimation(0, 360, TimeSpan.FromSeconds(1.1)) { RepeatBehavior = RepeatBehavior.Forever };
+            Timeline.SetDesiredFrameRate(turn, 30);
+            _turn.BeginAnimation(RotateTransform.AngleProperty, turn);
+        }
+        else _turn.BeginAnimation(RotateTransform.AngleProperty, null);
+        if (pulsing)
+        {
+            var pulse = new DoubleAnimation(1, 0.35, TimeSpan.FromSeconds(0.7)) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever };
+            Timeline.SetDesiredFrameRate(pulse, 20);
+            _progress.BeginAnimation(OpacityProperty, pulse);
+        }
+        else _progress.BeginAnimation(OpacityProperty, null);
+    }
 }

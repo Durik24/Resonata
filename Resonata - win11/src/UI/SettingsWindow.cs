@@ -39,6 +39,13 @@ public sealed class SettingsWindow : Window
         MinWidth = 420;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         Content = new ScrollViewer { Content = _root, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        // Drawn without the graphics card: over a remote desktop the card's
+        // picture of an ordinary window can fail to arrive, leaving it blank.
+        SourceInitialized += (_, _) =>
+        {
+            if (PresentationSource.FromVisual(this) is System.Windows.Interop.HwndSource { CompositionTarget: { } target })
+                target.RenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
+        };
         Build();
         Updater.Shared.PropertyChanged += OnUpdaterChanged;
         Closed += (_, _) => Updater.Shared.PropertyChanged -= OnUpdaterChanged;
@@ -75,15 +82,19 @@ public sealed class SettingsWindow : Window
         RebuildUpdate();
 
         Section(L.T("Sliding out", "Vysouvání"));
-        Add(Toggle(L.T("Slide out at the right edge of the screen", "Vysunout najetím k pravému okraji"), S.EdgeTrigger, v => S.EdgeTrigger = v));
+        Add(Toggle(L.T("Show the tab on the right edge of the screen", "Ukazovat výstupek na pravém okraji obrazovky"), S.EdgeTrigger, v => S.EdgeTrigger = v));
+        Add(Toggle(L.T("Hide the tab while nothing is going on", "Schovat výstupek, když se nic neděje"), S.HideWhenIdle, v => S.HideWhenIdle = v));
+        Add(Note(L.T(
+            "With nothing playing, no timer running and no Claude Code or Vibe session at work, the tab slides away after half a minute. It comes back when something happens, or when the pointer goes to its place on the very edge of the screen.",
+            "Když nic nehraje, neběží časovač a nepracuje žádná relace Claude Code ani Vibe, výstupek po půl minutě zajede celý. Vrátí se, když se něco stane, nebo když kurzorem najedeš na jeho místo úplně u okraje obrazovky.")));
         Combo(L.T("Open the panel", "Otevírat panel"), new[]
         {
             (OpenMode.Hover, L.T("Hover", "Najetím")),
             (OpenMode.Click, L.T("Click", "Kliknutím")),
         }, S.OpenMode, v => S.OpenMode = v);
         Add(Note(L.T(
-            "Hover: rest on the pill and the panel opens by itself, and it closes when you move away. Click: the pointer only brings out the pill; a click opens the panel and another click closes it.",
-            "Najetím: když zůstaneš na pilulce, panel se otevře sám a po odjetí myší se zavře. Kliknutím: najetí vysune jen pilulku, kliknutí panel otevře a další kliknutí ho zavře.")));
+            "Hover: rest on the tab and the panel opens by itself, and it closes when you move away. Click: resting on the tab only shows what's playing; a click opens the panel and another click closes it.",
+            "Najetím: když zůstaneš na výstupku, panel se otevře sám a po odjetí myší se zavře. Kliknutím: najetí na výstupek jen ukáže, co hraje; kliknutí panel otevře a další kliknutí ho zavře.")));
         Combo(L.T("Animation", "Animace"), new[]
         {
             (AnimationSpeed.Fast, L.T("Fast", "Rychlé")),
@@ -91,11 +102,21 @@ public sealed class SettingsWindow : Window
             (AnimationSpeed.Slow, L.T("Slow", "Pomalé")),
         }, S.AnimationSpeed, v => S.AnimationSpeed = v);
 
+        Section(L.T("Claude Code and Mistral Vibe", "Claude Code a Mistral Vibe"));
+        Add(Toggle(L.T("Claude Code on the tab", "Claude Code na výstupku"), S.ShowClaude, v => S.ShowClaude = v));
+        Add(Note(L.T(
+            "A ring showing how much of the session limit is used, turning while a session works and amber while one waits for you; a session that stops to ask something, or finishes, slides out a message, and a click on it goes to the session's app. With nothing playing the limits are written out in the song's place, and the panel gets a page for them. Read from Claude Code on this PC: its session files, and the limits from its own /usage, for which the claude command has to be installed and signed in.",
+            "Kroužek ukazuje, kolik z limitu relace je využito; točí se, dokud nějaká relace pracuje, a je jantarový, když na tebe čeká. Když se relace na něco zeptá nebo skončí, vysune se zpráva a kliknutí na ni přepne do aplikace relace. Když nic nehraje, limity se rozepíšou na místě skladby, a v panelu k nim přibude stránka. Čte se z Claude Code na tomhle PC: ze souborů relací, a limity z jeho vlastního /usage, k čemuž musí být nainstalovaný a přihlášený příkaz claude.")));
+        Add(Toggle(L.T("Mistral Vibe on the tab", "Mistral Vibe na výstupku"), S.ShowVibe, v => S.ShowVibe = v));
+        Add(Note(L.T(
+            "The same for Vibe: a ring for the month's Vibe allowance, and a message when a session asks for an approval or finishes. Read from Vibe on this PC: its session files, and the allowance from Mistral through Vibe's own code and sign-in. Resonata never sees the key.",
+            "Totéž pro Vibe: kroužek měsíčního limitu Vibe, a zpráva, když relace požádá o schválení nebo skončí. Čte se z Vibe na tomhle PC: ze souborů relací, a limit od Mistralu přes vlastní kód a přihlášení Vibe. Resonata klíč nikdy nevidí.")));
+
         Section(L.T("Open panel", "Otevřený panel"));
-        Combo(L.T("Swipe between pages", "Swipe mezi stránkami"), new[]
+        Combo(L.T("Scroll between pages", "Přejíždění mezi stránkami"), new[]
         {
-            (PageSwipe.WithFingers, L.T("Right = next", "Doprava = další")),
-            (PageSwipe.Reversed, L.T("Left = next (like a phone)", "Doleva = další (jako telefon)")),
+            (PageSwipe.WithFingers, L.T("Scrolling down = next", "Posun dolů = další")),
+            (PageSwipe.Reversed, L.T("Scrolling up = next", "Posun nahoru = další")),
             (PageSwipe.Off, L.T("Off", "Vypnuto")),
         }, S.PageSwipe, v => S.PageSwipe = v);
         Add(Toggle(L.T("Lyrics", "Texty písní"), S.ShowLyrics, v => S.ShowLyrics = v));

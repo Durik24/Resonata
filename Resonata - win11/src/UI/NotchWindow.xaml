@@ -3,14 +3,20 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:Resonata"
         Title="Resonata"
-        Width="720" Height="300"
+        Width="400" Height="520"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         ResizeMode="NoResize" ShowInTaskbar="False" ShowActivated="False" Topmost="True"
         AllowDrop="True" UseLayoutRounding="True" SnapsToDevicePixels="True"
         FontFamily="Segoe UI" Foreground="White">
     <!-- The window sits against the screen's right edge, its middle on the
-         line the pill comes out on; the shape grows left, up and down from it. -->
+         line the tab is on; the shape grows left, up and down from it. -->
     <Grid x:Name="Root">
+        <!-- The strip between the open panel and the edge. All but clear, so
+             it's still the window's: the pointer that opened the panel is
+             resting in it, and its wheel should reach the panel rather than
+             whatever is underneath. -->
+        <Rectangle x:Name="GapCatch" Fill="#01000000" Width="14" Height="440" HorizontalAlignment="Right" VerticalAlignment="Center" Visibility="Collapsed"/>
+
         <!-- Its own element so the shadow is redrawn only while the shape moves,
              not with every frame of the wave. -->
         <Path x:Name="ShadowShape" Fill="Black" IsHitTestVisible="False" Opacity="0.9">
@@ -30,36 +36,76 @@
             <Rectangle Fill="Black"/>
             <Rectangle x:Name="Wash"/>
 
-            <!-- Under the panel's bottom edge: the panel is 204 tall in the
-                 middle of the 300 of the window, so it starts 48 down. -->
-            <local:MusicWave x:Name="Wave" Height="26" VerticalAlignment="Top" HorizontalAlignment="Right" Margin="0,218,34,0" Visibility="Collapsed" Opacity="0"/>
+            <!-- Along the panel's bottom edge: the panel is 440 tall in the
+                 middle of the 520 of the window, so it ends 40 from the bottom. -->
+            <local:MusicWave x:Name="Wave" Height="26" VerticalAlignment="Bottom" HorizontalAlignment="Right" Margin="0,0,34,48" Visibility="Collapsed" Opacity="0"/>
 
-            <!-- In the pill against the screen's edge: 9 from its rounded end, 12 from the edge. -->
-            <Grid x:Name="Pill" Width="279" Height="32" Margin="0,0,12,0" HorizontalAlignment="Right" VerticalAlignment="Center">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="32"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="34"/>
-                </Grid.ColumnDefinitions>
-                <Grid x:Name="CoverSlot" Grid.Column="0"/>
-                <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="10,0,8,0">
+            <!-- The tab against the screen's edge, 20 wide and 275 along it:
+                 the cover, small, what's playing read downwards, the bars. -->
+            <Grid x:Name="Nub" Width="20" Height="245" HorizontalAlignment="Right" VerticalAlignment="Center" IsHitTestVisible="False">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="40"/>
+                </Grid.RowDefinitions>
+                <Grid x:Name="NubCoverSlot" Width="14" Height="14"/>
+                <!-- Claude Code's and Vibe's rings, for each that is switched
+                     on: the tab is that much longer. -->
+                <StackPanel x:Name="NubRings" Grid.Row="2" HorizontalAlignment="Center"/>
+                <TextBlock x:Name="NubTitle" Grid.Row="1" Margin="0,9,0,9" FontSize="11" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+                           HorizontalAlignment="Center" VerticalAlignment="Top">
+                    <TextBlock.LayoutTransform>
+                        <RotateTransform Angle="90"/>
+                    </TextBlock.LayoutTransform>
+                </TextBlock>
+                <local:EdgeBars x:Name="NubBars" Grid.Row="3" Width="10" Height="40"/>
+            </Grid>
+
+            <!-- The strip the tab grows into, along the edge rather than out
+                 from it, to say what's playing: the cover, the title and the
+                 artist read downwards, the bars. 44 wide, and as long as the
+                 tab: 275 with the flare and a little room at each end. -->
+            <Grid x:Name="Pill" Width="44" Height="247" HorizontalAlignment="Right" VerticalAlignment="Center"
+                  Visibility="Hidden" Opacity="0" IsHitTestVisible="False">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="20"/>
+                </Grid.RowDefinitions>
+                <StackPanel x:Name="PillRings" Grid.Row="2" HorizontalAlignment="Center"/>
+                <Grid x:Name="CoverSlot" Grid.Row="0" Width="28" Height="28"/>
+                <StackPanel Grid.Row="1" Margin="0,10,0,8" HorizontalAlignment="Center" VerticalAlignment="Top">
+                    <StackPanel.LayoutTransform>
+                        <RotateTransform Angle="90"/>
+                    </StackPanel.LayoutTransform>
                     <TextBlock x:Name="PillTitle" FontSize="12" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
                     <TextBlock x:Name="PillDetail" FontSize="11" TextTrimming="CharacterEllipsis"/>
                 </StackPanel>
-                <Grid x:Name="TrailSlot" Grid.Column="2"/>
+                <Grid x:Name="TrailSlot" Grid.Row="3" Width="32"/>
             </Grid>
 
             <!-- In the open panel, which stands 12 off the edge: 20 inside it. -->
-            <Grid x:Name="Expanded" Height="204" Margin="0,0,32,0" HorizontalAlignment="Right" VerticalAlignment="Center"
+            <Grid x:Name="Expanded" Height="440" Margin="0,0,32,0" HorizontalAlignment="Right" VerticalAlignment="Center"
                   Visibility="Hidden" Opacity="0" RenderTransformOrigin="1,0.5">
                 <Grid.RenderTransform>
                     <ScaleTransform x:Name="ExpandedScale"/>
                 </Grid.RenderTransform>
-                <Grid x:Name="Pages" ClipToBounds="True" Margin="0,46,0,18"/>
+                <!-- The pages, one above the other; the column of icons beside
+                     them, on the side the pointer comes from, turns them. -->
+                <Grid x:Name="Pages" ClipToBounds="True" Margin="0,46,38,18"/>
                 <Grid x:Name="TopBar" Height="38" VerticalAlignment="Top">
-                    <Canvas x:Name="PageStrip" HorizontalAlignment="Left" Width="155" Height="20"/>
+                    <TextBlock x:Name="PageTitle" FontSize="12" FontWeight="SemiBold" Foreground="#99FFFFFF"
+                               HorizontalAlignment="Left" VerticalAlignment="Center" IsHitTestVisible="False">
+                        <TextBlock.RenderTransform>
+                            <TranslateTransform x:Name="PageTitleShift"/>
+                        </TextBlock.RenderTransform>
+                    </TextBlock>
                     <StackPanel x:Name="StatusItems" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                 </Grid>
+                <!-- Half way down, level with the tab the pointer came in on. -->
+                <Canvas x:Name="PageStrip" HorizontalAlignment="Right" VerticalAlignment="Center" Width="28" Height="140"/>
             </Grid>
         </Grid>
     </Grid>

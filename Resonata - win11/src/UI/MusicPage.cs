@@ -10,10 +10,12 @@ using System.Windows.Threading;
 
 namespace Resonata;
 
-/// Player on the left, the days and their events on the right.
+/// The player, and under it the days and their events.
 public sealed class MusicPage : Grid, IPage
 {
-    public const double CoverSize = 110;
+    /// The cover alone above the song, and beside nothing; smaller with the
+    /// calendar under the player, to leave it room.
+    public const double CoverSize = 190, CoverSizeWithCalendar = 84;
     private static readonly Color FallbackAccent = Color.FromRgb(92, 153, 255);
 
     private readonly PanelModel _m;
@@ -29,8 +31,11 @@ public sealed class MusicPage : Grid, IPage
     private readonly TextBlock _playIcon = Ui.Icon(Glyph.Play, 19, Brushes.White);
     private readonly SpotifyVolumeControl _volume = new();
     private readonly StackPanel _textColumn = new();
-    private readonly Rectangle _divider = new() { Fill = Ui.White(0.1), Width = 1, Margin = new Thickness(18, 8, 18, 8) };
+    private readonly Rectangle _divider = new() { Fill = Ui.White(0.1), Height = 1, Margin = new Thickness(8, 10, 8, 10) };
     private readonly CalendarColumn _calendar;
+    /// Claude Code's and Vibe's limits, in the song's place while nothing plays.
+    private readonly UsagePage _usage;
+    private Grid _column = null!;
     private readonly DispatcherTimer _clock = new();
     private readonly Delay _releaseScrub = new();
     private double? _scrubFraction;
@@ -47,7 +52,7 @@ public sealed class MusicPage : Grid, IPage
     public MusicPage(PanelModel model)
     {
         _m = model;
-        _calendar = new CalendarColumn { Width = 196, Margin = new Thickness(0, 2, 0, 0) };
+        _calendar = new CalendarColumn { Margin = new Thickness(0, 2, 0, 0) };
         _lyric = new LyricsLine(model);
         // A click on the line being sung brings up more of the song.
         _lyric.Background = Brushes.Transparent;
@@ -66,15 +71,14 @@ public sealed class MusicPage : Grid, IPage
         _lyricsBack.VerticalAlignment = VerticalAlignment.Top;
         _lyricsBack.Visibility = Visibility.Collapsed;
 
-        ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        // One under the other, the panel standing along the screen's edge:
+        // the cover, the song and its buttons, then the calendar.
+        RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
-        var main = new Grid();
-        main.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(CoverSize + 24) });
-        main.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
-        var coverHost = new Grid { Width = CoverSize, Height = CoverSize, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
+        var coverHost = new Grid { Width = CoverSize, Height = CoverSize, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Top };
         CoverHost = coverHost;
         coverHost.Children.Add(_cover);
         _badge = Ui.Button(new Border
@@ -86,16 +90,19 @@ public sealed class MusicPage : Grid, IPage
         _badge.VerticalAlignment = VerticalAlignment.Bottom;
         _badge.Margin = new Thickness(0, 0, -7, -7);
         coverHost.Children.Add(_badge);
-        main.Children.Add(coverHost);
+        Children.Add(coverHost);
 
-        var column = BuildColumn();
-        SetColumn(column, 1);
-        main.Children.Add(column);
-        Children.Add(main);
+        var column = _column = BuildColumn();
+        SetRow(column, 1);
+        Children.Add(column);
 
-        SetColumn(_divider, 1);
+        _usage = new UsagePage(model) { Visibility = Visibility.Collapsed };
+        SetRowSpan(_usage, 2);
+        Children.Add(_usage);
+
+        SetRow(_divider, 2);
         Children.Add(_divider);
-        SetColumn(_calendar, 2);
+        SetRow(_calendar, 3);
         Children.Add(_calendar);
 
         _clock.Tick += (_, _) => UpdateProgress();
@@ -121,7 +128,9 @@ public sealed class MusicPage : Grid, IPage
 
     private Grid BuildColumn()
     {
-        var column = new Grid { Height = CoverSize, VerticalAlignment = VerticalAlignment.Top };
+        // As tall as its tallest state, so nothing under it moves when the
+        // lyrics take the bar's and the buttons' place.
+        var column = new Grid { Height = 136, Margin = new Thickness(0, 14, 0, 0), VerticalAlignment = VerticalAlignment.Top };
         column.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         column.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         column.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -146,16 +155,16 @@ public sealed class MusicPage : Grid, IPage
         column.Children.Add(progress);
         _progressBlock = progress;
 
-        var controls = new Grid { Margin = new Thickness(-7, 0, 0, -3) };
-        controls.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        controls.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        var transport = new StackPanel { Orientation = Orientation.Horizontal };
+        // The buttons in the middle, under the cover; the volume under them.
+        var controls = new StackPanel { Margin = new Thickness(0, 4, 0, 0) };
+        // Each button has 14 to its right; as much to the left of the first centres the three.
+        var transport = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(14, 0, 0, 0) };
         transport.Children.Add(Transport(Ui.Icon(Glyph.Previous, 15, Brushes.White), TransportCommand.Previous));
         transport.Children.Add(Transport(_playIcon, TransportCommand.PlayPause));
         transport.Children.Add(Transport(Ui.Icon(Glyph.Next, 15, Brushes.White), TransportCommand.Next));
         controls.Children.Add(transport);
-        _volume.HorizontalAlignment = HorizontalAlignment.Right;
-        SetColumn(_volume, 1);
+        _volume.HorizontalAlignment = HorizontalAlignment.Center;
+        _volume.Margin = new Thickness(0, 2, 0, 0);
         controls.Children.Add(_volume);
         SetRow(controls, 3);
         column.Children.Add(controls);
@@ -197,8 +206,14 @@ public sealed class MusicPage : Grid, IPage
             case nameof(PanelModel.Artwork): _cover.SetImage(_m.Artwork); break;
             case nameof(PanelModel.Accent): UpdateAccent(); break;
             case nameof(PanelModel.Lyrics): ApplyLyricsMode(); break;
+            case nameof(PanelModel.Claude):
+            case nameof(PanelModel.Vibe): UpdateLayoutForSettings(); break;
         }
     }
+
+    /// Nothing playing, and Claude Code or Vibe has something to say: the
+    /// limits take the place of the empty cover and "Nothing playing".
+    private bool UsageShown => _m.Track is null && _m.AiHasSomething;
 
     private void OnSettingsChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -231,15 +246,31 @@ public sealed class MusicPage : Grid, IPage
     {
         var calendar = Settings.Current.ShowCalendar;
         _divider.Visibility = _calendar.Visibility = calendar ? Visibility.Visible : Visibility.Collapsed;
-        // Centred over the bar beside the calendar; without it the column is
-        // wide, and centred text floated off on its own.
-        var align = calendar ? TextAlignment.Center : TextAlignment.Left;
-        _title.TextAlignment = _artist.TextAlignment = align;
-        _lyric.Alignment = align;
-        _lyricsList.Alignment = align;
+        var usage = UsageShown;
+        // Under the song's place there is the wave: with both tools' cards
+        // there, the sessions are left to the limits' own page.
+        var sessions = _m.Claude is not null && _m.Vibe is not null ? 0 : 3;
+        if (usage != (_usage.Visibility == Visibility.Visible) || _usage.Compact != calendar || _usage.MaxSessions != sessions)
+        {
+            _usage.Compact = calendar;
+            _usage.MaxSessions = sessions;
+            _usage.Visibility = usage ? Visibility.Visible : Visibility.Collapsed;
+            CoverHost.Visibility = _column.Visibility = usage ? Visibility.Collapsed : Visibility.Visible;
+            _usage.PanelVisibilityChanged(_open && usage);
+        }
+        var size = calendar ? CoverSizeWithCalendar : CoverSize;
+        if (CoverHost.Width != size)
+        {
+            CoverHost.Width = CoverHost.Height = size;
+            _cover.SetSize(size);
+        }
+        // Centred under the cover.
+        _title.TextAlignment = _artist.TextAlignment = TextAlignment.Center;
+        _lyric.Alignment = TextAlignment.Center;
+        _lyricsList.Alignment = TextAlignment.Center;
         var list = LyricsShown;
-        // Clear of the arrow in the corner.
-        _title.Margin = new Thickness(0, 0, list && !calendar ? 26 : 0, 0);
+        // Clear of the arrow in the corner, and still in the middle.
+        _title.Margin = new Thickness(list ? 26 : 0, 0, list ? 26 : 0, 0);
         // Only for something lyrics are looked up for: under a podcast or a
         // film "no lyrics found" was just noise.
         _lyric.Visibility = !list && Settings.Current.ShowLyrics && _m.Track is { } track && LyricsRules.ShouldLookUp(track)
@@ -297,6 +328,7 @@ public sealed class MusicPage : Grid, IPage
         _lyricsList.SetActive(panelOpen && LyricsShown);
         UpdateClock();
         UpdateProgress();
+        _usage.PanelVisibilityChanged(panelOpen && UsageShown);
         if (panelOpen) { _calendar.GoToToday(); _volume.Reread(); }
     }
 

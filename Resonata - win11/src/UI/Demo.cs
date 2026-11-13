@@ -15,8 +15,14 @@ public static class Demo
 {
     public static bool IsOn => Environment.GetEnvironmentVariable("RESONATA_DEMO") == "1";
 
+    /// The snapshots are showing Claude Code and Vibe, whatever Settings say.
+    public static bool ShowsAi { get; set; }
+
     public static void Install(PanelModel model)
     {
+        // `RESONATA_DEMO_IDLE=1`: nothing playing at all, for the test of
+        // the tab sliding away when nothing is going on.
+        if (Environment.GetEnvironmentVariable("RESONATA_DEMO_IDLE") == "1") return;
         model.Artwork = Cover();
         model.Accent = Artwork.AccentOf(model.Artwork);
         model.Track = new Track
@@ -139,7 +145,9 @@ public static class Snapshots
     {
         Log.Write($"snapshots into {dir}");
         Directory.CreateDirectory(dir);
-        await Task.Delay(800);
+        // The tab at rest, once it has slid in.
+        await Task.Delay(1600);
+        Save(window, dir, "tab");
         songPeek.Show();
         await Task.Delay(900);
         Save(window, dir, "peek");
@@ -150,9 +158,8 @@ public static class Snapshots
         Save(window, dir, "activity");
         await Task.Delay(6800);
 
-        // The cover on its way from the pill into the panel, and back.
+        // The cover on its way out of the tab into the panel, and back.
         m.Tab = PanelTab.Music;
-        m.SongPeeking = true;
         await Task.Delay(900);
         window.Expand();
         await Task.Delay(110);
@@ -164,12 +171,20 @@ public static class Snapshots
         await Task.Delay(130);
         Save(window, dir, "closing");
         await Task.Delay(1800);
-        m.SongPeeking = false;
+
+        // And out of the pill, opened while a new song is being shown.
+        m.SongPeeking = true;
         await Task.Delay(900);
+        window.Expand();
+        await Task.Delay(130);
+        Save(window, dir, "opening-from-pill");
+        await Task.Delay(1000);
+        window.Collapse();
+        await Task.Delay(1800);
 
         window.Expand();
         await Task.Delay(1200);
-        foreach (var tab in Enum.GetValues<PanelTab>())
+        foreach (var tab in TabInfo.Shown)
         {
             m.Tab = tab;
             await Task.Delay(700);
@@ -178,6 +193,7 @@ public static class Snapshots
         await NewerStatesAsync(m, window, dir);
         window.Collapse();
         await Task.Delay(900);
+        await AiStatesAsync(m, window, activity, dir);
 
         SettingsWindow.ShowShared(window);
         await Task.Delay(1200);
@@ -226,6 +242,61 @@ public static class Snapshots
         Save(window, dir, "page-timer-paused");
         CountdownTimer.Shared.Cancel();
         await Task.Delay(400);
+    }
+
+    /// Claude Code and Mistral Vibe, made up: their rings on the tab beside
+    /// the song, their page, and with nothing playing their limits in the
+    /// song's place, on the tab and in the panel.
+    private static async Task AiStatesAsync(PanelModel m, NotchWindow window, ActivityPeek activity, string dir)
+    {
+        var now = DateTime.Now;
+        Demo.ShowsAi = true;
+        window.RefreshTabs();
+        // Through the reader, as `claude /usage` words it.
+        var read = ClaudeUsage.Parse(string.Create(System.Globalization.CultureInfo.InvariantCulture,
+            $"Current session: 42% used · resets {now.AddMinutes(138):h:mmtt} (Europe/Prague)\nCurrent week (all models): 17% used · resets {now.AddDays(3):MMM d} at 6:59pm (Europe/Prague)\nCurrent week (Fable): 9% used · resets {now.AddDays(3):MMM d} at 6pm\n"), now);
+        Log.Write($"snapshot: /usage read as {read?.SessionPercent} % until {read?.SessionResets:g}, week {read?.WeekPercent} % until {read?.WeekResets:g}, {read?.Models.Count} model");
+        m.Claude = new ClaudeStatus(AiState.Working, "resonata", null,
+            read ?? new ClaudeUsage(42, now.AddMinutes(138), 17, now.AddDays(3)) { Models = [new ModelWeek("Fable", 9, now.AddDays(3))] })
+        {
+            Sessions = [new AiSession(1, "resonata", AiState.Working, "Claude"), new AiSession(2, "web", AiState.Idle, "Windows Terminal")],
+        };
+        m.Vibe = new VibeStatus(AiState.Idle, null, null, new VibeUsage(3, new DateTime(now.Year, now.Month, 1).AddMonths(1), "Student", false))
+        {
+            Sessions = [new AiSession(3, "notes", AiState.Idle, "Windows Terminal", "v1")],
+        };
+        await Task.Delay(1200);
+        Save(window, dir, "ai-tab-music");
+        window.Expand(PanelTab.Usage);
+        await Task.Delay(1300);
+        Save(window, dir, "ai-page");
+        window.Collapse();
+        await Task.Delay(1500);
+
+        activity.Show(new NotchActivity.AiWaiting("Claude Code", "resonata", "dotnet build", 1));
+        await Task.Delay(900);
+        Save(window, dir, "ai-waiting");
+        await Task.Delay(6800);
+
+        var (song, cover) = (m.Track, m.Artwork);
+        m.Track = null;
+        m.Artwork = null;
+        m.Claude = m.Claude with { State = AiState.Waiting, Wants = "dotnet build" };
+        await Task.Delay(1200);
+        Save(window, dir, "ai-tab-idle");
+        window.Expand(PanelTab.Music);
+        await Task.Delay(1300);
+        Save(window, dir, "ai-page-music");
+        window.Collapse();
+        await Task.Delay(1500);
+
+        m.Claude = null;
+        m.Vibe = null;
+        Demo.ShowsAi = false;
+        window.RefreshTabs();
+        m.Artwork = cover;
+        m.Track = song;
+        await Task.Delay(900);
     }
 
     private static void Click(Button? button) => button?.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));

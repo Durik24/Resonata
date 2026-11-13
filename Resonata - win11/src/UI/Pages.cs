@@ -7,7 +7,7 @@ using System.Windows.Shapes;
 
 namespace Resonata;
 
-/// A free-form note on the left, a to-do list on the right. Saved as you type.
+/// A free-form note, and under it a to-do list. Saved as you type.
 public sealed class NotesPage : Grid
 {
     private readonly NotesStore _store = NotesStore.Shared;
@@ -16,9 +16,9 @@ public sealed class NotesPage : Grid
 
     public NotesPage()
     {
-        ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(200) });
-        ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(12) });
-        ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        RowDefinitions.Add(new RowDefinition { Height = new GridLength(130) });
+        RowDefinitions.Add(new RowDefinition { Height = new GridLength(12) });
+        RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
         var note = new TextBox
         {
@@ -79,7 +79,7 @@ public sealed class NotesPage : Grid
         SetRow(scroller, 1);
         right.Children.Add(scroller);
 
-        SetColumn(right, 2);
+        SetRow(right, 2);
         Children.Add(right);
 
         _store.Changed += Rebuild;
@@ -133,7 +133,7 @@ public sealed class AppsPage : WrapPanel
         Orientation = Orientation.Horizontal;
         HorizontalAlignment = HorizontalAlignment.Center;
         VerticalAlignment = VerticalAlignment.Top;
-        MaxWidth = 6 * 68;
+        MaxWidth = 3 * 68;
         QuickApps.Changed += Rebuild;
         Rebuild();
     }
@@ -176,7 +176,7 @@ public sealed class AppsPage : WrapPanel
     }
 }
 
-/// The time left in a ring on the left, the lengths to start on the right.
+/// The time left in a ring, and under it the lengths to start.
 public sealed class TimerPage : StackPanel, IPage
 {
     private readonly CountdownTimer _timer = CountdownTimer.Shared;
@@ -187,7 +187,7 @@ public sealed class TimerPage : StackPanel, IPage
     private readonly TextBlock _caption = Ui.Label("", 10, FontWeights.Medium, Ui.White(0.45));
     private readonly TextBox _typed;
     private readonly List<(int Minutes, Border Pill)> _presets = [];
-    private readonly StackPanel _controls = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 12, 0, 0) };
+    private readonly WrapPanel _controls = new() { HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(8, 8, 0, 0) };
     private bool _writing;
     private bool _open;
     /// What the buttons under the ring were last built for — see `Refresh`.
@@ -195,7 +195,6 @@ public sealed class TimerPage : StackPanel, IPage
 
     public TimerPage()
     {
-        Orientation = Orientation.Horizontal;
         HorizontalAlignment = HorizontalAlignment.Center;
         VerticalAlignment = VerticalAlignment.Center;
 
@@ -226,14 +225,15 @@ public sealed class TimerPage : StackPanel, IPage
         _dial.Children.Add(_typed);
         _dial.Children.Add(steps);
 
-        var ringHost = new Grid { Width = 112, Height = 112, Margin = new Thickness(0, 0, 28, 0) };
+        var ringHost = new Grid { Width = 140, Height = 140, Margin = new Thickness(0, 0, 0, 24) };
         ringHost.Children.Add(_ring);
         ringHost.Children.Add(_running);
         ringHost.Children.Add(_dial);
         Children.Add(ringHost);
 
-        var right = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-        var grid = new UniformGrid { Columns = 3, Rows = 2 };
+        var right = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center };
+        // Each button has 8 to its right; as much on the left keeps the rows in the middle.
+        var grid = new UniformGrid { Columns = 3, Rows = 2, Margin = new Thickness(8, 0, 0, 0), HorizontalAlignment = HorizontalAlignment.Center };
         foreach (var minutes in CountdownTimer.Presets)
         {
             var captured = minutes;
@@ -367,7 +367,7 @@ public sealed class TimerPage : StackPanel, IPage
         label.Margin = new Thickness(6, 0, 0, 0);
         row.Children.Add(label);
         var button = Ui.Button(Ui.Capsule(row, 0.14, 26), click);
-        button.Margin = new Thickness(0, 0, 8, 0);
+        button.Margin = new Thickness(0, 0, 8, 8);
         return button;
     }
 }
@@ -390,9 +390,15 @@ public sealed class ShelfPage : Grid, IPage
         _filled.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         _filled.Children.Add(new ScrollViewer { Content = _tiles, VerticalScrollBarVisibility = ScrollBarVisibility.Hidden, Focusable = false });
         var footer = new Grid { Margin = new Thickness(0, 6, 0, 0) };
-        footer.Children.Add(Ui.Label(L.T("Drag a file anywhere to copy it. Click to open it.", "Přetáhni soubor kamkoli — zkopíruje se. Klik ho otevře."), 10, FontWeights.Normal, Ui.White(0.4)));
+        // Over two lines beside the button: the page is no wider than three tiles.
+        var hint = Ui.Label(L.T("Drag a file anywhere to copy it. Click to open it.", "Přetáhni soubor kamkoli — zkopíruje se. Klik ho otevře."), 10, FontWeights.Normal, Ui.White(0.4));
+        hint.TextWrapping = TextWrapping.Wrap;
+        hint.TextTrimming = TextTrimming.None;
+        hint.Margin = new Thickness(0, 0, 60, 0);
+        footer.Children.Add(hint);
         var clear = Ui.Button(Ui.Label(L.T("Clear", "Vyčistit"), 11, FontWeights.SemiBold, Ui.White(0.6)), _shelf.Clear);
         clear.HorizontalAlignment = HorizontalAlignment.Right;
+        clear.VerticalAlignment = VerticalAlignment.Bottom;
         footer.Children.Add(clear);
         SetRow(footer, 1);
         _filled.Children.Add(footer);
@@ -410,6 +416,10 @@ public sealed class ShelfPage : Grid, IPage
         message.Children.Add(line1);
         var line2 = Ui.Label(L.T("Park them here, then drag them wherever you need.", "Odložíš si je tu a pak je odtáhneš, kam potřebuješ."), 11, FontWeights.Normal, Ui.White(0.45));
         line2.HorizontalAlignment = HorizontalAlignment.Center;
+        line2.TextWrapping = TextWrapping.Wrap;
+        line2.TextTrimming = TextTrimming.None;
+        line2.TextAlignment = TextAlignment.Center;
+        line2.Margin = new Thickness(16, 0, 16, 0);
         message.Children.Add(line2);
         _empty.Children.Add(message);
         Children.Add(_empty);

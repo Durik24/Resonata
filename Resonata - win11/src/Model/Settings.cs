@@ -164,6 +164,18 @@ public sealed class Settings : Observable
     private bool _edgeTrigger = true;
     public bool EdgeTrigger { get => _edgeTrigger; set => Set(ref _edgeTrigger, value); }
 
+    /// With nothing playing and nothing going on, the tab slides away
+    /// altogether, and comes back when the pointer goes to its place on the edge.
+    private bool _hideWhenIdle = true;
+    public bool HideWhenIdle { get => _hideWhenIdle; set => Set(ref _hideWhenIdle, value); }
+
+    // Off until asked for: they read another app's files and run it.
+    private bool _showClaude;
+    public bool ShowClaude { get => _showClaude; set => Set(ref _showClaude, value); }
+
+    private bool _showVibe;
+    public bool ShowVibe { get => _showVibe; set => Set(ref _showVibe, value); }
+
     private AnimationSpeed _animationSpeed = AnimationSpeed.Normal;
     public AnimationSpeed AnimationSpeed { get => _animationSpeed; set => Set(ref _animationSpeed, value); }
 

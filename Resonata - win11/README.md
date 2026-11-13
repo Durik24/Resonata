@@ -3,16 +3,26 @@
 The Windows version of [Resonata](<../Resonata - macOS/README.md>): now playing,
 synced lyrics, an album-coloured wave, notes, app shortcuts, a timer and a file
 shelf. Windows has no notch and its windows use the top of the screen, so here
-Resonata lives on the **right edge, a third of the way down**, and is
-**completely hidden until wanted**. Rest the pointer on that edge and the pill
-slides out of it, the one the Mac has under its notch, turned into a tab. In
-Hover mode, staying on it opens the whole panel, as a little window of its own
-just off the edge, with the cover flying out of the pill into it; moving away
-closes it. In Click mode a click opens it and another closes it. A click on that
-edge, on the pill, the shortcut (Ctrl + Shift +
-Space, or Alt + Shift + N) or the tray
-icon opens the panel at once. It slides out by itself for a moment when a new
-song starts or the timer ends.
+Resonata lives on the **right edge, a fifth of the way down**, as a slim tab
+along it: a small cover, the song's title read downwards, and bars. In Hover
+mode, resting the pointer on the tab opens the whole panel, a tall little window
+of its own just off the edge, with the cover flying out of the tab into it;
+moving away closes it. In Click mode a click opens it and another closes it. The
+shortcut (Ctrl + Shift + Space, or Alt + Shift + N) or the tray icon opens the
+panel at once. The pages are stacked: the wheel, or two fingers up and down,
+turns them. For a new song or when the timer ends the tab widens for a moment
+into a strip that says more.
+
+With nothing playing, no timer running and nothing else going on, the tab
+slides away completely after half a minute. It comes back when something
+happens, or for the pointer on the very edge of the screen.
+
+**Claude Code and Mistral Vibe** are optional (Settings, off by default). Each
+adds a ring to the tab, which grows longer for it: how much of the limit is
+used, turning while a session works, amber while one waits for you. A session
+that stops to ask, or finishes a long piece of work, slides out a message; a
+click on it goes to the app the session runs in. The panel gets a Limits page,
+and with nothing playing the limits take the song's place.
 
 The interface is in English by default, with Czech in Settings.
 
@@ -72,7 +82,8 @@ the release has one. It asks Windows itself (`IsWow64Process2`), so a copy of
 the x64 build running emulated on ARM64 moves over to the native build at its
 next update. The ARM64 Setup's name doesn't start with `Resonata-Setup`, so the
 updater of 1.1.0 and older, which takes the first asset with that name, never
-fetches it. Upload both Setups to every Windows release. Tag Windows releases `win-v1.2.3` and publish them with
+fetches it. An ARM64 PC takes the x64 Setup from a release that has no ARM64
+one (1.4.0 is x64 only). Tag Windows releases `win-v1.2.3` and publish them with
 "Set as latest" off (`gh release create --latest=false`): the Mac app reads the
 repository's latest release, so that has to stay the Mac's.
 
@@ -89,6 +100,8 @@ newer Resonata Setup, not on a signature as on the Mac.
 | Path | Job |
 |---|---|
 | `src/Logic/Core.cs` | Everything with no UI: playhead, LRC, motion, Pomodoro, accent colour, spring, rules. Tested |
+| `src/Logic/Ai.cs` | Claude Code's and Vibe's sessions and limits, read from their text. Tested |
+| `src/Services/AiMonitors.cs` | Watches the session files of both and asks each for its limits |
 | `src/Model/` | The panel's state and the settings file |
 | `src/Services/MediaService.cs` | Now playing and transport, via Windows' media sessions |
 | `src/Services/Stores.cs` | Lyrics, notes, shelf, app shortcuts, login item |
@@ -118,6 +131,11 @@ there. A stream with no length shows **LIVE** instead of a bar stuck at 0:00.
   instead of a notch grown down from the top.
 - The timer's countdown shows in the pill when it's out and in the tray tooltip,
   not permanently.
+- Claude Code's limits come from `claude /usage`, so the `claude` command has to
+  be installed and signed in; the Claude desktop app alone gives the sessions'
+  states and messages, but no limits. Vibe's allowance is asked for by Vibe's
+  own Python with Vibe's own sign-in. Resonata touches no key or token of
+  either. Written after the Mac's; Vibe's part has not been run on Windows yet.
 - The calendar reads private `.ics` links. Windows has nothing a desktop app can
   simply ask for your events.
 - No Apple Music heart: nothing on Windows to talk to.

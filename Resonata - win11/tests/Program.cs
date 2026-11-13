@@ -140,6 +140,9 @@ Check(Covers(0, 699.5, 100.5), "square at the edge: its corner is filled");
 Check(!Covers(24, 699.5, 100.5), "round off the edge: its corner is not");
 Check(Covers(0, 695, 104) && !Covers(-8, 695, 104) && Covers(-8, 699.8, 104), "flared: it runs into the edge in a thinning point");
 Check(!Covers(0, 400.5, 100.5) && Covers(0, 412, 121), "the far corners are round");
+bool Tab(double x, double y) => EdgeGeometry.Build(760, 95, 20, 110, -5, 8).FillContains(new System.Windows.Point(x, y));
+Check(Tab(770, 150) && Tab(779.8, 98) && !Tab(770, 98), "the tab: a bump on the edge, flaring into it at both ends");
+Check(!Tab(760.5, 100.5) && Tab(764, 104), "and round away from it");
 var pillCover = new System.Windows.Rect(429, 129, 32, 32);
 var panelCover = new System.Windows.Rect(258, 94, 110, 110);
 Check(CoverFlight.Frame(pillCover, panelCover, 0) == pillCover, "the flying cover starts on the pill's");
@@ -216,6 +219,32 @@ Check(swipe.Add(50, t0.AddMilliseconds(10)) == 1, "far enough turns one page");
 Check(swipe.Add(500, t0.AddMilliseconds(20)) == 0, "one page per gesture");
 Check(swipe.Add(-120, t0.AddMilliseconds(600)) == -1, "a pause starts a new gesture");
 
+// A touchpad's swipe, its momentum, and the next swipe in the middle of it
+int Turns(PageSwipeTracker tracker, ref DateTime at, params double[] steps)
+{
+    var turns = 0;
+    foreach (var step in steps) { at = at.AddMilliseconds(12); turns += tracker.Add(step, at); }
+    return turns;
+}
+var pad = new PageSwipeTracker();
+var padAt = t0.AddSeconds(10);
+Check(Turns(pad, ref padAt, 10, 20, 30, 40, 50, 60, 45, 30) == 1, "a swipe still speeding up after it turned the page turns only the one");
+Check(Turns(pad, ref padAt, 24, 18, 12, 8, 5, 3, 2, 2, 1, 2, 1) == 0, "its momentum turns nothing");
+Check(Turns(pad, ref padAt, 3, 8, 16, 30, 40, 30) == 1, "the fingers pushing again turn the next, with no pause and no move of the pointer");
+Check(Turns(pad, ref padAt, 20, 12, 7, 4, 2, 1, -4, -12, -25, -40) == -1, "and pushing the other way turns back");
+Check(Turns(pad, ref padAt, -20, -10, -5, -2, 1, -1, -1) == 0, "a twitch at the end of the momentum isn't a swipe");
+var slow = new PageSwipeTracker();
+Check(Turns(slow, ref padAt, 4, 6, 5, 7, 4, 6, 5, 8, 6, 5, 7, 4, 6, 5, 7, 6, 4, 6, 5, 7) == 1, "a slow drag, uneven as a hand is, is one gesture");
+
+// The wheel over a page: a list first, then the pages
+var route = new WheelRoute();
+Check(route.TurnsPage(false, t0), "over nothing that scrolls, the wheel turns the page");
+Check(route.TurnsPage(true, t0.AddMilliseconds(50)), "and the rest of that gesture doesn't scroll the list it lands on");
+Check(!route.TurnsPage(true, t0.AddSeconds(1)), "a list with further to go scrolls instead");
+Check(!route.TurnsPage(false, t0.AddSeconds(1.1)), "run to its end, the same gesture doesn't go on to the next page");
+Check(!route.TurnsPage(false, t0.AddSeconds(1.3)), "however long it keeps coming");
+Check(route.TurnsPage(false, t0.AddSeconds(2)), "a new one does");
+
 // Calendar
 var noon = new DateTime(2026, 3, 10, 12, 0, 0);
 var days = CalendarRules.Days(noon);
@@ -261,6 +290,85 @@ var parsed = CalendarStore.Parse(ics.Replace("\r\n", "\n").Replace("\n", "\r\n")
 Check(parsed.Count(e => e.Title == "Weekly") == 1, $"a recurring event falls in the window once (got {parsed.Count(e => e.Title == "Weekly")})");
 Check(parsed.Any(e => e.Title == "Whole day" && e.IsAllDay && e.Start.Date == new DateTime(2026, 3, 10)), "an all-day event keeps its date");
 Check(parsed.All(e => e.Title != "Next year"), "outside the window isn't included");
+
+
+// Claude Code and Mistral Vibe.
+var aiNow = new DateTime(2026, 11, 12, 16, 20, 0);
+var usageText = """
+    Current session: 6% used · resets 6:39pm
+    Current week (all models): 1% used · resets Nov 13 at 6:59pm
+    Current week (Fable): 4% used · resets Nov 13 at 6:59pm
+    """;
+var usage = ClaudeUsage.Parse(usageText, aiNow);
+Check(usage is { SessionPercent: 6, WeekPercent: 1 }, "the session's and the week's per cents are read from /usage");
+Check(usage?.SessionResets == new DateTime(2026, 11, 12, 18, 39, 0), $"a bare time is later today (got {usage?.SessionResets})");
+Check(usage?.WeekResets == new DateTime(2026, 11, 13, 18, 59, 0), $"a date without a year is this year's (got {usage?.WeekResets})");
+Check(usage?.Models is [{ Name: "Fable", Percent: 4 }], "a model's own week is kept beside the week");
+Check(ClaudeUsage.Parse("Not logged in · Please run /login", aiNow) is null, "signed out, there are no limits");
+Check(ClaudeUsage.Parse("Current session: 12% used", aiNow) is { SessionPercent: 12, SessionResets: null, WeekPercent: null }, "a session line alone is enough");
+Check(ClaudeUsage.Parse("Current session: 3% used\nCurrent week (Opus): 8% used", aiNow) is { WeekPercent: 8, Models.Count: 0 }, "only a model's week said: that is the week");
+Check(ClaudeUsage.ResetDate("3:05am", aiNow) == new DateTime(2026, 11, 13, 3, 5, 0), "a time already past means tomorrow");
+Check(ClaudeUsage.ResetDate("6pm", aiNow) == new DateTime(2026, 11, 12, 18, 0, 0), "a time without minutes is on the hour");
+Check(ClaudeUsage.ResetDate("Jan 2 at 9am", new DateTime(2026, 12, 30, 10, 0, 0)) == new DateTime(2027, 1, 2, 9, 0, 0), "a date read in December can be next year's");
+Check(ClaudeUsage.ResetDate("Nov 13, 12:10pm", aiNow) == new DateTime(2026, 11, 13, 12, 10, 0) && ClaudeUsage.ResetDate("Nov 16, 9pm", aiNow) == new DateTime(2026, 11, 16, 21, 0, 0), "a comma between the date and the time, as newer versions write it");
+Check(ClaudeUsage.ResetDate("whenever", aiNow) is null, "wording it doesn't know gives no date");
+var zoned = ClaudeUsage.ResetDate("Nov 12 at 6:39pm (Europe/Prague)", aiNow);
+Check(zoned is { } z && TimeZoneInfo.ConvertTime(z, TimeZoneInfo.Local, TimeZoneInfo.FindSystemTimeZoneById("Europe/Prague")) == new DateTime(2026, 11, 12, 18, 39, 0),
+    $"a time said in a zone is that zone's (got {zoned})");
+
+var busy = ClaudeSessionRecord.FromJson("""{"pid":11088,"cwd":"C:\\Users\\me\\Projects\\Resonata","status":"busy","name":"resonata-7","entrypoint":"claude-desktop"}""");
+Check(busy is { Pid: 11088, State: AiState.Working, Name: "Resonata", IsHelper: false }, "a busy session, named by its folder");
+Check(ClaudeSessionRecord.FromJson("""{"pid":1,"cwd":"C:\\a\\b","tempo":"blocked","status":"busy","waitingFor":"permission","name":"Mine","nameSource":"user"}""")
+    is { State: AiState.Waiting, Wants: "permission", Name: "Mine" }, "blocked wins over busy, and a given name is kept");
+Check(ClaudeSessionRecord.FromJson("""{"pid":1,"cwd":"C:\\a","status":"idle","entrypoint":"sdk-cli"}""") is { State: AiState.Idle, IsHelper: true }, "a run something else started is a helper");
+Check(ClaudeSessionRecord.FromJson("""{"cwd":"C:\\a"}""") is null && ClaudeSessionRecord.FromJson("not json") is null, "a file that isn't a session is passed over");
+Check(busy!.Event(AiState.Working, 60) is null, "still working is no news");
+Check((busy with { State = AiState.Waiting, Wants = "x" }).Event(AiState.Working, 1) is NotchActivity.AiWaiting { Session: "Resonata", Wants: "x", Pid: 11088 }, "stopping to ask is said at once");
+Check((busy with { State = AiState.Idle }).Event(AiState.Working, 60) is NotchActivity.AiDone { Tool: "Claude Code" }, "finishing a long piece of work is said");
+Check((busy with { State = AiState.Idle }).Event(AiState.Working, 3) is null, "a one-line answer ends without a word");
+Check((busy with { State = AiState.Idle }).Event(AiState.Waiting, 60) is null, "only leaving work counts");
+Check(AiSummary.Of([(AiState.Working, "a", null), (AiState.Waiting, "b", "rm"), (AiState.Idle, "c", null)]) == (AiState.Waiting, "b", "rm"), "one waiting comes before one working");
+Check(AiSummary.Of([(AiState.Idle, "a", null)]) == (AiState.Idle, null, null), "all at rest is idle");
+var rows = AiSummary.Rows(new ClaudeStatus { Sessions = [new AiSession(1, "idle", AiState.Idle), new AiSession(2, "work", AiState.Working)] },
+    new VibeStatus { Sessions = [new AiSession(3, "wait", AiState.Waiting, null, "v")] });
+Check(rows.Select(r => r.Session.Name).SequenceEqual(["wait", "work", "idle"]) && rows[0].IsVibe, "sessions waiting or at work are listed first");
+Check(new ClaudeStatus(AiState.Idle).HasSomething == false && new ClaudeStatus(AiState.Working).HasSomething
+    && new ClaudeStatus(Usage: usage).Fraction == 0.06, "an idle Claude with no limits has nothing to show");
+Check(new NotchActivity.AiDone("Vibe", "x", 1).WaitsForClose == false && new NotchActivity.AiWaiting("Vibe", "x", null, 1).WaitsForClose, "a question waits for the panel to close; a finish doesn't");
+
+Check(VibeUsage.Parse("noise\n{\"percent\": 2.97, \"resets\": \"2026-12-01T00:00:00Z\", \"plan\": \"EDU\", \"payg\": false}\n")
+    is { Percent: 2, Plan: "Student", PayAsYouGo: false, Resets: not null }, "Vibe's allowance: whole per cents, the plan by Vibe's name");
+Check(VibeUsage.Parse("{\"percent\": 130.2, \"payg\": true, \"plan\": \"Custom\"}") is { Percent: 130, Plan: "Custom", PayAsYouGo: true, Resets: null }, "past 100 % where the rest is billed");
+Check(VibeUsage.Parse("") is null && VibeUsage.Parse("{\"plan\": \"EDU\"}") is null, "no line, no allowance");
+
+static string Envelope(string status, string title = "", string source = "auto") =>
+    "{\"type\":\"projection_delta\",\"payload\":{\"delta\":[{\"op\":\"set_envelope\",\"state\":{\"session\":{\"status\":{\"type\":\"" + status
+    + "\"},\"title\":\"" + title + "\",\"titleSource\":\"" + source + "\"}}}]}}";
+static string Asked(string id, string command) =>
+    "{\"type\":\"callback_registered\",\"payload\":{\"callback_id\":\"" + id + "\",\"routing\":{\"detail\":{\"effect\":{\"input\":{\"command\":\"" + command + "\"}}}}}}";
+var journal = new VibeJournal();
+journal.Read(Envelope("running", "Fix the tests"));
+Check(journal is { State: AiState.Working, Title: "Fix the tests", TitleGiven: false }, "a running Vibe session is working, its title Vibe's own guess");
+journal.Read(Asked("q1", "rm -rf build") + "\n" + Envelope("running"));
+Check(journal.State == AiState.Waiting && journal.Wants == "rm -rf build", "a question not yet answered is waiting, though it says running");
+journal.Read("{\"type\":\"callback_resolved\",\"payload\":{\"callback_id\":\"q1\"}}");
+Check(journal.State == AiState.Working && journal.Wants is null, "answered, it is back at work");
+journal.Read(Asked("q2", "ls") + "\n" + Envelope("idle", "Named", "user"));
+Check(journal is { State: AiState.Idle, TitleGiven: true }, "at rest after the question: the turn was stopped, the question with it");
+journal.Read("{\"type\":\"tool_output\",\"text\":\"set_envelope callback_re\"}\nnot json at all set_envelope");
+Check(journal.State == AiState.Idle && journal.Title == "Named", "a line that merely quotes the words is passed over");
+journal.Read(Envelope("running"));
+journal.StartOver();
+Check(journal.State == AiState.Idle && journal.Title == "Named", "a new journal file starts over, and keeps the name");
+Check(VibeJournal.Name("Guess", false, @"C:\Users\me\work\api") == "api" && VibeJournal.Name("Mine", true, @"C:\x") == "Mine" && VibeJournal.Name(null, false, null) == "Vibe",
+    "a Vibe session is named by its folder unless somebody named it");
+Check(VibeJournal.IsSessionId("ab-12_c") && !VibeJournal.IsSessionId("..\\x") && !VibeJournal.IsSessionId("-a") && !VibeJournal.IsSessionId(""), "a session id is safe to put in a path");
+Check(VibeJournal.Interpreter("MZ...\0#!C:\\Users\\me\\AppData\\Roaming\\uv\\tools\\mistral-vibe\\Scripts\\python.exe\r\nPK") == @"C:\Users\me\AppData\Roaming\uv\tools\mistral-vibe\Scripts\python.exe",
+    "the Python a launcher names");
+Check(VibeJournal.Interpreter("#!python.exe\n") is null && VibeJournal.Interpreter("#!C:\\tools\\node.exe\n") is null && VibeJournal.Interpreter("MZ") is null, "anything that isn't a Python by its full path is refused");
+Check(AiText.TabLine(new ClaudeStatus(AiState.Working, Usage: usage), null).StartsWith("Claude working · 6 %") && AiText.TabLine(null, null) == "", "the tab's line says the state and the limits");
+Check(new PanelModel().NubHeight == PanelModel.NubBaseHeight && new PanelModel { Claude = new ClaudeStatus(), Vibe = new VibeStatus() }.NubHeight == PanelModel.NubBaseHeight + 2 * PanelModel.NubRingStep,
+    "each ring makes the tab longer");
 
 Console.WriteLine($"{passed} passed, {failed} failed");
 return failed == 0 ? 0 : 1;
