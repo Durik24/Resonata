@@ -357,7 +357,7 @@ journal.Read(Asked("q2", "ls") + "\n" + Envelope("idle", "Named", "user"));
 Check(journal is { State: AiState.Idle, TitleGiven: true }, "at rest after the question: the turn was stopped, the question with it");
 journal.Read("{\"type\":\"tool_output\",\"text\":\"set_envelope callback_re\"}\nnot json at all set_envelope");
 Check(journal.State == AiState.Idle && journal.Title == "Named", "a line that merely quotes the words is passed over");
-journal.Read(Envelope("running"));
+journal.Read(Envelope("running", "Named", "user"));
 journal.StartOver();
 Check(journal.State == AiState.Idle && journal.Title == "Named", "a new journal file starts over, and keeps the name");
 Check(VibeJournal.Name("Guess", false, @"C:\Users\me\work\api") == "api" && VibeJournal.Name("Mine", true, @"C:\x") == "Mine" && VibeJournal.Name(null, false, null) == "Vibe",
