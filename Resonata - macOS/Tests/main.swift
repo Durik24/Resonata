@@ -676,6 +676,20 @@ do {
           "sessions: both tools' in one list, the one at work first, told apart even on one pid")
     check(ClaudeUsagePage.doing(rows[0]) == "Vibe · pracuje" && ClaudeUsagePage.doing(rows[1]) == "Claude · volno · Terminál",
           "sessions: with both switched on, each line says whose it is")
+    // A click on a session's row: the Terminal tab it is typed into.
+    let tabScript = ClaudeMonitor.terminalTabScript(tty: "/dev/ttys001")
+    check(tabScript?.contains("if tty of t is \"/dev/ttys001\" then") == true
+            && tabScript?.contains("set selected of t to true") == true,
+          "session click: the script picks the tab on the session's terminal")
+    check(ClaudeMonitor.terminalTabScript(tty: "/dev/ttys001\" then\ndo shell script \"x") == nil
+            && ClaudeMonitor.terminalTabScript(tty: "ttys001") == nil
+            && ClaudeMonitor.terminalTabScript(tty: "/dev/disk1") == nil,
+          "session click: nothing but a terminal's path goes into the script")
+    // These tests have a terminal behind them only when run from one, so
+    // only the shape is checked; no process, no terminal.
+    check(ClaudeMonitor.tty(of: getpid()).map { $0.hasPrefix("/dev/") } ?? true,
+          "session click: a process's terminal is a device path", "\(ClaudeMonitor.tty(of: getpid()) ?? "none")")
+    check(ClaudeMonitor.tty(of: 0x3FFF_FFF0) == nil, "session click: no such process, no terminal")
     check(ClaudeUsagePage.rows(claude: nil, vibe: VibeStatus(sessions: [.init(pid: 1, name: "a", state: .idle)]))
             .map(ClaudeUsagePage.doing) == ["volno"], "sessions: one tool, no need to say")
 }
@@ -968,6 +982,13 @@ do {
           "pill: the wings are the same width in pixels at 1470 as at 1710")
     check(NotchMetrics.scale(notchHeight: 32, real: false) == 1, "pill: no cutout, no scaling")
     check(PanelTab.timer.neighbour(1) == .shelf && PanelTab.timer.neighbour(-1) == .apps, "page: neighbours follow the strip")
+    // The pages beside the cutout: a name and a row of dots. The strip is
+    // 103 pt without the calendar on a 14-inch screen.
+    check(NotchView.pageDotsWidth(count: PanelTab.allCases.count) <= 103 - 20
+            && NotchView.pageDotsWidth(count: PanelTab.allCases.count + 2) <= 103,
+          "page dots: six fit the short strip with room over, and so would eight")
+    check(PanelTab.allCases.allSatisfy { !$0.shortTitle.contains(" ") && $0.shortTitle.count <= 9 },
+          "page name: one short word each, to fit the strip beside the cutout")
     check(C.swipeAction(travel: CGSize(width: 60, height: 5), precise: true) == .right, "swipe: right is next")
     check(C.swipeAction(travel: CGSize(width: -60, height: 0), precise: true) == .left, "swipe: left is previous")
     check(C.swipeAction(travel: CGSize(width: 40, height: 0), precise: true) == nil,
@@ -1163,7 +1184,7 @@ do {
     // straight lines in the same progress.
     let inside = stride(from: CGFloat(0), through: 1, by: 0.1).allSatisfy { t in
         let frame = at(t)
-        let boxLeft = -(pill + (470 - pill) * t) / 2, boxHeight = 38 + (204 - 38) * t
+        let boxLeft = -(pill + (470 - pill) * t) / 2, boxHeight = 38 + (NotchView.expandedHeight - 38) * t
         return frame.minX >= boxLeft && frame.maxY <= boxHeight
     }
     check(inside, "Flying cover: never outside the box it flies in")

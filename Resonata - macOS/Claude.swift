@@ -447,6 +447,80 @@ final class ClaudeMonitor: ObservableObject {
         return nil
     }
 
+    /// The terminal a session is typed into — "/dev/ttys001" — looking up
+    /// the process tree for the first process that has one. Nil for a
+    /// session with no terminal behind it.
+    nonisolated static func tty(of pid: Int32) -> String? {
+        var current = pid
+        for _ in 0..<16 {
+            var info = kinfo_proc()
+            var size = MemoryLayout<kinfo_proc>.stride
+            var name: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, current]
+            guard sysctl(&name, 4, &info, &size, nil, 0) == 0, size > 0 else { return nil }
+            let device = info.kp_eproc.e_tdev
+            if device != -1, let short = devname(device, S_IFCHR) {
+                return "/dev/" + String(cString: short)
+            }
+            let parent = info.kp_eproc.e_ppid
+            guard parent > 1, parent != current else { return nil }
+            current = parent
+        }
+        return nil
+    }
+
+    /// The AppleScript that brings Terminal's tab on `tty` to the front:
+    /// its window first among Terminal's, out of the Dock if it was there.
+    /// Nil for anything that isn't a terminal device's path — it goes into
+    /// the script as written.
+    nonisolated static func terminalTabScript(tty: String) -> String? {
+        guard tty.hasPrefix("/dev/tty"), tty.count <= 24,
+              tty.dropFirst(5).allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber) }) else { return nil }
+        return """
+        tell application "Terminal"
+            repeat with w in windows
+                -- Not every window has tabs (Settings hasn't), and asking
+                -- one that hasn't is an error: on to the next.
+                try
+                    repeat with t in tabs of w
+                        if tty of t is "\(tty)" then
+                            if miniaturized of w then set miniaturized of w to false
+                            set selected of t to true
+                            set index of w to 1
+                            activate
+                            return true
+                        end if
+                    end repeat
+                end try
+            end repeat
+        end tell
+        return false
+        """
+    }
+
+    /// Brings a session to the front: the app it runs in and, in Terminal,
+    /// the very tab — two sessions in two Terminal windows are otherwise
+    /// the same click. Other apps don't say which window holds a process,
+    /// so there it is the app. False when the session's app wasn't found.
+    @MainActor @discardableResult
+    static func open(pid: Int32) -> Bool {
+        guard let app = hostApp(of: pid) else {
+            if NotchPanel.debugClick { NSLog("click: session %d has no app to bring forward", pid) }
+            return false
+        }
+        let tty = app.bundleIdentifier == "com.apple.Terminal" ? tty(of: pid) : nil
+        if NotchPanel.debugClick {
+            NSLog("click: to session %d, in %@, on %@", pid, app.localizedName ?? "?", tty ?? "no terminal")
+        }
+        app.activate()
+        if let tty, let source = terminalTabScript(tty: tty) {
+            AppleScript.queue.async {
+                let found = AppleScript.run(source, what: "Bringing the session's Terminal tab forward")?.booleanValue
+                if NotchPanel.debugClick { NSLog("click: the session's tab %@", found == true ? "came forward" : "was not found") }
+            }
+        }
+        return true
+    }
+
     /// Where `claude` is installed, trying the usual places: an app started
     /// from the Finder has no shell `PATH` to look along.
     nonisolated static func locateCLI() -> URL? {
@@ -649,6 +723,32 @@ final class ClaudeRingView: NSView {
     }
 }
 
+/// A row of the sessions card as a button: lit under the pointer, so it
+/// reads as something to click, and dimmed while pressed. The light reaches
+/// a little past the row without moving it.
+struct SessionRowStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        Row(configuration: configuration)
+    }
+
+    private struct Row: View {
+        let configuration: Configuration
+        @State private var hovered = false
+
+        var body: some View {
+            configuration.label
+                .contentShape(Rectangle())
+                .background(RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(.white.opacity(configuration.isPressed ? 0.16 : hovered ? 0.09 : 0))
+                    .padding(.horizontal, -4)
+                    .padding(.vertical, -2))
+                .opacity(configuration.isPressed ? 0.75 : 1)
+                .onHover { hovered = $0 }
+                .animation(.easeOut(duration: 0.12), value: hovered)
+        }
+    }
+}
+
 /// The open panel's usage page: the session limit, the week, and what each
 /// running session is doing — three cards side by side.
 struct ClaudeUsagePage: View {
@@ -657,6 +757,8 @@ struct ClaudeUsagePage: View {
     var vibe: VibeStatus?
     /// The panel at its full width: room for a fourth card.
     var wide = false
+    /// A session in the list was clicked: bring it to the front.
+    var onOpen: (ClaudeStatus.Session) -> Void = { _ in }
 
     static let orange = Color(nsColor: ClaudeRingView.tint)
     static let blue = Color(nsColor: ClaudeRingView.blue)
@@ -769,22 +871,30 @@ struct ClaudeUsagePage: View {
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(rows.prefix(4)) { row in
                         let session = row.session
-                        HStack(spacing: 6) {
-                            Circle()
-                                .fill(session.state == .working ? (row.isVibe ? Self.vibe : Self.orange)
-                                      : session.state == .waiting ? Self.amber : Color.white.opacity(0.3))
-                                .frame(width: 6, height: 6)
-                            VStack(alignment: .leading, spacing: 0) {
-                                Text(session.name)
-                                    .font(.system(size: 9.5, weight: .semibold))
-                                    .foregroundStyle(.white)
-                                Text(Self.doing(row))
-                                    .font(.system(size: 8))
-                                    .foregroundStyle(Self.quiet)
+                        // A click goes to the session: its app, its tab.
+                        Button { onOpen(session) } label: {
+                            HStack(spacing: 6) {
+                                Circle()
+                                    .fill(session.state == .working ? (row.isVibe ? Self.vibe : Self.orange)
+                                          : session.state == .waiting ? Self.amber : Color.white.opacity(0.3))
+                                    .frame(width: 6, height: 6)
+                                VStack(alignment: .leading, spacing: 0) {
+                                    Text(session.name)
+                                        .font(.system(size: 9.5, weight: .semibold))
+                                        .foregroundStyle(.white)
+                                    Text(Self.doing(row))
+                                        .font(.system(size: 8))
+                                        .foregroundStyle(Self.quiet)
+                                }
+                                .lineLimit(1)
                             }
-                            .lineLimit(1)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         }
+                        .buttonStyle(SessionRowStyle())
+                        .help(session.app.map { L.t("Open in \($0)", "Otevřít v aplikaci \($0)") }
+                              ?? L.t("Open the session", "Otevřít relaci"))
                         .accessibilityElement(children: .combine)
+                        .accessibilityAddTraits(.isButton)
                     }
                 }
             }

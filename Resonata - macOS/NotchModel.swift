@@ -250,6 +250,18 @@ enum PanelTab: String, CaseIterable, Identifiable {
         }
     }
 
+    /// One word, shown beside the cutout over the pages' dots.
+    var shortTitle: String {
+        switch self {
+        case .music: L.t("Music", "Hudba")
+        case .notes: L.t("Notes", "Poznámky")
+        case .apps: L.t("Apps", "Aplikace")
+        case .timer: L.t("Timer", "Časovač")
+        case .shelf: L.t("Shelf", "Police")
+        case .usage: L.t("Limits", "Limity")
+        }
+    }
+
     var title: String {
         switch self {
         case .music: L.t("Music", "Hudba")

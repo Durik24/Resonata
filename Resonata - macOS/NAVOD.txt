@@ -196,11 +196,17 @@ KROK 7 — Vyzkoušej ovládání
                                  naskočí název a interpret;
                                  obal vlevo zůstane na místě
                                  (vypnout jde v nastavení)
-  - Ikony vlevo nahoře           v otevřeném panelu přepínají
-    (vedle notche)               stránky: Hudba, Poznámky
-                                 a úkoly, Aplikace, Časovač,
-                                 Police (nebo dva prsty do
-                                 strany). Vpravo
+  - Název a tečky vlevo nahoře   v otevřeném panelu říkají, na
+    (vedle notche)               které stránce jsi: Hudba,
+                                 Poznámky, Aplikace, Časovač,
+                                 Police (a Limity, když je
+                                 zapnutý Claude Code nebo
+                                 Vibe). Klik na tečku nebo
+                                 dva prsty do strany stránku
+                                 přepne. Na stránce Limity
+                                 klik na relaci otevře její
+                                 aplikaci, v Terminálu přímo
+                                 její okno. Vpravo
                                  nahoře je ozubené kolečko
                                  (nastavení) a baterie.
   - Kalendář                     vpravo vedle přehrávače: pět

@@ -27,9 +27,6 @@ struct NotchView: View {
     // from it too.
     @State var accent: Color?
 
-    /// The page strip's highlight, gliding from icon to icon.
-    @Namespace var pageHighlight
-
     // Settings, read here so a change in the settings window re-renders.
     @AppStorage(Preferences.Key.animationSpeed) private var speedSetting = AnimationSpeed.normal.rawValue
     /// The open panel's content is still in the view, closing — see `content`.

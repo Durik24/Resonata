@@ -78,7 +78,11 @@ extension NotchView {
         case .shelf:
             ShelfView(shelf: .shared, width: model.expandedWidth - 40)
         case .usage:
-            ClaudeUsagePage(status: model.claude, vibe: model.vibe, wide: model.expandedWidth >= NotchView.expandedWidth)
+            ClaudeUsagePage(status: model.claude, vibe: model.vibe,
+                            wide: model.expandedWidth >= NotchView.expandedWidth) { session in
+                // The session is what was asked for; the panel is in its way.
+                if ClaudeMonitor.open(pid: session.pid) { model.close?() }
+            }
         }
     }
 
@@ -97,39 +101,54 @@ extension NotchView {
     }
 
     /// The room either side of the cutout in the top bar, kept 8 pt clear of
-    /// it. Narrow without the calendar: the fourth page icon, the timer's,
-    /// used to sit half under the hardware notch — out of sight, and
-    /// unreachable, the pointer slipping under the cutout on the way to it.
+    /// it. Narrow without the calendar: 103 pt on a 14-inch screen.
     private var stripWidth: CGFloat {
         (model.expandedWidth - 40 - notchSize.width) / 2 - 8
     }
 
+    /// A page's dot, the open page's drawn out into a bar, and the gap
+    /// between one and the next.
+    static let pageDot: CGFloat = 5
+    static let pageDotChosen: CGFloat = 14
+    static let pageDotGap: CGFloat = 6
+
+    /// How wide the row of dots is for `count` pages.
+    nonisolated static func pageDotsWidth(count: Int) -> CGFloat {
+        let n = CGFloat(max(count, 1))
+        return (n - 1) * pageDot + pageDotChosen + (n - 1) * pageDotGap
+    }
+
+    /// The pages, beside the cutout: the name of the one that's open and,
+    /// under it, a dot for each. Icons stood here once; six of them in the
+    /// 103 pt there is without the calendar ran into each other however
+    /// they were drawn.
     private var pageSwitcher: some View {
-        let count = CGFloat(PanelTab.shown.count)
-        let gap: CGFloat = 3
-        // As wide as there's room for, up to the usual 28.
-        let iconWidth = min(28, ((stripWidth - gap * (count - 1)) / count).rounded(.down))
-        return HStack(spacing: gap) {
-            ForEach(PanelTab.shown) { tab in
-                Button { model.tab = tab } label: {
-                    Image(systemName: tab.symbol)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.white.opacity(model.tab == tab ? 0.95 : 0.4))
-                        .frame(width: iconWidth, height: 20)
-                        // One highlight that glides to the page chosen,
-                        // rather than one fading out as another fades in.
-                        .background {
-                            if model.tab == tab {
-                                Capsule().fill(.white.opacity(0.14))
-                                    .matchedGeometryEffect(id: "page", in: pageHighlight)
-                            }
-                        }
-                        .contentShape(Rectangle())
+        VStack(alignment: .leading, spacing: 0) {
+            Text(model.tab.shortTitle)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.6))
+                .lineLimit(1)
+                .contentTransition(.opacity)
+            HStack(spacing: 0) {
+                ForEach(PanelTab.shown) { tab in
+                    let chosen = model.tab == tab
+                    Button { model.tab = tab } label: {
+                        Capsule()
+                            .fill(.white.opacity(chosen ? 0.9 : 0.35))
+                            .frame(width: chosen ? Self.pageDotChosen : Self.pageDot, height: Self.pageDot)
+                            // Half the gap either side, and the row's whole
+                            // height, are the dot's to be clicked on.
+                            .padding(.horizontal, Self.pageDotGap / 2)
+                            .frame(height: 12)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help(tab.title)
+                    .accessibilityLabel(tab.title)
                 }
-                .buttonStyle(.plain)
-                .help(tab.title)
-                .accessibilityLabel(tab.title)
             }
+            // The first dot under the name's first letter.
+            .padding(.leading, -Self.pageDotGap / 2)
         }
         .animation(Self.pageTurn, value: model.tab)
     }
