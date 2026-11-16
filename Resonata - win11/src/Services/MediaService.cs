@@ -236,6 +236,14 @@ public sealed class MediaService
         });
     }
 
+    /// Pause, never play: "play/pause" would start music that had stopped
+    /// by itself in the meantime.
+    public void Pause()
+    {
+        if (_current is not { } session) return;
+        _ = RunCommandAsync(session.TryPauseAsync().AsTask());
+    }
+
     public void Seek(double seconds)
     {
         if (_current is not { } session) return;

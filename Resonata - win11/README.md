@@ -3,8 +3,8 @@
 The Windows version of [Resonata](<../Resonata - macOS/README.md>): now playing,
 synced lyrics, an album-coloured wave, notes, app shortcuts, a timer and a file
 shelf. Windows has no notch and its windows use the top of the screen, so here
-Resonata lives on the **right edge, a fifth of the way down**, as a slim tab
-along it: a small cover, the song's title read downwards, and bars. In Hover
+Resonata lives on the **right edge, a fifth of the way down**, as a small tab
+on it with no words: the album's colour and a wave while something plays. In Hover
 mode, resting the pointer on the tab opens the whole panel, a tall little window
 of its own just off the edge, with the cover flying out of the tab into it;
 moving away closes it. In Click mode a click opens it and another closes it. The
@@ -14,7 +14,7 @@ turns them. For a new song or when the timer ends the tab widens for a moment
 into a strip that says more.
 
 With nothing playing, no timer running and nothing else going on, the tab
-slides away completely after half a minute. It comes back when something
+slides away completely after ten seconds. It comes back when something
 happens, or for the pointer on the very edge of the screen.
 
 **Claude Code and Mistral Vibe** are optional (Settings, off by default). Each
@@ -83,7 +83,7 @@ the x64 build running emulated on ARM64 moves over to the native build at its
 next update. The ARM64 Setup's name doesn't start with `Resonata-Setup`, so the
 updater of 1.1.0 and older, which takes the first asset with that name, never
 fetches it. An ARM64 PC takes the x64 Setup from a release that has no ARM64
-one (1.4.0 and 1.4.1 are x64 only). Tag Windows releases `win-v1.2.3` and publish them with
+one (1.4.0 to 1.4.2 are x64 only). Tag Windows releases `win-v1.2.3` and publish them with
 "Set as latest" off (`gh release create --latest=false`): the Mac app reads the
 repository's latest release, so that has to stay the Mac's.
 
@@ -102,6 +102,8 @@ newer Resonata Setup, not on a signature as on the Mac.
 | `src/Logic/Core.cs` | Everything with no UI: playhead, LRC, motion, Pomodoro, accent colour, spring, rules. Tested |
 | `src/Logic/Ai.cs` | Claude Code's and Vibe's sessions and limits, read from their text. Tested |
 | `src/Services/AiMonitors.cs` | Watches the session files of both and asks each for its limits |
+| `src/Logic/Feeds.cs` | The rules of what came with the Mac's 1.0.15: files arriving, GitHub's news, what was copied, the fade at a timer's end. Tested |
+| `src/Services/Feeds.cs` | The folders watched, GitHub asked through `gh`, the clipboard looked at, Spotify faded |
 | `src/Model/` | The panel's state and the settings file |
 | `src/Services/MediaService.cs` | Now playing and transport, via Windows' media sessions |
 | `src/Services/Stores.cs` | Lyrics, notes, shelf, app shortcuts, login item |
@@ -131,6 +133,14 @@ there. A stream with no length shows **LIVE** instead of a bar stuck at 0:00.
   instead of a notch grown down from the top.
 - The timer's countdown shows in the pill when it's out and in the tray tooltip,
   not permanently.
+- From the Mac's 1.0.15, each off until switched on: a message for a finished
+  download or a screenshot (a new file in Downloads or Pictures\Screenshots; a
+  click shows it in Explorer), GitHub's news of up to four repositories, a
+  clipboard page kept in memory only, and a timer that fades the music out at
+  its end. Not here: Focus going on or off (Windows has no interface a desktop
+  app may ask), dragging a file out of the message, and the messages' three
+  directions — on the tab they all come out the same way. Written after the
+  Mac's and tested as logic; none of it has been seen running on Windows yet.
 - Claude Code's limits come from `claude /usage`, so the `claude` command has to
   be installed and signed in; the Claude desktop app alone gives the sessions'
   states and messages, but no limits. Vibe's allowance is asked for by Vibe's

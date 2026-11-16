@@ -201,31 +201,6 @@ public sealed class MusicBars : AnimatedElement
     }
 }
 
-/// The same bars turned on their side, for the tab on the screen's edge: a
-/// column of them, each growing sideways out of its middle. Still, they're
-/// little more than dots.
-public sealed class EdgeBars : AnimatedElement
-{
-    private const int Count = 7;
-    private const double Thickness = 2.5, Spacing = 3.5;
-
-    private Brush _tint = Ui.White(0.4);
-    public Brush Tint { get => _tint; set { _tint = value; InvalidateVisual(); } }
-
-    protected override void OnRender(DrawingContext dc)
-    {
-        var total = Thickness * Count + Spacing * (Count - 1);
-        var y = (ActualHeight - total) / 2;
-        for (var i = 0; i < Count; i++)
-        {
-            var level = IsAnimating ? Math.Max(Motion.BarLevel(i, Time), 0.16) : 0.3;
-            var length = Math.Max(ActualWidth * level, Thickness);
-            dc.DrawRoundedRectangle(_tint, null, new Rect((ActualWidth - length) / 2, y, length, Thickness), Thickness / 2, Thickness / 2);
-            y += Thickness + Spacing;
-        }
-    }
-}
-
 public sealed class MusicWave : AnimatedElement
 {
     private double[] _shown = [];
@@ -579,5 +554,44 @@ public sealed class AiRing : Grid
             _progress.BeginAnimation(OpacityProperty, pulse);
         }
         else _progress.BeginAnimation(OpacityProperty, null);
+    }
+}
+
+/// The tab's wave: a line running down it, swaying while a song plays and
+/// nearly straight while it's paused. White, over the album's colour.
+public sealed class EdgeWave : AnimatedElement
+{
+    private static readonly Pen Line = MakeLine();
+
+    private static Pen MakeLine()
+    {
+        var pen = new Pen(Ui.White(0.9), 1.6) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round, LineJoin = PenLineJoin.Round };
+        pen.Freeze();
+        return pen;
+    }
+
+    protected override void OnRender(DrawingContext dc)
+    {
+        double height = ActualHeight, middle = ActualWidth / 2;
+        if (height < 4) return;
+        var swing = (middle - 1.5) * (IsAnimating ? 1 : 0.2);
+        var time = IsAnimating ? Time : 0;
+        var geometry = new StreamGeometry();
+        using (var g = geometry.Open())
+        {
+            for (var y = 0.0; y <= height; y += 2)
+            {
+                var along = y / height;
+                // Still at both ends, widest in the middle.
+                var x = middle + swing * Math.Sin(Math.PI * along)
+                    * (0.65 * Math.Sin(along * 13.8 - time * 3.2) + 0.35 * Math.Sin(along * 23.2 + time * 2.1));
+                if (y == 0) g.BeginFigure(new Point(x, y), false, false);
+                else g.LineTo(new Point(x, y), true, true);
+            }
+        }
+        geometry.Freeze();
+        dc.PushOpacity(IsAnimating ? 1 : 0.45);
+        dc.DrawGeometry(null, Line, geometry);
+        dc.Pop();
     }
 }

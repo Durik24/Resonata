@@ -40,26 +40,22 @@
                  middle of the 520 of the window, so it ends 40 from the bottom. -->
             <local:MusicWave x:Name="Wave" Height="26" VerticalAlignment="Bottom" HorizontalAlignment="Right" Margin="0,0,34,48" Visibility="Collapsed" Opacity="0"/>
 
-            <!-- The tab against the screen's edge, 20 wide and 275 along it:
-                 the cover, small, what's playing read downwards, the bars. -->
-            <Grid x:Name="Nub" Width="20" Height="245" HorizontalAlignment="Right" VerticalAlignment="Center" IsHitTestVisible="False">
+            <!-- The tab against the screen's edge, 20 wide and 100 along it,
+                 with no words on it: the album's colour, a wave down it
+                 while something plays, and Claude Code's and Vibe's rings. -->
+            <Grid x:Name="Nub" Width="20" Height="70" HorizontalAlignment="Right" VerticalAlignment="Center" IsHitTestVisible="False">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="40"/>
                 </Grid.RowDefinitions>
-                <Grid x:Name="NubCoverSlot" Width="14" Height="14"/>
-                <!-- Claude Code's and Vibe's rings, for each that is switched
-                     on: the tab is that much longer. -->
-                <StackPanel x:Name="NubRings" Grid.Row="2" HorizontalAlignment="Center"/>
-                <TextBlock x:Name="NubTitle" Grid.Row="1" Margin="0,9,0,9" FontSize="11" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
-                           HorizontalAlignment="Center" VerticalAlignment="Top">
-                    <TextBlock.LayoutTransform>
-                        <RotateTransform Angle="90"/>
-                    </TextBlock.LayoutTransform>
-                </TextBlock>
-                <local:EdgeBars x:Name="NubBars" Grid.Row="3" Width="10" Height="40"/>
+                <!-- Wider and longer than the tab, flare and all: the shape's
+                     clip cuts it to the tab. -->
+                <Rectangle x:Name="NubTint" Grid.RowSpan="2" Width="40" Margin="-20,-30,0,-30" HorizontalAlignment="Right"/>
+                <!-- Not seen: where the cover flies out of and back into. -->
+                <Grid x:Name="NubCoverSlot" Grid.RowSpan="2" Width="14" Height="14" Opacity="0"/>
+                <!-- For each that is switched on: the tab is that much longer. -->
+                <StackPanel x:Name="NubRings" HorizontalAlignment="Center"/>
+                <local:EdgeWave x:Name="NubWave" Grid.Row="1" Width="14"/>
             </Grid>
 
             <!-- The strip the tab grows into, along the edge rather than out

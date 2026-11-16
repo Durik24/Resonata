@@ -127,6 +127,8 @@ public abstract class AiMonitor
 
     private DispatcherTimer? _timer;
     private Dictionary<string, (AiState State, DateTime? Since)> _known = [];
+    /// Since when each waiting session has waited.
+    private Dictionary<string, DateTime> _waitingSince = [];
     private Dictionary<string, string?> _apps = [];
     private DateTime? _lastAsked;
     private bool _asking, _looking;
@@ -166,6 +168,7 @@ public abstract class AiMonitor
             _timer.Stop();
             _timer = null;
             _known = [];
+            _waitingSince = [];
             Clear();
         }
     }
@@ -206,6 +209,8 @@ public abstract class AiMonitor
             if (before?.State == AiState.Working && record.State != AiState.Working) finished = true;
         }
         _known = seen;
+        _waitingSince = records.Where(r => r.State == AiState.Waiting).GroupBy(r => r.Key)
+            .ToDictionary(g => g.Key, g => _waitingSince.TryGetValue(g.Key, out var since) ? since : now);
 
         var summary = AiSummary.Of(records.Select(r => (r.State, r.Name, r.Wants)));
         var apps = new Dictionary<string, string?>();
@@ -215,7 +220,9 @@ public abstract class AiMonitor
             // Looked up once per session: it never moves to another app.
             var app = _apps.TryGetValue(record.Key, out var known) ? known : HostApp.Of(record.Pid)?.Name;
             apps[record.Key] = app;
-            sessions.Add(new AiSession(record.Pid, record.Name, record.State, app, record.Key));
+            var waits = record.State == AiState.Waiting;
+            sessions.Add(new AiSession(record.Pid, record.Name, record.State, app, record.Key,
+                waits ? record.Wants : null, waits ? _waitingSince[record.Key] : null));
         }
         _apps = apps;
         Publish(summary.State, summary.Session, summary.Wants, sessions);

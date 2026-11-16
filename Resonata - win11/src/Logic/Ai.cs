@@ -14,7 +14,9 @@ namespace Resonata;
 public enum AiState { Idle, Working, Waiting }
 
 /// One running session, as the limits page lists it.
-public sealed record AiSession(int Pid, string Name, AiState State, string? App = null, string? Key = null)
+/// `Wants` and `Since` only while it is waiting: what it asks, and since when.
+public sealed record AiSession(int Pid, string Name, AiState State, string? App = null, string? Key = null,
+    string? Wants = null, DateTime? Since = null)
 {
     public string Id => Key ?? Pid.ToString(CultureInfo.InvariantCulture);
 }
@@ -274,16 +276,36 @@ public static class AiSummary
         return (AiState.Idle, null, null);
     }
 
-    /// Both tools' sessions in one list, the ones waiting or at work first.
+    /// Both tools' sessions in one list. The ones waiting come first — the
+    /// one that has waited longest at the top — then the ones at work.
     public static IReadOnlyList<(AiSession Session, bool IsVibe)> Rows(ClaudeStatus? claude, VibeStatus? vibe)
     {
         static int Rank(AiState state) => state switch { AiState.Waiting => 0, AiState.Working => 1, _ => 2 };
+        static long Waited(AiSession session) => session.State == AiState.Waiting ? (session.Since ?? DateTime.MaxValue).Ticks : 0;
         var all = new List<(AiSession Session, bool IsVibe)>();
         foreach (var s in claude?.Sessions ?? []) all.Add((s, false));
         foreach (var s in vibe?.Sessions ?? []) all.Add((s, true));
         // A stable sort: OrderBy keeps the order of equals.
-        return all.OrderBy(row => Rank(row.Session.State)).ToList();
+        return all.OrderBy(row => Rank(row.Session.State)).ThenBy(row => Waited(row.Session)).ToList();
     }
+
+    /// A "waiting" message as it should be said given every session there
+    /// is: itself while it is the only one waiting, and otherwise one for
+    /// all of them — how many, and the one that has waited longest.
+    /// Anything that isn't a "waiting" message comes back as it is.
+    public static NotchActivity ForAllWaiting(NotchActivity activity, ClaudeStatus? claude, VibeStatus? vibe)
+    {
+        if (activity is not NotchActivity.AiWaiting) return activity;
+        var waiting = Rows(claude, vibe).Where(row => row.Session.State == AiState.Waiting).ToList();
+        if (waiting.Count < 2) return activity;
+        var first = waiting[0].Session;
+        return new NotchActivity.SessionsWaiting(waiting.Count, first.Name, first.Wants, first.Pid);
+    }
+
+    /// "2 waiting" on the sessions card — Czech counts one, 2 to 4 and 5 up
+    /// each its own way.
+    public static string WaitingChip(int count, bool czech) =>
+        czech ? (count == 1 ? "1 čeká" : count is >= 2 and <= 4 ? $"{count} čekají" : $"{count} čeká") : $"{count} waiting";
 }
 
 /// The month's Vibe allowance, as Mistral's billing reports it.

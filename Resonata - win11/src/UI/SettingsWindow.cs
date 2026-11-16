@@ -84,8 +84,8 @@ public sealed class SettingsWindow : Window
         Section(L.T("Sliding out", "Vysouvání"));
         Add(Toggle(L.T("Hide the tab while nothing is going on", "Schovat výstupek, když se nic neděje"), S.HideWhenIdle, v => S.HideWhenIdle = v));
         Add(Note(L.T(
-            "With nothing playing, no timer running and no Claude Code or Vibe session at work, the tab slides away after half a minute. It comes back when something happens, or when the pointer goes to its place on the very edge of the screen.",
-            "Když nic nehraje, neběží časovač a nepracuje žádná relace Claude Code ani Vibe, výstupek po půl minutě zajede celý. Vrátí se, když se něco stane, nebo když kurzorem najedeš na jeho místo úplně u okraje obrazovky.")));
+            "With nothing playing, no timer running and no Claude Code or Vibe session at work, the tab slides away after ten seconds. It comes back when something happens, or when the pointer goes to its place on the very edge of the screen.",
+            "Když nic nehraje, neběží časovač a nepracuje žádná relace Claude Code ani Vibe, výstupek po deseti vteřinách zajede celý. Vrátí se, když se něco stane, nebo když kurzorem najedeš na jeho místo úplně u okraje obrazovky.")));
         Combo(L.T("Open the panel", "Otevírat panel"), new[]
         {
             (OpenMode.Hover, L.T("Hover", "Najetím")),
@@ -120,6 +120,10 @@ public sealed class SettingsWindow : Window
         }, S.PageSwipe, v => S.PageSwipe = v);
         Add(Toggle(L.T("Lyrics", "Texty písní"), S.ShowLyrics, v => S.ShowLyrics = v));
         Add(Toggle(L.T("Calendar beside the player", "Kalendář vedle přehrávače"), S.ShowCalendar, v => S.ShowCalendar = v));
+        Add(Toggle(L.T("Clipboard page", "Stránka Schránka"), S.ShowClipboard, v => S.ShowClipboard = v));
+        Add(Note(L.T(
+            "The last 20 things copied — text, links, colours, pictures, files — each a click away from being on the clipboard again. Kept in memory only: quitting Resonata forgets them, and switching this off does too. What a password manager marks as not to be kept is never taken.",
+            "Posledních 20 zkopírovaných věcí — text, odkazy, barvy, obrázky, soubory — každá na jedno kliknutí zpátky ve schránce. Jen v paměti: po ukončení Resonaty je zapomene, po vypnutí tady taky. Co správce hesel označí, že se nemá ukládat, se nikdy nevezme.")));
         var custom = new Grid { Margin = new Thickness(0, 0, 0, 8) };
         var customBox = new TextBox { Text = S.CustomWaveColour, Width = 110, HorizontalAlignment = HorizontalAlignment.Right };
         customBox.TextChanged += (_, _) => { if (Ui.ParseHex(customBox.Text) is not null) S.CustomWaveColour = customBox.Text.Trim(); };
@@ -149,7 +153,21 @@ public sealed class SettingsWindow : Window
         Add(Toggle(L.T("Battery — charging and low battery", "Baterie — nabíjení a slabá baterie"), S.ShowChargingPeek, v => S.ShowChargingPeek = v));
         Add(Toggle(L.T("Headphones connected", "Připojená sluchátka"), S.ShowHeadphonesPeek, v => S.ShowHeadphonesPeek = v));
         Add(Toggle(L.T("Calendar event, 5 minutes before", "Událost z kalendáře 5 min předem"), S.MeetingReminder, v => S.MeetingReminder = v));
+        Add(Toggle(L.T("Download finished", "Dokončené stažení"), S.ShowDownloads, v => S.ShowDownloads = v));
+        Add(Toggle(L.T("Screenshot taken", "Pořízený snímek obrazovky"), S.ShowScreenshots, v => S.ShowScreenshots = v));
+        Add(Note(L.T(
+            "A new file in your Downloads folder, or in Pictures → Screenshots. A click on the message shows the file in its folder. Only the folders' lists of names are watched; no file is opened.",
+            "Nový soubor ve složce Stažené soubory, nebo v Obrázky → Snímky obrazovky. Kliknutí na zprávu ukáže soubor v jeho složce. Sleduje se jen seznam názvů ve složkách, žádný soubor se neotevírá.")));
         Add(Note(L.T("They slide in from the top for a moment. While the panel is open, a reminder, low battery or the end of the timer wait until you close it.", "Na chvíli se vysunou shora. Když je panel zrovna otevřený, připomínka, slabá baterie a konec časovače počkají, až ho zavřeš.")));
+
+        Section("GitHub");
+        Add(Toggle(L.T("News of the repositories below", "Novinky z repozitářů níže"), S.ShowGitHub, v => S.ShowGitHub = v));
+        var repos = new TextBox { Text = S.GitHubRepos, Margin = new Thickness(0, 4, 0, 4) };
+        repos.LostKeyboardFocus += (_, _) => S.GitHubRepos = repos.Text;
+        Add(repos);
+        Add(Note(L.T(
+            "Up to four, as owner/name, apart by commas. A message when somebody else pushes, when the checks fail, or when there is a new release; a click opens it on GitHub. Asked every couple of minutes through the gh command where it is installed and signed in — it signs in by itself, Resonata never sees a token, and private repositories work. Without gh only public repositories, asked less often.",
+            "Nejvýš čtyři, jako vlastník/název, oddělené čárkami. Zpráva, když pushne někdo jiný, když selžou testy, nebo když vyjde nový release; kliknutí ji otevře na GitHubu. Ptá se každých pár minut přes příkaz gh, kde je nainstalovaný a přihlášený — přihlašuje se sám, Resonata žádný token nevidí a fungují i soukromé repozitáře. Bez gh jen veřejné repozitáře a méně často.")));
 
         Section("Pomodoro");
         var work = Number(L.T("Work (min)", "Práce (min)"), S.PomodoroWork, 1, 240, v => S.PomodoroWork = v);

@@ -458,6 +458,21 @@ public static class Shell
             Log.Write($"could not open {path}: {e.Message}");
         }
     }
+
+    /// Shows a file in its folder, selected.
+    public static void Reveal(string path)
+    {
+        try
+        {
+            if (!File.Exists(path)) return;
+            // A file's name can't hold a quote, so the quotes here are safe.
+            using var explorer = Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{path}\"") { UseShellExecute = false });
+        }
+        catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            Log.Write($"could not show {path}: {e.Message}");
+        }
+    }
 }
 
 public static class LoginItem

@@ -107,7 +107,10 @@ public sealed class UsagePage : StackPanel, IPage
     {
         var both = _m.Claude is not null && _m.Vibe is not null;
         var card = new StackPanel();
-        card.Children.Add(Header(rows.Count.ToString(), ActivityLook.Violet, L.T("Sessions", "Relace"), null));
+        var waiting = rows.Count(row => row.Session.State == AiState.Waiting);
+        // The number waiting is the thing on the page to act on.
+        card.Children.Add(Header(rows.Count.ToString(), ActivityLook.Violet, L.T("Sessions", "Relace")
+            + (waiting > 0 ? " · " + AiSummary.WaitingChip(waiting, Settings.Current.Language == AppLanguage.Czech) : ""), null));
         if (rows.Count == 0) card.Children.Add(Note(L.T("None running", "Žádná neběží")));
         foreach (var (session, isVibe) in rows.Take(MaxSessions))
         {
@@ -124,16 +127,30 @@ public sealed class UsagePage : StackPanel, IPage
             var text = new StackPanel();
             text.Children.Add(Ui.Label(session.Name, 10.5, FontWeights.SemiBold, Brushes.White));
             // "working · Terminal", or "Vibe · working · Terminal" where the tool has to be said.
-            text.Children.Add(Ui.Label((both ? (isVibe ? "Vibe · " : "Claude · ") : "") + AiText.State(session.State)
-                + (session.App is { } app ? " · " + app : ""), 9, FontWeights.Normal, Quiet));
-            var row = new DockPanel { Margin = new Thickness(0, 6, 0, 0), Background = Brushes.Transparent, Cursor = Cursors.Hand };
+            var waits = session.State == AiState.Waiting;
+            var tool = both ? (isVibe ? "Vibe · " : "Claude · ") : "";
+            // Waiting, and saying for what: the question itself is the
+            // line, in amber — that is the one to read.
+            var line = waits && !string.IsNullOrEmpty(session.Wants)
+                ? tool + session.Wants
+                : tool + AiText.State(session.State) + (session.App is { } app ? " · " + app : "");
+            text.Children.Add(Ui.Label(line, 9, waits ? FontWeights.SemiBold : FontWeights.Normal, waits ? Ui.Solid(ActivityLook.Amber) : Quiet));
+            var row = new DockPanel { Background = Brushes.Transparent };
             DockPanel.SetDock(dot, Dock.Left);
             row.Children.Add(dot);
             row.Children.Add(text);
+            // Waiting rows stand on amber, so they read as a group apart
+            // from the rest of the list.
+            var plate = new Border
+            {
+                Child = row, Margin = new Thickness(waits ? -5 : 0, 6, waits ? -5 : 0, 0), Padding = new Thickness(waits ? 5 : 0, waits ? 3 : 0, waits ? 5 : 0, waits ? 3 : 0),
+                CornerRadius = new CornerRadius(6), Cursor = Cursors.Hand,
+                Background = waits ? Ui.Solid(Color.FromArgb(41, ActivityLook.Amber.R, ActivityLook.Amber.G, ActivityLook.Amber.B)) : Brushes.Transparent,
+            };
             var pid = session.Pid;
-            row.ToolTip = L.T("Go to its app", "Přejít do její aplikace");
-            row.MouseLeftButtonUp += (_, e) => { HostApp.BringForward(pid); _m.Close?.Invoke(); e.Handled = true; };
-            card.Children.Add(row);
+            plate.ToolTip = L.T("Go to its app", "Přejít do její aplikace");
+            plate.MouseLeftButtonUp += (_, e) => { HostApp.BringForward(pid); _m.Close?.Invoke(); e.Handled = true; };
+            card.Children.Add(plate);
         }
         return Card(card);
     }

@@ -52,6 +52,9 @@ internal static partial class Native
 
     [LibraryImport("user32.dll")] public static partial IntPtr GetForegroundWindow();
 
+    /// Goes up by one every time the clipboard's content changes.
+    [LibraryImport("user32.dll")] public static partial uint GetClipboardSequenceNumber();
+
     [LibraryImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool SetForegroundWindow(IntPtr hwnd);
 

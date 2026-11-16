@@ -22,6 +22,8 @@ public partial class App : Application
     private readonly PowerWatcher _power = new();
     private readonly OutputWatcher _output = new();
     private readonly MeetingReminder _reminder = new();
+    private readonly FileWatcher _files = new();
+    private readonly GitHubWatcher _github = new();
     private ClaudeMonitor _claude = null!;
     private VibeMonitor _vibe = null!;
 
@@ -92,7 +94,13 @@ public partial class App : Application
         var timer = CountdownTimer.Shared;
         _model.TimerRunning = timer.IsActive;
         timer.PropertyChanged += (_, _) => _model.TimerRunning = timer.IsActive;
-        timer.Finished += minutes => _activityPeek.Show(new NotchActivity.TimerDone(minutes));
+        timer.Finished += minutes =>
+        {
+            _activityPeek.Show(new NotchActivity.TimerDone(minutes));
+            if (Settings.Current.TimerStopsMusic && !Demo.IsOn) MusicFade.Run(_model);
+        };
+        // Started again while the music is fading: the fade stops.
+        timer.PropertyChanged += (_, _) => { if (timer.IsActive) MusicFade.Cancel(); };
         timer.PhaseStarted += (phase, minutes) =>
             _activityPeek.Show(new NotchActivity.Pomodoro(phase == PomodoroPhase.Rest, minutes));
 
@@ -116,8 +124,31 @@ public partial class App : Application
         _reminder.Start();
 
         // Claude Code and Mistral Vibe, each only while switched on.
-        _claude = new ClaudeMonitor(_model) { OnEvent = _activityPeek.Show };
-        _vibe = new VibeMonitor(_model) { OnEvent = _activityPeek.Show };
+        // Two or more waiting at once are said in one message.
+        void Said(NotchActivity activity) => _activityPeek.Show(AiSummary.ForAllWaiting(activity, _model.Claude, _model.Vibe));
+        _claude = new ClaudeMonitor(_model) { OnEvent = Said };
+        _vibe = new VibeMonitor(_model) { OnEvent = Said };
+
+        // What the Mac's 1.0.15 brought, each off until switched on: a
+        // finished download and a screenshot, GitHub's news, the clipboard's page.
+        _files.OnArrival = file => _activityPeek.Show(new NotchActivity.FileArrived(file));
+        _github.OnEvent = _activityPeek.Show;
+        if (!Demo.IsOn)
+        {
+            void ApplyFeeds()
+            {
+                var s = Settings.Current;
+                _files.Apply(s.ShowDownloads, s.ShowScreenshots);
+                _github.Apply(s.ShowGitHub, s.GitHubRepos);
+                ClipboardStore.Shared.SetEnabled(s.ShowClipboard);
+            }
+            ApplyFeeds();
+            Settings.Current.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName is nameof(Settings.ShowDownloads) or nameof(Settings.ShowScreenshots) or nameof(Settings.ShowGitHub)
+                    or nameof(Settings.GitHubRepos) or nameof(Settings.ShowClipboard)) ApplyFeeds();
+            };
+        }
         if (!Demo.IsOn)
         {
             // `RESONATA_DEBUG_CLAUDE=1`: what Claude Code's monitor reads on

@@ -1,7 +1,7 @@
 # Resonata pro Windows — návod
 
-Přehrávač na pravém okraji obrazovky, kousek pod horním rohem: úzký výstupek
-s obalem, názvem skladby a pruhy. Ukazuje, co zrovna hraje,
+Přehrávač na pravém okraji obrazovky, kousek pod horním rohem: malý výstupek
+bez textu, jen v barvě alba a s vlnkou, když něco hraje. Ukazuje, co zrovna hraje,
 texty písní, poznámky, zástupce aplikací, časovač a polici na soubory.
 Kdo chce, zapne si i limity a stav Claude Code a Mistral Vibe.
 
@@ -11,10 +11,10 @@ dalších přehrávačů.
 
 ## Instalace
 
-1. Z [vydání na GitHubu](https://github.com/Durik24/Resonata/releases/tag/win-v1.4.1)
-   stáhni `Resonata-Setup-1.4.1.exe` a spusť ho. Je pro počítače s procesorem
+1. Z [vydání na GitHubu](https://github.com/Durik24/Resonata/releases/tag/win-v1.4.2)
+   stáhni `Resonata-Setup-1.4.2.exe` a spusť ho. Je pro počítače s procesorem
    Intel nebo AMD. Na počítači s procesorem ARM (třeba Snapdragon X) běží taky,
-   jen přes emulaci a pomaleji; verze 1.4.1 vlastní Setup pro ARM nemá.
+   jen přes emulaci a pomaleji; verze 1.4.2 vlastní Setup pro ARM nemá.
 2. Když se objeví modré okno SmartScreen, klikni na **Další informace** a pak
    **Přesto spustit**. Instalátor není podepsaný placeným certifikátem.
 3. Windows se zeptá, jestli povolit aplikaci od **neznámého vydavatele**.
@@ -76,7 +76,7 @@ vyletí z výstupku. Stránky jsou pod sebou.
   další kliknutí mimo panel nebo na prázdné místo v jeho horním pruhu ho zavře.
 
 **Když se nic neděje**, tedy nic nehraje, neběží časovač a nepracuje žádná
-relace Claude Code ani Vibe, výstupek po půl minutě zajede celý. Vrátí se, když
+relace Claude Code ani Vibe, výstupek po deseti vteřinách zajede celý. Vrátí se, když
 se něco stane, nebo když kurzorem najedeš na jeho místo úplně u okraje
 obrazovky. Vypíná se to v **Settings → Sliding out → Hide the tab while nothing
 is going on**.
@@ -97,9 +97,29 @@ celou obrazovku se sama nevysouvá.
 - **Poznámky a úkoly**: ukládá se průběžně a jen u tebe v počítači.
 - **Aplikace**: až 11 zástupců. Přidáš je tlačítkem +, řadíš v nastavení.
 - **Časovač**: 5–60 minut jedním klepnutím, libovolná délka v kruhu, nebo Pomodoro.
+  Přepínač **Na konci zastavit hudbu**: když časovač doběhne, hudba se deset
+  sekund ztišuje a pak se pozastaví (u Spotify se ztišuje jeho vlastní
+  hlasitost a pak se vrátí; jiný přehrávač se jen pozastaví). Při Pomodoru ne.
 - **Police**: soubory si tu odložíš a pak je odtáhneš, kam potřebuješ. Kliknutím
   se otevřou. Ukládá se jen cesta, ne kopie souboru.
+- **Schránka**: jen když ji zapneš v **Settings → Open panel → Clipboard page**.
+  Posledních 20 zkopírovaných věcí (text, odkazy, barvy, obrázky, soubory),
+  kliknutí je vrátí do schránky. Drží se jen v paměti, po ukončení Resonaty
+  zmizí. Co správce hesel označí, že se nemá ukládat, se nevezme.
 - **Limity**: jen se zapnutým Claude Code nebo Vibe, viz níž.
+
+## Další zprávy
+
+Všechny jsou vypnuté, dokud je nezapneš v nastavení.
+
+- **Dokončené stažení a snímek obrazovky** (**Settings → Messages**): nový
+  soubor ve složce Stažené soubory nebo v Obrázky → Snímky obrazovky. Kliknutí
+  na zprávu ukáže soubor v jeho složce.
+- **GitHub** (**Settings → GitHub**): napiš až čtyři repozitáře jako
+  `vlastník/název`. Zpráva přijde, když pushne někdo jiný, když selžou testy,
+  nebo když vyjde nový release; kliknutí ji otevře na GitHubu. Ptá se přes
+  příkaz `gh`, když je nainstalovaný a přihlášený (Resonata žádný token
+  nevidí, fungují i soukromé repozitáře), jinak jen na veřejné repozitáře.
 
 ## Claude Code a Mistral Vibe
 
@@ -112,7 +132,9 @@ Claude Code and Mistral Vibe**.
 - Když se relace na něco zeptá nebo dokončí delší práci, vysune se zpráva.
   Kliknutí na ni přepne do aplikace, kde relace běží.
 - V panelu přibude stránka **Limity**: limit relace a týdne, kdy se obnoví,
-  a seznam relací.
+  a seznam relací. Relace, které čekají na odpověď, jsou nahoře (nejdéle
+  čekající první) a píšou, na co se ptají. Když čekají dvě a víc najednou,
+  řekne to jedna zpráva.
 - Když nic nehraje, limity se ukážou na výstupku i na stránce Hudba místo
   prázdného obalu. Jakmile začne hrát hudba, místo si vezme zpátky.
 
@@ -147,7 +169,7 @@ ukládá do svého nastavení v počítači. Kalendář jen čte a obnovuje se p
 
 **Nic se nevysouvá.** Podívej se na ikonu u hodin (může být schovaná pod šipkou)
 a zkus zkratku.
-Když se nic neděje, výstupek po půl minutě zajede: najeď kurzorem úplně na okraj.
+Když se nic neděje, výstupek po deseti vteřinách zajede: najeď kurzorem úplně na okraj.
 
 **Ukazuje „Nic nehraje“, i když hudba hraje.** Přehrávač se nehlásí do systému.
 Podívej se, jestli ho vidíš v panelu hlasitosti ve Windows.

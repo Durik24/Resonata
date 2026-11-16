@@ -194,7 +194,7 @@ finally {
 }
 
 # Again with nothing playing: the tab slides away altogether once nothing has
-# been going on for a while (two seconds here, half a minute as shipped), and
+# been going on for a while (two seconds here, ten as shipped), and
 # only the pointer on the very edge of the screen calls it back.
 $env:RESONATA_DEMO = '1'; $env:RESONATA_DEMO_IDLE = '1'; $env:RESONATA_TRACE = '1'; $env:RESONATA_SLEEP = '2'
 $app = Start-Process $Exe -PassThru

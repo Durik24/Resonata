@@ -188,6 +188,11 @@ public sealed class TimerPage : StackPanel, IPage
     private readonly TextBox _typed;
     private readonly List<(int Minutes, Border Pill)> _presets = [];
     private readonly WrapPanel _controls = new() { HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(8, 8, 0, 0) };
+    /// The switch under the buttons: the music stops when the timer does.
+    private readonly Border _sleepTrack = new() { Width = 26, Height = 15, CornerRadius = new CornerRadius(7.5), VerticalAlignment = VerticalAlignment.Center };
+    private readonly Border _sleepKnob = new() { Width = 12, Height = 12, CornerRadius = new CornerRadius(6), Background = Brushes.White, Margin = new Thickness(1.5, 0, 1.5, 0) };
+    private readonly Border _sleepRow = new() { Height = 24, CornerRadius = new CornerRadius(12), BorderThickness = new Thickness(1) };
+    private readonly TextBlock _sleepLabel = Ui.Label(L.T("Stop the music at the end", "Na konci zastavit hudbu"), 10.5, FontWeights.SemiBold, Brushes.White);
     private bool _writing;
     private bool _open;
     /// What the buttons under the ring were last built for — see `Refresh`.
@@ -249,6 +254,7 @@ public sealed class TimerPage : StackPanel, IPage
         }
         right.Children.Add(grid);
         right.Children.Add(_controls);
+        right.Children.Add(SleepSwitch());
         Children.Add(right);
 
         // The second's tick only matters while the page can be seen.
@@ -256,7 +262,9 @@ public sealed class TimerPage : StackPanel, IPage
         Settings.Current.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName is nameof(Settings.PomodoroWork) or nameof(Settings.PomodoroRest)) Refresh();
+            if (e.PropertyName == nameof(Settings.TimerStopsMusic)) { ShowSleepSwitch(); Refresh(); }
         };
+        ShowSleepSwitch();
         WriteChosen();
         Refresh();
     }
@@ -265,6 +273,43 @@ public sealed class TimerPage : StackPanel, IPage
     {
         _open = panelOpen;
         if (panelOpen) Refresh();
+    }
+
+    /// "Stop the music at the end": a row that is its own switch, lit in
+    /// the timer's colour while it is on.
+    private Button SleepSwitch()
+    {
+        _sleepTrack.Child = _sleepKnob;
+        var row = new DockPanel { Margin = new Thickness(10, 0, 5, 0), VerticalAlignment = VerticalAlignment.Center };
+        var moon = Ui.Icon(Glyph.Moon, 9, Brushes.White);
+        DockPanel.SetDock(moon, Dock.Left);
+        row.Children.Add(moon);
+        DockPanel.SetDock(_sleepTrack, Dock.Right);
+        _sleepTrack.Margin = new Thickness(8, 0, 0, 0);
+        row.Children.Add(_sleepTrack);
+        _sleepLabel.Margin = new Thickness(6, 0, 0, 0);
+        _sleepLabel.VerticalAlignment = VerticalAlignment.Center;
+        _sleepLabel.TextTrimming = TextTrimming.None;
+        row.Children.Add(_sleepLabel);
+        _sleepRow.Child = row;
+        var button = Ui.Button(_sleepRow, () => Settings.Current.TimerStopsMusic = !Settings.Current.TimerStopsMusic,
+            L.T("When a timer runs out, the music fades for ten seconds and pauses. Not during a Pomodoro, which goes on to its next phase.",
+                "Když časovač doběhne, hudba se deset sekund ztišuje a pak se pozastaví. Ne při Pomodoru, které pokračuje další fází."));
+        button.HorizontalAlignment = HorizontalAlignment.Center;
+        button.Margin = new Thickness(0, 4, 0, 0);
+        System.Windows.Automation.AutomationProperties.SetName(button, L.T("Stop the music at the end", "Na konci zastavit hudbu"));
+        return button;
+    }
+
+    private void ShowSleepSwitch()
+    {
+        var on = Settings.Current.TimerStopsMusic;
+        var tint = ActivityLook.Orange;
+        _sleepTrack.Background = on ? Ui.Solid(tint) : Ui.White(0.22);
+        _sleepKnob.HorizontalAlignment = on ? HorizontalAlignment.Right : HorizontalAlignment.Left;
+        _sleepRow.Background = on ? Ui.Solid(Color.FromArgb(41, tint.R, tint.G, tint.B)) : Ui.White(0.07);
+        _sleepRow.BorderBrush = on ? Ui.Solid(Color.FromArgb(140, tint.R, tint.G, tint.B)) : Brushes.Transparent;
+        _sleepRow.Opacity = on ? 1 : 0.8;
     }
 
     private RepeatButton Step(string glyph, int delta, string tip)
@@ -350,6 +395,9 @@ public sealed class TimerPage : StackPanel, IPage
         get
         {
             if (_timer.IsPaused) return L.T("paused", "pozastaveno");
+            // With the switch on, a plain timer says what its end will do.
+            if (Settings.Current.TimerStopsMusic && _timer.IsActive && _timer.Phase is null)
+                return L.T("then music stops", "pak hudba ztichne");
             return _timer.Phase switch
             {
                 PomodoroPhase.Work => L.T($"work · round {_timer.Round}", $"práce · {_timer.Round}. kolo"),

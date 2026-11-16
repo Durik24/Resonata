@@ -370,5 +370,96 @@ Check(AiText.TabLine(new ClaudeStatus(AiState.Working, Usage: usage), null).Star
 Check(new PanelModel().NubHeight == PanelModel.NubBaseHeight && new PanelModel { Claude = new ClaudeStatus(), Vibe = new VibeStatus() }.NubHeight == PanelModel.NubBaseHeight + 2 * PanelModel.NubRingStep,
     "each ring makes the tab longer");
 
+
+// What came with the Mac's 1.0.15: sessions waiting, the fade at a timer's
+// end, files arriving, GitHub's news, the clipboard's page.
+var since = new DateTime(2026, 11, 16, 10, 0, 0);
+var waitingRows = AiSummary.Rows(
+    new ClaudeStatus { Sessions = [new AiSession(1, "late", AiState.Waiting, Wants: "rm", Since: since.AddMinutes(5)), new AiSession(2, "work", AiState.Working)] },
+    new VibeStatus { Sessions = [new AiSession(3, "early", AiState.Waiting, null, "v", "approve", since)] });
+Check(waitingRows.Select(r => r.Session.Name).SequenceEqual(["early", "late", "work"]), "of the sessions waiting, the one that has waited longest is first");
+var asks = new NotchActivity.AiWaiting("Claude Code", "late", "rm", 1);
+Check(AiSummary.ForAllWaiting(asks, new ClaudeStatus { Sessions = [new AiSession(1, "late", AiState.Waiting)] }, null) == asks, "one session waiting is said as itself");
+Check(AiSummary.ForAllWaiting(asks, new ClaudeStatus { Sessions = [new AiSession(1, "late", AiState.Waiting, Since: since.AddMinutes(5))] },
+        new VibeStatus { Sessions = [new AiSession(3, "early", AiState.Waiting, null, "v", "approve", since)] })
+    is NotchActivity.SessionsWaiting { Count: 2, Session: "early", Wants: "approve", Pid: 3 }, "two waiting are one message, naming the one that has waited longest");
+var done = new NotchActivity.AiDone("Vibe", "x", 1);
+Check(ReferenceEquals(AiSummary.ForAllWaiting(done, new ClaudeStatus { Sessions = [new AiSession(1, "a", AiState.Waiting), new AiSession(2, "b", AiState.Waiting)] }, null), done),
+    "a message that isn't about waiting is left as it is");
+Check(NotchActivity.WaitingTitle(2, true) == "2 relace čekají" && NotchActivity.WaitingTitle(5, true) == "5 relací čeká" && NotchActivity.WaitingTitle(3, false) == "3 sessions are waiting",
+    "Czech counts two to four sessions one way and five up another");
+Check(AiSummary.WaitingChip(1, true) == "1 čeká" && AiSummary.WaitingChip(3, true) == "3 čekají" && AiSummary.WaitingChip(2, false) == "2 waiting", "and so does the chip on the sessions card");
+Check(new NotchActivity.SessionsWaiting(2, "a", null, 7).SessionPid == 7, "a click on several waiting goes to the one named");
+
+Check(MusicSleep.Levels(80, 4).SequenceEqual([60, 40, 20, 0]), "the fade steps evenly down to silence");
+Check(MusicSleep.Levels(100, 20) is { Count: 20 } fade && fade[0] == 95 && fade[^1] == 0, "twenty steps from full volume");
+Check(MusicSleep.Levels(0, 20).Count == 0 && MusicSleep.Levels(50, 0).Count == 0, "nothing to fade from silence");
+
+Check(FileArrival.IsTemporary("film.mkv.crdownload") && FileArrival.IsTemporary("x.PART") && FileArrival.IsTemporary(".hidden")
+    && FileArrival.IsTemporary("~$report.docx") && FileArrival.IsTemporary("desktop.ini") && !FileArrival.IsTemporary("invoice.pdf"),
+    "a browser's part-file is a download still on its way");
+Check(FileArrival.Candidates(["b.pdf", "a.pdf", "c.part", "old.txt"], new HashSet<string> { "old.txt" }).SequenceEqual(["a.pdf", "b.pdf"]), "only new names that could be a finished file");
+var downloads = new HashSet<FileKind> { FileKind.Download };
+var shots = new HashSet<FileKind> { FileKind.Screenshot };
+Check(FileArrival.KindOf(downloads, false, true, 5) == FileKind.Download && FileArrival.KindOf(shots, true, false, 5) == FileKind.Screenshot, "a new file is what its folder is watched for");
+Check(FileArrival.KindOf(downloads, false, true, 700) is null, "an old file moved into the folder is not a download finishing");
+Check(FileArrival.KindOf(downloads, true, false, 5) is null && FileArrival.KindOf(new HashSet<FileKind>(), true, true, 5) is null, "a kind that isn't watched says nothing");
+var british = System.Globalization.CultureInfo.GetCultureInfo("en-GB");
+var czechCulture = System.Globalization.CultureInfo.GetCultureInfo("cs-CZ");
+Check(FileArrival.Size(812, british) == "812 B" && FileArrival.Size(24_400, british) == "24 kB" && FileArrival.Size(2_400_000, british) == "2.4 MB"
+    && FileArrival.Size(2_400_000, czechCulture) == "2,4 MB" && FileArrival.Size(1_200_000_000, british) == "1.2 GB", "a file's size, as people say it");
+Check(FileArrival.DetailOf(FileKind.Download, "a.pdf", 2_400_000, "Downloads", british, "in") == "a.pdf · 2.4 MB"
+    && FileArrival.DetailOf(FileKind.Download, "a.pdf", null, "Downloads", british, "in") == "a.pdf"
+    && FileArrival.DetailOf(FileKind.Screenshot, "Screenshot 2026.png", 5, "Screenshots", british, "in") == "in Screenshots", "a download says its name and size, a screenshot where it went");
+Check(new NotchActivity.FileArrived(new FileArrival(FileKind.Download, @"C:\Users\me\Downloads\a.pdf", 5)).FilePath == @"C:\Users\me\Downloads\a.pdf", "a click on a file's message has the file to show");
+
+Check(GitHubFeed.Repos("Durik24/Resonata, https://github.com/a/b.git  a/B  bad  x/y/z; c/d e/f").SequenceEqual(["Durik24/Resonata", "a/b", "x/y", "c/d"]),
+    "repositories as owner/name, a pasted address too, each once, four at most");
+Check(GitHubFeed.Repos("a b/c$ /x ../..").Count == 0, "anything that isn't a repository's name is passed over");
+var commitJson = """[{"sha":"abc123","html_url":"https://github.com/o/r/commit/abc123","author":{"login":"durik"},"commit":{"message":"Fix the wave\n\nLonger text","author":{"name":"Durik"}}}]""";
+Check(GitHubFeed.CommitFrom(commitJson) is { Sha: "abc123", Login: "durik", Name: "Durik", Message: "Fix the wave", Url: "https://github.com/o/r/commit/abc123" }, "the newest commit, with the first line of its message");
+Check(GitHubFeed.CommitFrom("[]") is null && GitHubFeed.CommitFrom("""{"message":"Not Found"}""") is null && GitHubFeed.CommitFrom("no json") is null, "an answer with no commit in it");
+var runsJson = """{"workflow_runs":[{"id":12,"name":"Tests","head_branch":"main","conclusion":null},{"id":11,"name":"Tests","head_branch":"main","conclusion":"failure","html_url":"https://github.com/o/r/actions/runs/11"},{"id":10,"name":"Tests","head_branch":"main","conclusion":"success"}]}""";
+var runs = GitHubFeed.RunsFrom(runsJson);
+Check(runs.Count == 3 && runs[0] is { Id: 12, Conclusion: null } && runs[1] is { Id: 11, Conclusion: "failure", Branch: "main" }, "the runs of the checks, one still running");
+Check(GitHubFeed.ReleaseFrom("""[{"id":7,"tag_name":"v1.0.15","draft":false,"author":{"login":"durik"},"html_url":"https://github.com/o/r/releases/tag/v1.0.15"}]""")
+    is { Id: 7, Tag: "v1.0.15", Draft: false, Author: "durik" }, "the newest release");
+var commit = GitHubFeed.CommitFrom(commitJson);
+var first = GitHubFeed.News("o/r", null, commit, runs, null, "me");
+Check(first.Events.Count == 0 && first.Snapshot == new GitHubSnapshot("abc123", 11, 0), "the first look says nothing, and remembers no release as none so far");
+Check(GitHubFeed.News("o/r", null, commit, [], null, null).Snapshot.Run == 0, "no checks yet is remembered too");
+var pushed = GitHubFeed.News("o/r", new GitHubSnapshot("old", 11, 0), commit, runs, null, "me");
+Check(pushed.Events is [NotchActivity.GitHubPush { Who: "durik", Repo: "r", Message: "Fix the wave" }] && pushed.Snapshot.Commit == "abc123", "somebody else's push is said");
+Check(GitHubFeed.News("o/r", new GitHubSnapshot("old", 11, 0), commit, runs, null, "Durik").Events.Count == 0, "your own push is no news");
+var failedRun = GitHubFeed.News("o/r", new GitHubSnapshot("old", 10, 0), commit, runs, null, null);
+Check(failedRun.Events is [NotchActivity.GitHubChecksFailed { Repo: "r", Detail: "main · Tests" }, NotchActivity.GitHubPush] && failedRun.Snapshot.Run == 11,
+    "failed checks come first, and a run still going is not counted");
+var released = GitHubFeed.News("o/r", new GitHubSnapshot("abc123", 11, 0), commit, runs, new GitHubFeed.Release(7, "v2", "durik", false, null), "me");
+Check(released.Events is [NotchActivity.GitHubRelease { Repo: "r", Tag: "v2" }] && released.Snapshot.Release == 7, "a first release is news");
+Check(GitHubFeed.News("o/r", new GitHubSnapshot("abc123", 11, 0), commit, runs, new GitHubFeed.Release(7, "v2", "durik", true, null), "me").Events.Count == 0, "a draft is not");
+Check(GitHubFeed.News("o/r", new GitHubSnapshot("abc123", 11, 5), null, [], null, null).Snapshot == new GitHubSnapshot("abc123", 11, 5), "what couldn't be read keeps what was known");
+Check(GitHubFeed.Interval(3, true) == 120 && GitHubFeed.Interval(1, false) == 300 && GitHubFeed.Interval(4, false) == 960, "asked less often without signing in");
+Check(new NotchActivity.GitHubPush("a", "r", "", "https://github.com/o/r/commit/1").Link == "https://github.com/o/r/commit/1"
+    && new NotchActivity.GitHubPush("a", "r", "", "https://example.com/x").Link is null && new NotchActivity.GitHubRelease("r", "v1", null).Link is null,
+    "a click opens only an address on GitHub");
+
+Check(ClipRules.Classify("#e8875b") == (ClipKind.Colour, "#E8875B") && ClipRules.Classify(" https://example.com/a?b ") == (ClipKind.Link, "https://example.com/a?b")
+    && ClipRules.Classify("www.example.com") is { Kind: ClipKind.Link } && ClipRules.Classify("hello\nworld") == (ClipKind.Text, "hello\nworld"), "a copied string is a colour, an address or text");
+Check(ClipRules.Classify("  \n ") is null && ClipRules.Classify("two words https://example.com") is { Kind: ClipKind.Text }, "blank is nothing, and a sentence with an address in it is text");
+Check(ClipRules.IsSecret(["UnicodeText", "ExcludeClipboardContentFromMonitorProcessing"], null) && ClipRules.IsSecret(["UnicodeText"], 0)
+    && !ClipRules.IsSecret(["UnicodeText"], 1) && !ClipRules.IsSecret(["UnicodeText"], null), "what a password manager marks is not kept");
+static bool SameText(string a, string b) => a == b;
+Check(ClipRules.Adding("b", ["a", "b", "c"], SameText, _ => false).SequenceEqual(["b", "a", "c"]), "the same thing copied again moves to the front");
+Check(ClipRules.Adding("new", Enumerable.Range(0, 30).Select(i => "t" + i), SameText, _ => false) is { Count: ClipRules.Limit } kept && kept[0] == "new", "the oldest fall off the end");
+Check(ClipRules.Adding("p9", Enumerable.Range(0, 8).Select(i => "p" + i).Append("text"), SameText, s => s.StartsWith('p')) is { } withPictures
+    && withPictures.Count(s => s.StartsWith('p')) == ClipRules.PictureLimit && withPictures.Contains("text") && withPictures[0] == "p9", "only the newest few pictures are kept");
+var copied = new DateTime(2026, 11, 16, 12, 0, 0);
+Check(ClipRules.Age(copied, copied.AddSeconds(30), false) == "now" && ClipRules.Age(copied, copied.AddMinutes(4), false) == "4 min ago"
+    && ClipRules.Age(copied, copied.AddHours(2), true) == "před 2 h" && ClipRules.Age(copied, copied.AddMinutes(4), true) == "před 4 min"
+    && ClipRules.Age(copied, copied.AddDays(2), false) == "16 Nov", "how long ago it was copied");
+Check(ClipRules.Shown("  a \n\n b ") == "a b" && ClipRules.Shortened("https://www.example.cz/a") == "example.cz/a", "a card shows the text run together and an address without its https");
+Check(ClipRules.Fitted(1000, 500, 160, 160) == (160, 80) && ClipRules.Fitted(10, 10, 160, 160) == (10, 10) && ClipRules.Fitted(0, 0, 44, 26) == (44, 26), "a picture is fitted into its box and never scaled up");
+Check(!TabInfo.Shown.Contains(PanelTab.Clipboard) && PanelTab.Clipboard.Title().Length > 0, "the clipboard's page is there only once switched on");
+
 Console.WriteLine($"{passed} passed, {failed} failed");
 return failed == 0 ? 0 : 1;

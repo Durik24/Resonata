@@ -4,7 +4,7 @@ using System.Windows.Threading;
 
 namespace Resonata;
 
-public enum PanelTab { Music, Notes, Apps, Timer, Shelf, Usage }
+public enum PanelTab { Music, Notes, Apps, Timer, Shelf, Clipboard, Usage }
 
 public static class Glyph
 {
@@ -20,6 +20,11 @@ public static class Glyph
 
     /// A gauge (SpeedHigh), a question mark in a circle (Help).
     public const string Usage = "", Asking = "";
+
+    /// Paste, Camera, Link; and for GitHub: a branch (Segoe's
+    /// "BranchFork2"), a cross in a ring (ErrorBadge), a tag.
+    public const string Clipboard = "", Camera = "", Link = "";
+    public const string Branch = "", Failed = "", Tag = "";
 
     public static string Battery(int percent, bool charging)
     {
@@ -46,13 +51,21 @@ public static class TabInfo
         PanelTab.Apps => Glyph.Apps,
         PanelTab.Timer => Glyph.Timer,
         PanelTab.Usage => Glyph.Usage,
+        PanelTab.Clipboard => Glyph.Clipboard,
         _ => Glyph.Shelf,
     };
 
+    private static bool IsShown(PanelTab tab) => tab switch
+    {
+        PanelTab.Usage => Settings.Current.ShowClaude || Settings.Current.ShowVibe || Demo.ShowsAi,
+        PanelTab.Clipboard => Settings.Current.ShowClipboard,
+        _ => true,
+    };
+
     /// The pages there are right now: the limits only while Claude Code or
-    /// Mistral Vibe is switched on in Settings.
-    public static IReadOnlyList<PanelTab> Shown =>
-        Enum.GetValues<PanelTab>().Where(t => t != PanelTab.Usage || Settings.Current.ShowClaude || Settings.Current.ShowVibe || Demo.ShowsAi).ToList();
+    /// Mistral Vibe is switched on in Settings, the clipboard's only while
+    /// it is.
+    public static IReadOnlyList<PanelTab> Shown => Enum.GetValues<PanelTab>().Where(IsShown).ToList();
 
     public static string Title(this PanelTab tab) => tab switch
     {
@@ -60,6 +73,7 @@ public static class TabInfo
         PanelTab.Notes => L.T("Notes and to-dos", "Poznámky a úkoly"),
         PanelTab.Apps => L.T("Apps", "Aplikace"),
         PanelTab.Timer => L.T("Timer", "Časovač"),
+        PanelTab.Clipboard => L.T("Clipboard", "Schránka"),
         PanelTab.Usage => (Settings.Current.ShowClaude, Settings.Current.ShowVibe) switch
         {
             (true, true) => L.T("Claude Code and Vibe limits", "Limity Claude Code a Vibe"),
@@ -150,17 +164,19 @@ public sealed class PanelModel : Observable
     public double ExpandedWidth => 320;
     public const double RailWidth = 38;
     public const double ExpandedHeight = 440;
-    /// The tab on the screen's edge, long enough to say what's playing; its
+    /// The tab on the screen's edge, short and with no words on it; its
     /// height takes in the flare at each end.
     public const double NubWidth = 20;
-    public const double NubBaseHeight = 275;
+    public const double NubBaseHeight = 100;
+    /// The strip is long enough to say what's playing.
+    public const double PillBaseHeight = 275;
     /// Each ring on it makes it this much longer.
     public const double NubRingStep = 22;
     public double NubHeight => NubBaseHeight + AiRings * NubRingStep;
     /// The strip the tab grows into to say what's playing: along the edge,
-    /// not out from it: the tab, as long as it is, grown wider.
+    /// not out from it: the tab grown wider and longer.
     public const double PillWidth = 44;
-    public double PillHeight => NubHeight;
+    public double PillHeight => PillBaseHeight + AiRings * NubRingStep;
 
     public Action? SwitchScreen { get; set; }
     public Action? Open { get; set; }
@@ -183,6 +199,17 @@ public abstract record NotchActivity
     public sealed record AiWaiting(string Tool, string Session, string? Wants, int Pid) : NotchActivity;
     /// A session has finished what it was doing.
     public sealed record AiDone(string Tool, string Session, int Pid) : NotchActivity;
+    /// Two or more sessions are waiting at once: how many, and the one that
+    /// has waited longest.
+    public sealed record SessionsWaiting(int Count, string Session, string? Wants, int Pid) : NotchActivity;
+    /// A download has finished, or a screenshot was taken.
+    public sealed record FileArrived(FileArrival File) : NotchActivity;
+    /// Somebody else pushed to a repository that is followed.
+    public sealed record GitHubPush(string Who, string Repo, string Message, string? Url) : NotchActivity;
+    /// The checks of a followed repository failed.
+    public sealed record GitHubChecksFailed(string Repo, string Detail, string? Url) : NotchActivity;
+    /// A followed repository has a new release.
+    public sealed record GitHubRelease(string Repo, string Tag, string? Url) : NotchActivity;
 
     public double Duration => this is Charging or LowBattery or Headphones ? 3 : 6;
 
@@ -192,7 +219,19 @@ public abstract record NotchActivity
     public bool WaitsForClose => this is not (Charging or Headphones or AiDone);
 
     /// The process of the session this is about, for a click to go to.
-    public int? SessionPid => this switch { AiWaiting w => w.Pid, AiDone d => d.Pid, _ => null };
+    public int? SessionPid => this switch { AiWaiting w => w.Pid, AiDone d => d.Pid, SessionsWaiting s => s.Pid, _ => null };
+
+    /// The page a click on the message opens: GitHub's. Only ever an
+    /// address on github.com — it comes from GitHub's own answer.
+    public string? Link => (this switch { GitHubPush p => p.Url, GitHubChecksFailed c => c.Url, GitHubRelease r => r.Url, _ => null })
+        is { } url && url.StartsWith("https://github.com/", StringComparison.Ordinal) ? url : null;
+
+    /// The file the message is about: a click shows it in its folder.
+    public string? FilePath => this is FileArrived f ? f.File.Path : null;
+
+    /// "2 sessions are waiting" — Czech counts 2 to 4 one way and 5 up another.
+    public static string WaitingTitle(int count, bool czech) =>
+        czech ? (count is >= 2 and <= 4 ? $"{count} relace čekají" : $"{count} relací čeká") : $"{count} sessions are waiting";
 
     public ActivityLook Look => this switch
     {
@@ -207,6 +246,15 @@ public abstract record NotchActivity
         AiWaiting w => new(Glyph.Asking, ActivityLook.Amber, L.T($"{w.Tool} is waiting", $"{w.Tool} čeká"),
             w.Session + (string.IsNullOrEmpty(w.Wants) ? "" : " · " + w.Wants), ""),
         AiDone d => new(Glyph.CircleCheck, ActivityLook.Green, L.T($"{d.Tool} has finished", $"{d.Tool} dokončil"), d.Session, ""),
+        SessionsWaiting s => new(Glyph.Asking, ActivityLook.Amber, WaitingTitle(s.Count, Settings.Current.Language == AppLanguage.Czech),
+            s.Session + (string.IsNullOrEmpty(s.Wants) ? "" : " · " + s.Wants), ""),
+        FileArrived f => new(f.File.Kind == FileKind.Screenshot ? Glyph.Camera : Glyph.Download, ActivityLook.Green, f.File.Title, f.File.Detail, ""),
+        // "Push from", not "X pushed": Czech would need to know whether X is a he or a she.
+        GitHubPush p => new(Glyph.Branch, ActivityLook.Sky, L.T($"Push from {p.Who}", $"Push od {p.Who}"),
+            p.Message.Length == 0 ? p.Repo : $"{p.Repo} · {p.Message}", ""),
+        GitHubChecksFailed c => new(Glyph.Failed, ActivityLook.Coral, L.T("Checks failed", "Testy selhaly"),
+            c.Detail.Length == 0 ? c.Repo : $"{c.Repo} · {c.Detail}", ""),
+        GitHubRelease r => new(Glyph.Tag, ActivityLook.Sky, L.T("New release", "Nový release"), $"{r.Repo} · {r.Tag}", ""),
         _ => throw new InvalidOperationException(),
     };
 }
@@ -218,6 +266,8 @@ public sealed record ActivityLook(string Symbol, Color Tint, string Title, strin
     public static readonly Color Blue = Color.FromRgb(92, 158, 255);
     public static readonly Color Orange = Color.FromRgb(255, 158, 64);
     public static readonly Color Amber = Color.FromRgb(245, 166, 36);
+    /// GitHub's blue, and the red of its failed checks.
+    public static readonly Color Sky = Color.FromRgb(128, 179, 255), Coral = Color.FromRgb(255, 138, 128);
     /// Claude Code's orange, its week's blue, a model's violet, Mistral's redder orange.
     public static readonly Color Claude = Color.FromRgb(232, 135, 92), Week = Color.FromRgb(128, 179, 255),
         Violet = Color.FromRgb(186, 168, 255), Vibe = Color.FromRgb(250, 79, 15);

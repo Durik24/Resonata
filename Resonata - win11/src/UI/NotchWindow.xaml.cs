@@ -60,6 +60,9 @@ public partial class NotchWindow : Window
     private readonly LinearGradientBrush _wash = new(
         new GradientStopCollection { new(Colors.Transparent, 0), new(Colors.Transparent, 0.45), new(Colors.Transparent, 1) },
         new Point(0, 0), new Point(1, 1)) { MappingMode = BrushMappingMode.Absolute };
+    /// The tab's own colour: the album's, down its length.
+    private readonly LinearGradientBrush _nubTint = new(
+        new GradientStopCollection { new(Colors.Transparent, 0), new(Colors.Transparent, 1) }, new Point(0.5, 0), new Point(0.5, 1));
     private bool _waveShown;
     private readonly PageSwipeTracker _pageSwipe = new(), _pillSwipe = new(), _wheelStrip = new(), _pillWheel = new(), _pageWheel = new();
     private readonly WheelRoute _wheelRoute = new();
@@ -100,7 +103,7 @@ public partial class NotchWindow : Window
     /// How long nothing has to be going on before the tab slides away, and
     /// how soon it goes back after the pointer called it out for nothing.
     private static readonly double SleepAfterSeconds =
-        double.TryParse(Environment.GetEnvironmentVariable("RESONATA_SLEEP"), System.Globalization.CultureInfo.InvariantCulture, out var s) ? s : 30;
+        double.TryParse(Environment.GetEnvironmentVariable("RESONATA_SLEEP"), System.Globalization.CultureInfo.InvariantCulture, out var s) ? s : 10;
     private const double SleepAgainSeconds = 3, EdgeTouchSeconds = 0.15;
 
     /// The cover flying between the tab or the strip and the panel (see `StartFlight`).
@@ -139,6 +142,7 @@ public partial class NotchWindow : Window
         _m = model;
         InitializeComponent();
         Wash.Fill = _wash;
+        NubTint.Fill = _nubTint;
 
         _timerBadge = Ui.Label("", 11, FontWeights.SemiBold, Ui.Solid(ActivityLook.Orange));
         _timerBadge.HorizontalAlignment = HorizontalAlignment.Center;
@@ -322,6 +326,7 @@ public partial class NotchWindow : Window
                 break;
             case nameof(Settings.ShowClaude):
             case nameof(Settings.ShowVibe):
+            case nameof(Settings.ShowClipboard):
                 RefreshTabs();
                 break;
             case nameof(Settings.WaveColour):
@@ -359,6 +364,11 @@ public partial class NotchWindow : Window
         for (var i = 0; i < targets.Length; i++)
             _wash.GradientStops[i].BeginAnimation(GradientStop.ColorProperty,
                 new ColorAnimation(targets[i], TimeSpan.FromSeconds(0.45)) { EasingFunction = Anim.EaseInOut });
+        // The tab is all colour: there is nothing else on it to say what plays.
+        Color[] nub = [At(0.8), At(0.3)];
+        for (var i = 0; i < nub.Length; i++)
+            _nubTint.GradientStops[i].BeginAnimation(GradientStop.ColorProperty,
+                new ColorAnimation(nub[i], TimeSpan.FromSeconds(0.45)) { EasingFunction = Anim.EaseInOut });
     }
 
     private void UpdatePill()
@@ -378,25 +388,20 @@ public partial class NotchWindow : Window
         PillDetail.Foreground = look is not null ? Ui.Solid(look.Tint) : Ui.White(0.55);
         PillDetail.FontWeight = look is not null ? FontWeights.SemiBold : FontWeights.Normal;
 
-        // On the tab itself, all the time: the song, and after it who it's by.
-        NubTitle.Inlines.Clear();
-        NubTitle.Inlines.Add(new System.Windows.Documents.Run(_m.Track?.Title ?? (ai ? aiLine : "Resonata")) { Foreground = Ui.White(_m.Track is not null ? 0.9 : ai ? 0.75 : 0.4) });
-        if (_m.Track is { Artist.Length: > 0 } playing)
-            NubTitle.Inlines.Add(new System.Windows.Documents.Run("   " + playing.Artist) { Foreground = Ui.White(0.5), FontWeight = FontWeights.Normal });
 
         _pillSymbol.Text = look?.Symbol ?? (_m.Track is null && _m.TimerRunning ? Glyph.Timer : "");
         _pillSymbol.Foreground = look is not null ? Ui.Solid(look.Tint) : Ui.Solid(ActivityLook.Orange);
         _pillCover.Visibility = _pillSymbol.Text.Length > 0 ? Visibility.Hidden : Visibility.Visible;
         CoverSlot.Visibility = ai && _pillSymbol.Text.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
-        NubCoverSlot.Visibility = ai ? Visibility.Collapsed : Visibility.Visible;
+
 
         var live = _m.Track?.IsPlaying == true || NowForcedLive;
         _bars.Visibility = look is null && !showTimer ? Visibility.Visible : Visibility.Collapsed;
         _bars.IsAnimating = live;
         _bars.Tint = Ui.White(live ? 0.85 : 0.35);
-        // The tab's: the album's colour while it plays, quiet dots otherwise.
-        NubBars.IsAnimating = live;
-        NubBars.Tint = live && Ui.AccentText(_m.Accent) is { } accent ? Ui.Solid(accent) : Ui.White(live ? 0.85 : 0.4);
+        // The tab's: a wave down it while a song is there, moving while it plays.
+        NubWave.Visibility = _m.Track is not null || NowForcedLive ? Visibility.Visible : Visibility.Collapsed;
+        NubWave.IsAnimating = live;
 
         _trailSymbol.Visibility = look is not null ? Visibility.Visible : Visibility.Collapsed;
         _trailSymbol.Text = look?.Trailing ?? "";
@@ -929,12 +934,16 @@ public partial class NotchWindow : Window
         if (!_m.IsExpanded)
         {
             e.Handled = true;
-            // A session's message out: the click goes to the session's app.
-            if (_m.ActivityShown && _m.Activity?.SessionPid is { } pid)
+            // A message out that is about something elsewhere: the click
+            // goes there — the session's app, GitHub's page, the file in
+            // its folder.
+            if (_m.ActivityShown && _m.Activity is { } said && (said.SessionPid ?? 0) + (said.Link ?? said.FilePath ?? "").Length > 0)
             {
                 _m.ActivityShown = false;
                 _m.Activity = null;
-                HostApp.BringForward(pid);
+                if (said.SessionPid is { } pid) HostApp.BringForward(pid);
+                else if (said.Link is { } link) Shell.Open(link);
+                else if (said.FilePath is { } file) Shell.Reveal(file);
                 return;
             }
             Expand();
@@ -1219,6 +1228,7 @@ public partial class NotchWindow : Window
             PanelTab.Timer => new TimerPage(),
             // Two tools and a handful of sessions are taller than the panel.
             PanelTab.Usage => new UsageScroll(new UsagePage(_m)),
+            PanelTab.Clipboard => new ClipboardPage(),
             _ => new ShelfPage(),
         };
         page.RenderTransform = new TranslateTransform();

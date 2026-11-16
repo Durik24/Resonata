@@ -195,6 +195,28 @@ public sealed class Settings : Observable
     private bool _showCalendar = true;
     public bool ShowCalendar { get => _showCalendar; set => Set(ref _showCalendar, value); }
 
+    /// A finished download, a screenshot: each said in a message.
+    private bool _showDownloads;
+    public bool ShowDownloads { get => _showDownloads; set => Set(ref _showDownloads, value); }
+
+    private bool _showScreenshots;
+    public bool ShowScreenshots { get => _showScreenshots; set => Set(ref _showScreenshots, value); }
+
+    /// GitHub's news of the repositories named: "owner/name", up to four.
+    private bool _showGitHub;
+    public bool ShowGitHub { get => _showGitHub; set => Set(ref _showGitHub, value); }
+
+    private string _gitHubRepos = "";
+    public string GitHubRepos { get => _gitHubRepos; set => Set(ref _gitHubRepos, value); }
+
+    /// A page with the last things copied, kept in memory only.
+    private bool _showClipboard;
+    public bool ShowClipboard { get => _showClipboard; set => Set(ref _showClipboard, value); }
+
+    /// When a plain timer ends, the music fades and pauses.
+    private bool _timerStopsMusic;
+    public bool TimerStopsMusic { get => _timerStopsMusic; set => Set(ref _timerStopsMusic, value); }
+
     private bool _showChargingPeek = true;
     public bool ShowChargingPeek { get => _showChargingPeek; set => Set(ref _showChargingPeek, value); }
 
