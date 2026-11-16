@@ -236,11 +236,244 @@ check(peek.width == notch.width + NotchMetrics.collapsedContentWidth + NotchView
 // Left edge stays put: shape centred in the window, then shifted right.
 let peekWindow = NotchView.peekWindowSize(notch: notch, scale: 1)
 let pillLeft = -(notch.width + NotchMetrics.collapsedContentWidth) / 2
-let peekLeft = -peek.width / 2 + NotchView.peekShift
+let peekLeft = -peek.width / 2 + NotchView.peekShift(.right)
 check(abs(peekLeft - pillLeft) < 0.01, "peek: the left edge (artwork) doesn't move",
       "pill \(pillLeft), peek \(peekLeft)")
-check(peek.width / 2 + NotchView.peekShift <= peekWindow.width / 2 + 0.01,
+check(peek.width / 2 + NotchView.peekShift(.right) <= peekWindow.width / 2 + 0.01,
       "peek: the shifted shape fits in its window")
+
+// The other two ways out. To the left is the same shape mirrored: the right
+// edge holds still. Down keeps the pill's width and isn't shifted at all.
+do {
+    let pillWidth = notch.width + NotchMetrics.collapsedContentWidth
+    let left = NotchView.peekSize(notch: notch, scale: 1, side: .left)
+    check(left == peek, "peek left: the same size as to the right", "\(left)")
+    let rightEdge = left.width / 2 + NotchView.peekShift(.left)
+    check(abs(rightEdge - pillWidth / 2) < 0.01, "peek left: the right edge (bars) doesn't move", "\(rightEdge)")
+    let window = NotchView.peekWindowSize(notch: notch, scale: 1, side: .left)
+    check(-left.width / 2 + NotchView.peekShift(.left) >= -window.width / 2 - 0.01,
+          "peek left: the shifted shape fits in its window")
+    check(window == peekWindow, "peek left: the window is the one for the right — no resize between them")
+
+    let down = NotchView.peekSize(notch: notch, scale: 1, side: .down)
+    check(down.width == pillWidth && down.height == notch.height + NotchView.dropHeight,
+          "peek down: the pill's width, taller by the drop", "\(down)")
+    check(NotchView.peekShift(.down) == 0, "peek down: not shifted")
+    check(NotchView.peekWindowSize(notch: notch, scale: 1, side: .down) == down,
+          "peek down: the window is exactly the shape")
+}
+
+// Which message goes which way, and what a click on it is for.
+do {
+    let file = FileArrival(kind: .download, url: URL(fileURLWithPath: "/tmp/a.pdf"), bytes: 10, picture: nil)
+    check(NotchActivity.fileArrived(file).side == .down, "sides: a file drops down")
+    check(NotchActivity.githubPush(who: "a", repo: "r", message: "m").side == .left
+          && NotchActivity.githubChecksFailed(repo: "r", detail: "").side == .left
+          && NotchActivity.githubRelease(repo: "r", tag: "v1").side == .left, "sides: GitHub slides left")
+    check(NotchActivity.focus(on: true).side == .right && NotchActivity.charging(percent: 5).side == .right
+          && NotchActivity.sessionsWaiting(count: 2, session: "a", wants: nil).side == .right,
+          "sides: everything else slides right, as before")
+    let page = URL(string: "https://github.com/a/b/commit/1")
+    check(NotchActivity.githubPush(who: "a", repo: "r", message: "m", url: page).link == page
+          && NotchActivity.focus(on: true).link == nil, "click: GitHub's messages carry their page")
+    check(NotchActivity.fileArrived(file).file == file && NotchActivity.focus(on: true).file == nil,
+          "click: a file's message carries the file")
+    check(NotchActivity.sessionsWaiting(count: 2, session: "a", wants: nil, pid: 7).sessionPid == 7,
+          "click: several waiting goes to the one named")
+    check(NotchActivity.claudeWaiting(session: "a", wants: nil).waitingRing == false
+          && NotchActivity.vibeWaiting(session: "a", wants: nil).waitingRing == true
+          && NotchActivity.sessionsWaiting(count: 2, session: "a", wants: nil, vibe: true).waitingRing == true
+          && NotchActivity.claudeDone(session: "a").waitingRing == nil, "waiting ring: whose it is")
+    check(NotchActivity.githubPush(who: "PetrSvetr321", repo: "Resonata", message: "fix").look.title == "Push od PetrSvetr321"
+          && NotchActivity.githubPush(who: "x", repo: "Resonata", message: "fix").look.detail == "Resonata · fix"
+          && NotchActivity.githubPush(who: "x", repo: "Resonata", message: "").look.detail == "Resonata",
+          "GitHub push: who in the title, the repository and the message under it")
+    check(NotchActivity.waitingTitle(2) == "2 relace čekají" && NotchActivity.waitingTitle(4) == "4 relace čekají"
+          && NotchActivity.waitingTitle(5) == "5 relací čeká", "several waiting: Czech counts 2–4 and 5+ differently")
+    check(NotchActivity.focus(on: true).look.title == "Soustředění zapnuto"
+          && NotchActivity.focus(on: false).look.title == "Soustředění vypnuto", "Focus: on and off")
+
+    check(ActivityPeek.holds(file: true, pointerOnNotch: true, heldFor: 0), "hold: a file under the pointer stays out")
+    check(!ActivityPeek.holds(file: true, pointerOnNotch: false, heldFor: 0), "hold: not once the pointer has gone")
+    check(!ActivityPeek.holds(file: false, pointerOnNotch: true, heldFor: 0), "hold: only a file")
+    check(!ActivityPeek.holds(file: true, pointerOnNotch: true, heldFor: ActivityPeek.longestHold),
+          "hold: not for ever under a parked pointer")
+}
+
+// A file arriving: what counts as one.
+do {
+    check(FileArrival.isTemporary("film.mp4.crdownload") && FileArrival.isTemporary("a.pdf.download")
+          && FileArrival.isTemporary("x.zip.part") && FileArrival.isTemporary(".DS_Store"),
+          "files: part-files and hidden names are not arrivals")
+    check(!FileArrival.isTemporary("faktura.pdf") && !FileArrival.isTemporary("Snímek obrazovky 2026-11-16.png"),
+          "files: an ordinary name is")
+    check(FileArrival.candidates(now: ["a.pdf", "b.zip.crdownload", "old.txt", ".x"], known: ["old.txt"]) == ["a.pdf"],
+          "files: only the new, finished names")
+    check(FileArrival.kind(watching: [.download], screenshotMark: false, downloadMark: true, age: 3) == .download,
+          "files: the browser's mark on a new file is a download")
+    check(FileArrival.kind(watching: [.download], screenshotMark: false, downloadMark: false, age: 3) == nil,
+          "files: no mark — saved or moved there by hand — is not")
+    check(FileArrival.kind(watching: [.download], screenshotMark: false, downloadMark: true, age: 86_400) == nil,
+          "files: an old download moved into the folder is not one finishing")
+    check(FileArrival.kind(watching: [.download, .screenshot], screenshotMark: true, downloadMark: true, age: 3) == .screenshot,
+          "files: a screenshot is a screenshot whatever else it carries")
+    check(FileArrival.kind(watching: [.download], screenshotMark: true, downloadMark: false, age: 3) == nil,
+          "files: a screenshot isn't said when only downloads are switched on")
+    check(FileArrival.detail(kind: .download, name: "a.pdf", bytes: 2_400_000, folder: "Stahování").hasPrefix("a.pdf · ")
+          && FileArrival.detail(kind: .download, name: "a.pdf", bytes: nil, folder: "x") == "a.pdf",
+          "files: a download says its name and size")
+    check(FileArrival.detail(kind: .screenshot, name: "x.png", bytes: 5, folder: "Dokumenty") == "ve složce Dokumenty",
+          "files: a screenshot says where it went")
+    check(FileArrival.fitted(CGSize(width: 1824, height: 792), into: CGSize(width: 76, height: 46)) == CGSize(width: 76, height: 33)
+          && FileArrival.fitted(CGSize(width: 100, height: 400), into: CGSize(width: 76, height: 46)).height == 46,
+          "files: the picture keeps its shape inside its box")
+}
+
+// GitHub: reading the answers, and what is news.
+do {
+    check(GitHubFeed.repos(from: "Durik24/Resonata, https://github.com/apple/swift.git\nnonsense a/b/c") ==
+          ["Durik24/Resonata", "apple/swift", "a/b"], "GitHub: repositories from the field",
+          "\(GitHubFeed.repos(from: "Durik24/Resonata, https://github.com/apple/swift.git\nnonsense a/b/c"))")
+    check(GitHubFeed.repos(from: "a/b, A/B, c/d e/f g/h i/j") == ["a/b", "c/d", "e/f", "g/h"],
+          "GitHub: each once, four at most")
+    check(GitHubFeed.repos(from: "a/b c$/d  ") == ["a/b"], "GitHub: nonsense left out")
+
+    let commitJSON = Data("""
+    [{"sha":"abc","html_url":"https://github.com/o/r/commit/abc","author":{"login":"petr"},
+      "commit":{"message":"Fix the tab\\n\\nlonger text","author":{"name":"Petr S"}}}]
+    """.utf8)
+    let commit = GitHubFeed.commit(from: commitJSON)
+    check(commit?.sha == "abc" && commit?.login == "petr" && commit?.message == "Fix the tab"
+          && commit?.url?.absoluteString == "https://github.com/o/r/commit/abc", "GitHub: the newest commit", "\(String(describing: commit))")
+    check(GitHubFeed.commit(from: Data("{\"message\":\"Not Found\"}".utf8)) == nil, "GitHub: an error isn't a commit")
+
+    let runsJSON = Data("""
+    {"workflow_runs":[{"id":12,"name":"Windows tests","head_branch":"main","conclusion":"failure","html_url":"https://x/12"},
+                      {"id":11,"name":"Windows tests","head_branch":"main","conclusion":"success"},
+                      {"id":13,"name":"Windows tests","head_branch":"main","conclusion":null}]}
+    """.utf8)
+    let runs = GitHubFeed.runs(from: runsJSON)
+    check(runs.count == 3 && runs[0].conclusion == "failure" && runs[2].conclusion == nil, "GitHub: the runs")
+    let release = GitHubFeed.release(from: Data("[{\"id\":5,\"tag_name\":\"v2\",\"draft\":false,\"author\":{\"login\":\"petr\"}}]".utf8))
+    check(release?.id == 5 && release?.tag == "v2" && release?.author == "petr", "GitHub: the newest release")
+
+    // The first look says nothing and remembers everything.
+    let first = GitHubFeed.news(repo: "o/Resonata", before: nil, commit: commit, runs: runs, release: release, me: "josef")
+    check(first.events.isEmpty && first.snapshot == GitHubSnapshot(commit: "abc", run: 12, release: 5),
+          "GitHub: the first look is no news", "\(first)")
+    // Nothing changed: nothing said.
+    check(GitHubFeed.news(repo: "o/Resonata", before: first.snapshot, commit: commit, runs: runs, release: release,
+                          me: "josef").events.isEmpty, "GitHub: nothing new, nothing said")
+    // Somebody else pushed.
+    let before = GitHubSnapshot(commit: "old", run: 12, release: 5)
+    let pushed = GitHubFeed.news(repo: "o/Resonata", before: before, commit: commit, runs: runs, release: release, me: "josef")
+    check(pushed.events == [.githubPush(who: "petr", repo: "Resonata", message: "Fix the tab",
+                                        url: URL(string: "https://github.com/o/r/commit/abc"))],
+          "GitHub: somebody else's push is news", "\(pushed.events)")
+    check(GitHubFeed.news(repo: "o/Resonata", before: before, commit: commit, runs: runs, release: release,
+                          me: "Petr").events.isEmpty, "GitHub: your own push isn't, whatever the capitals")
+    // Checks that failed since the last look — and only finished ones count.
+    let failed = GitHubFeed.news(repo: "o/Resonata", before: GitHubSnapshot(commit: "abc", run: 11, release: 5),
+                                 commit: commit, runs: runs, release: release, me: nil)
+    check(failed.events == [.githubChecksFailed(repo: "Resonata", detail: "main · Windows tests", url: URL(string: "https://x/12"))]
+          && failed.snapshot.run == 12, "GitHub: failed checks are news, once", "\(failed)")
+    // A new release by somebody else; a draft is nobody's news.
+    let released = GitHubFeed.news(repo: "o/Resonata", before: GitHubSnapshot(commit: "abc", run: 12, release: 4),
+                                   commit: commit, runs: runs, release: release, me: "josef")
+    check(released.events == [.githubRelease(repo: "Resonata", tag: "v2", url: nil)], "GitHub: a new release is news")
+    let draft = GitHubFeed.Release(id: 6, tag: "v3", author: "petr", draft: true, url: nil)
+    check(GitHubFeed.news(repo: "o/r", before: first.snapshot, commit: commit, runs: runs, release: draft, me: nil)
+            .events.isEmpty, "GitHub: a draft isn't")
+    // A repository with no release yet: its first is news the second time round.
+    let bare = GitHubFeed.news(repo: "o/r", before: nil, commit: commit, runs: [], release: nil, me: nil)
+    check(bare.snapshot.release == 0 && bare.snapshot.run == 0, "GitHub: none yet is remembered as none")
+    check(GitHubFeed.news(repo: "o/r", before: bare.snapshot, commit: commit, runs: [], release: release, me: nil)
+            .events == [.githubRelease(repo: "r", tag: "v2", url: nil)], "GitHub: the very first release is news")
+    // A part that couldn't be read keeps what was known.
+    let offline = GitHubFeed.news(repo: "o/r", before: first.snapshot, commit: nil, runs: [], release: nil, me: nil)
+    check(offline.events.isEmpty && offline.snapshot == first.snapshot, "GitHub: no answer changes nothing")
+    check(GitHubWatcher.interval(repos: 1, signedIn: true) == 120 && GitHubWatcher.interval(repos: 1, signedIn: false) == 300
+          && GitHubWatcher.interval(repos: 4, signedIn: false) == 960,
+          "GitHub: asked less often without signing in, to stay inside sixty an hour")
+}
+
+// The clipboard's page.
+do {
+    check(ClipboardStore.isSecret(["public.utf8-plain-text", "org.nspasteboard.ConcealedType"])
+          && !ClipboardStore.isSecret(["public.utf8-plain-text"]), "clipboard: a password manager's copy is not kept")
+    check(ClipboardStore.classify("  https://example.com/a?b=1 \n") == .link("https://example.com/a?b=1")
+          && ClipboardStore.classify("#e8875b") == .colour("#E8875B")
+          && ClipboardStore.classify("see https://example.com") == .text("see https://example.com")
+          && ClipboardStore.classify("  \n") == nil, "clipboard: an address, a colour, text, and nothing")
+    let now = Date(timeIntervalSinceReferenceDate: 2_000_000)
+    func clip(_ text: String) -> Clip { Clip(content: .text(text), app: nil, date: now) }
+    let a = clip("a"), b = clip("b"), again = clip("a")
+    let list = ClipboardStore.adding(again, to: ClipboardStore.adding(b, to: [a]))
+    check(list.count == 2 && list[0].id == again.id && list[1].id == b.id,
+          "clipboard: the same thing copied again moves to the front")
+    var many: [Clip] = []
+    for i in 0..<30 { many = ClipboardStore.adding(clip("t\(i)"), to: many) }
+    check(many.count == ClipboardStore.limit && many.first?.content == .text("t29"), "clipboard: the newest twenty")
+    var pictures: [Clip] = []
+    for i in 0..<9 {
+        pictures = ClipboardStore.adding(Clip(content: .image(NSImage(), Data([UInt8(i)]), .png), app: nil, date: now),
+                                         to: pictures)
+    }
+    check(pictures.count == ClipboardStore.pictureLimit, "clipboard: only a few pictures are kept whole")
+    check(ClipboardStore.age(of: now, now: now + 20) == "teď" && ClipboardStore.age(of: now, now: now + 250) == "před 4 min"
+          && ClipboardStore.age(of: now, now: now + 7300) == "před 2 h", "clipboard: how long ago")
+    check(PanelTab.shown(clipboard: false, usage: false) == [.music, .notes, .apps, .timer, .shelf]
+          && PanelTab.shown(clipboard: true, usage: true) == [.music, .notes, .apps, .timer, .shelf, .clipboard, .usage],
+          "pages: the clipboard's only while switched on, before the limits")
+    check(NotchView.pageDotsWidth(count: 7) <= 103, "pages: seven dots still fit beside the cutout",
+          "\(NotchView.pageDotsWidth(count: 7))")
+}
+
+// The timer's "stop the music", and Focus.
+do {
+    let levels = MusicSleep.levels(from: 80, steps: 20)
+    check(levels.count == 20 && levels.first == 76 && levels.last == 0
+          && zip(levels, levels.dropFirst()).allSatisfy { $0 >= $1 }, "sleep: the volume steps down to silence", "\(levels)")
+    check(MusicSleep.levels(from: 0, steps: 20).isEmpty, "sleep: nothing to fade from silence")
+    check(FocusWatcher.change(from: false, to: true) == true && FocusWatcher.change(from: true, to: false) == false,
+          "Focus: on and off are said")
+    check(FocusWatcher.change(from: nil, to: true) == nil && FocusWatcher.change(from: true, to: true) == nil
+          && FocusWatcher.change(from: true, to: nil) == nil, "Focus: not the first answer, no change, or none")
+}
+
+// Waiting sessions: first in the list, longest first, saying what they ask.
+do {
+    let t = Date(timeIntervalSinceReferenceDate: 3_000_000)
+    let claude = ClaudeStatus(state: .waiting, sessions: [
+        .init(pid: 1, name: "idle", state: .idle),
+        .init(pid: 2, name: "late", state: .waiting, wants: "Povolit úpravu?", since: t + 60),
+        .init(pid: 3, name: "busy", state: .working, app: "Terminál"),
+    ])
+    let vibe = VibeStatus(state: .waiting, sessions: [
+        .init(pid: 4, name: "early", state: .waiting, key: "k", wants: "npm test", since: t),
+    ])
+    let rows = ClaudeUsagePage.rows(claude: claude, vibe: vibe)
+    check(rows.map(\.session.name) == ["early", "late", "busy", "idle"],
+          "waiting: first, the longest wait at the top", "\(rows.map(\.session.name))")
+    check(ClaudeUsagePage.doing(rows[0]) == "Vibe · npm test" && ClaudeUsagePage.doing(rows[1]) == "Claude · Povolit úpravu?"
+          && ClaudeUsagePage.doing(rows[2]) == "Claude · pracuje · Terminál", "waiting: the line is what it asks")
+    check(ClaudeUsagePage.longestWaiting(claude: claude, vibe: vibe)?.session.name == "early"
+          && ClaudeUsagePage.longestWaiting(claude: ClaudeStatus(), vibe: nil) == nil, "waiting: who has waited longest")
+    check(ClaudeUsagePage.waitingChip(1) == "1 čeká" && ClaudeUsagePage.waitingChip(2) == "2 čekají"
+          && ClaudeUsagePage.waitingChip(5) == "5 čeká", "waiting: the chip's count")
+
+    let one = NotchActivity.claudeWaiting(session: "late", wants: "Povolit úpravu?", pid: 2)
+    check(one.forAllWaiting(claude: claude, vibe: vibe)
+          == .sessionsWaiting(count: 2, session: "early", wants: "npm test", pid: 4, vibe: true),
+          "waiting: two at once are said together, naming the longest wait")
+    check(one.forAllWaiting(claude: claude, vibe: nil) == one, "waiting: one alone is said as before")
+    let done = NotchActivity.claudeDone(session: "x")
+    check(done.forAllWaiting(claude: claude, vibe: vibe) == done, "waiting: other messages are left alone")
+
+    check(abs(ClaudeUsagePage.sessionsWidth(total: 430, others: 2) - 148.6) < 0.1
+          && ClaudeUsagePage.sessionsWidth(total: 430, others: 0) == 430, "sessions card: a little wider than the rest",
+          "\(ClaudeUsagePage.sessionsWidth(total: 430, others: 2))")
+}
 
 // MARK: - Playhead from the player
 

@@ -57,8 +57,8 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <key>CFBundleName</key>              <string>Resonata</string>
     <key>CFBundleExecutable</key>        <string>Resonata</string>
     <key>CFBundleIdentifier</key>        <string>com.local.resonata</string>
-    <key>CFBundleVersion</key>           <string>15</string>
-    <key>CFBundleShortVersionString</key><string>1.0.14</string>
+    <key>CFBundleVersion</key>           <string>16</string>
+    <key>CFBundleShortVersionString</key><string>1.0.15</string>
     <key>CFBundlePackageType</key>       <string>APPL</string>
     <key>CFBundleIconFile</key>          <string>AppIcon</string>
     <key>LSMinimumSystemVersion</key>    <string>14.0</string>
@@ -75,6 +75,9 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <!-- Required, or the AppleScript calls to Spotify/Music are killed on sight. -->
     <key>NSAppleEventsUsageDescription</key>
     <string>Resonata reads what you are currently playing.</string>
+    <!-- Asked only when "Focus on and off" is switched on in Settings. -->
+    <key>NSFocusStatusUsageDescription</key>
+    <string>Resonata řekne v notchi, když se zapne nebo vypne režim soustředění.</string>
     <!-- Asked only when you click "Připojit kalendář"; read-only. -->
     <key>NSCalendarsFullAccessUsageDescription</key>
     <string>Resonata ukazuje v notchi tvoje dnešní události.</string>

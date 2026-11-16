@@ -50,6 +50,12 @@ struct SettingsView: View {
     @AppStorage(Preferences.Key.checkForUpdates) private var checkForUpdates = true
     @AppStorage(Preferences.Key.language) private var language = AppLanguage.system.rawValue
     @AppStorage(Preferences.Key.skipDeclined) private var skipDeclined = true
+    @AppStorage(Preferences.Key.showDownloadPeek) private var showDownloadPeek = false
+    @AppStorage(Preferences.Key.showScreenshotPeek) private var showScreenshotPeek = false
+    @AppStorage(Preferences.Key.showFocusPeek) private var showFocusPeek = false
+    @AppStorage(Preferences.Key.showGitHub) private var showGitHub = false
+    @AppStorage(Preferences.Key.gitHubRepos) private var gitHubRepos = ""
+    @AppStorage(Preferences.Key.showClipboard) private var showClipboard = false
     @ObservedObject private var updater = Updater.shared
     @ObservedObject private var calendar = CalendarStore.shared
 
@@ -117,6 +123,7 @@ struct SettingsView: View {
                 }
                 Toggle(L.t("Lyrics", "Texty písní"), isOn: $showLyrics)
                 Toggle(L.t("Calendar beside the player", "Kalendář vedle přehrávače"), isOn: $showCalendar)
+                Toggle(L.t("Clipboard history page", "Stránka s historií schránky"), isOn: $showClipboard)
                 Picker(L.t("Wave colour", "Barva vlny"), selection: $waveColour) {
                     ForEach(WaveColour.allCases) { Text($0.title).tag($0.rawValue) }
                 }
@@ -127,8 +134,8 @@ struct SettingsView: View {
             } header: {
                 Text(L.t("Open panel", "Otevřený panel"))
             } footer: {
-                Text(L.t("Lyrics come from LRCLIB, which is sent the song's title and artist. Switched off, nothing is sent. Click the lyric line in the panel for more of the song.",
-                         "Texty jsou z LRCLIB, kam se posílá název a interpret skladby. Když jsou vypnuté, neposílá se nic. Kliknutím na řádek textu v panelu uvidíš víc písně."))
+                Text(L.t("Lyrics come from LRCLIB, which is sent the song's title and artist. Switched off, nothing is sent. Click the lyric line in the panel for more of the song. The clipboard page keeps the last 20 things you copy, in memory only: quitting Resonata forgets them, and what a password manager marks as secret is never kept.",
+                         "Texty jsou z LRCLIB, kam se posílá název a interpret skladby. Když jsou vypnuté, neposílá se nic. Kliknutím na řádek textu v panelu uvidíš víc písně. Stránka schránky drží posledních 20 zkopírovaných věcí jen v paměti: po ukončení Resonaty je zapomene a to, co správce hesel označí jako tajné, neukládá nikdy."))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -166,11 +173,30 @@ struct SettingsView: View {
                 Toggle(L.t("Headphones connected", "Připojená sluchátka"), isOn: $showHeadphonesPeek)
                 Toggle(L.t("Calendar event, 5 minutes before", "Událost z kalendáře 5 min předem"),
                        isOn: $meetingReminder)
+                Toggle(L.t("Download finished", "Dokončené stahování"), isOn: $showDownloadPeek)
+                Toggle(L.t("Screenshot taken", "Pořízený snímek obrazovky"), isOn: $showScreenshotPeek)
+                Toggle(L.t("Focus on and off", "Zapnutí a vypnutí soustředění"), isOn: $showFocusPeek)
             } header: {
                 Text(L.t("Messages in the notch", "Zprávy v notchi"))
             } footer: {
-                Text(L.t("They slide out of the closed notch for a moment. While the panel is open, a reminder, low battery or the end of the timer wait until you close it.",
-                         "Na chvíli se vysunou ze zavřeného notche. Když je panel zrovna otevřený, připomínka, slabá baterie a konec časovače počkají, až ho zavřeš."))
+                Text(L.t("They slide out of the closed notch for a moment. While the panel is open, a reminder, low battery or the end of the timer wait until you close it. A download or a screenshot drops down under the notch: click it to see it in Finder, or drag it out. For those two macOS asks once whether Resonata may read the folder, and for Focus whether it may know that one is on.",
+                         "Na chvíli se vysunou ze zavřeného notche. Když je panel zrovna otevřený, připomínka, slabá baterie a konec časovače počkají, až ho zavřeš. Stažený soubor a snímek obrazovky sjedou pod notch: klik ho ukáže ve Finderu, nebo ho odtáhni. U těch dvou se macOS jednou zeptá, jestli Resonata smí číst složku, a u soustředění, jestli smí vědět, že je zapnuté."))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
+                Toggle(L.t("GitHub in the notch", "GitHub v notchi"), isOn: $showGitHub)
+                if showGitHub {
+                    TextField(L.t("Repositories", "Repozitáře"), text: $gitHubRepos,
+                              prompt: Text(verbatim: "owner/name, owner/name"))
+                        .autocorrectionDisabled()
+                }
+            } header: {
+                Text("GitHub")
+            } footer: {
+                Text(L.t("A message slides out to the left when somebody else pushes to one of these repositories, when its checks fail, or when it has a new release; a click opens it on GitHub. Up to four. Asked every two minutes through the gh command when it is installed and signed in — Resonata never sees the sign-in — and otherwise without signing in, which sees public repositories only and asks less often.",
+                         "Zpráva se vysune doleva, když do některého z těch repozitářů pushne někdo jiný, když selžou testy nebo když vyjde nový release; klik to otevře na GitHubu. Nejvýš čtyři. Ptá se každé dvě minuty přes příkaz gh, když je nainstalovaný a přihlášený — Resonata přihlášení nikdy nevidí — a jinak bez přihlášení, což vidí jen veřejné repozitáře a ptá se méně často."))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

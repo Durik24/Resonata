@@ -36,6 +36,43 @@ enum Demo {
         ])
     }
 
+    /// A made-up file for the debug hooks: a download with no picture, or
+    /// a "screenshot" drawn here.
+    static func file(_ kind: FileArrival.Kind) -> FileArrival {
+        let folder = FileManager.default.temporaryDirectory
+        switch kind {
+        case .download:
+            return FileArrival(kind: .download, url: folder.appendingPathComponent("faktura-listopad.pdf"),
+                               bytes: 2_400_000, picture: nil)
+        case .screenshot:
+            let picture = NSImage(size: NSSize(width: 288, height: 180), flipped: false) { rect in
+                NSColor(red: 0.29, green: 0.44, blue: 0.65, alpha: 1).setFill()
+                rect.fill()
+                NSColor(white: 0.96, alpha: 1).setFill()
+                NSBezierPath(roundedRect: NSRect(x: 28, y: 52, width: 148, height: 100), xRadius: 8, yRadius: 8).fill()
+                NSColor(white: 0.11, alpha: 1).setFill()
+                NSBezierPath(roundedRect: NSRect(x: 124, y: 24, width: 136, height: 84), xRadius: 8, yRadius: 8).fill()
+                return true
+            }
+            return FileArrival(kind: .screenshot, url: folder.appendingPathComponent("Snímek obrazovky.png"),
+                               bytes: 1_100_000, picture: picture)
+        }
+    }
+
+    /// A made-up clipboard history, oldest last.
+    static func clips() -> [Clip] {
+        let now = Date()
+        func ago(_ minutes: Double) -> Date { now.addingTimeInterval(-minutes * 60) }
+        return [
+            Clip(content: .text("git push origin main --tags"), app: "Terminál", date: now),
+            Clip(content: .link("https://developer.apple.com/documentation/appkit"), app: "Safari", date: ago(4)),
+            Clip(content: .image(file(.screenshot).picture!, Data([1]), .png), app: "Náhled", date: ago(12)),
+            Clip(content: .text("Sejdeme se ve čtvrtek v 15:00 u hlavního vchodu."), app: "Zprávy", date: ago(25)),
+            Clip(content: .colour("#E8875B"), app: "Poznámky", date: ago(40)),
+            Clip(content: .text("Koupit: mléko, vejce, chleba, kávu, jablka, máslo"), app: "Poznámky", date: ago(60)),
+        ]
+    }
+
     /// A cover drawn here: a dusk gradient, a low sun and rain. Written to
     /// the temporary folder, where the artwork loader reads files from.
     private static func coverURL() -> URL? {

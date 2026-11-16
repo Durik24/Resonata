@@ -10,6 +10,8 @@ struct TimerView: View {
     // change in the settings.
     @AppStorage(Preferences.Key.pomodoroWork) private var pomodoroWork = 25
     @AppStorage(Preferences.Key.pomodoroRest) private var pomodoroRest = 5
+    /// The switch under the buttons: the music stops when the timer does.
+    @AppStorage(Preferences.Key.timerStopsMusic) private var stopsMusic = false
 
     /// What's in the ring's minutes field while it's typed in.
     @State private var typed = ""
@@ -21,7 +23,7 @@ struct TimerView: View {
     var body: some View {
         HStack(spacing: 28) {
             ring
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 10) {
                 EagerGrid(items: CountdownTimer.presets, columns: 3, spacing: 8, rowSpacing: 8) { minutes in
                         Button { timer.start(minutes: minutes) } label: {
                             Text("\(minutes) min")
@@ -58,9 +60,52 @@ struct TimerView: View {
                     }
                     .shown(!timer.isActive)
                 }
+                sleepSwitch
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// "Stop the music at the end": a row that is its own switch, lit in
+    /// the timer's colour while it is on.
+    private var sleepSwitch: some View {
+        Button { stopsMusic.toggle() } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "moon.fill")
+                    .font(.system(size: 9, weight: .semibold))
+                Text(L.t("Stop the music at the end", "Na konci zastavit hudbu"))
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .lineLimit(1)
+                    .fixedSize()
+                Spacer(minLength: 8)
+                Capsule()
+                    .fill(stopsMusic ? accent : .white.opacity(0.22))
+                    .frame(width: 26, height: 15)
+                    .overlay(alignment: stopsMusic ? .trailing : .leading) {
+                        Circle().fill(.white).padding(1.5)
+                    }
+            }
+            .foregroundStyle(.white.opacity(stopsMusic ? 0.95 : 0.75))
+            .padding(.leading, 10)
+            .padding(.trailing, 5)
+            // At least as wide as the three buttons above it, and as wide
+            // as its words need: cut off, it read "zastavit hu…".
+            .frame(minWidth: 3 * 58 + 2 * 8)
+            .frame(height: 24)
+            .fixedSize()
+            .background(Capsule().fill(stopsMusic ? accent.opacity(0.16) : .white.opacity(0.07)))
+            .overlay {
+                if stopsMusic { Capsule().strokeBorder(accent.opacity(0.55), lineWidth: 1) }
+            }
+            .contentShape(Capsule())
+        }
+        .buttonStyle(TransportButtonStyle())
+        .animation(.easeOut(duration: 0.15), value: stopsMusic)
+        .help(L.t("When a timer runs out, the music fades for ten seconds and pauses. Not during a Pomodoro, which goes on to its next phase.",
+                  "Když časovač doběhne, hudba se deset sekund ztišuje a pak se pozastaví. Ne při Pomodoru, které pokračuje další fází."))
+        .accessibilityLabel(L.t("Stop the music at the end", "Na konci zastavit hudbu"))
+        .accessibilityValue(stopsMusic ? L.t("on", "zapnuto") : L.t("off", "vypnuto"))
+        .accessibilityAddTraits(.isToggle)
     }
 
     private var ring: some View {
@@ -80,9 +125,21 @@ struct TimerView: View {
                             Text(CountdownTimer.format(timer.remaining(at: now)))
                                 .font(.system(size: 24, weight: .semibold).monospacedDigit())
                                 .foregroundStyle(.white.opacity(timer.isPaused ? 0.5 : 1))
-                            Text(caption)
-                                .font(.system(size: 10, weight: .medium))
-                                .foregroundStyle(.white.opacity(0.45))
+                            // With the switch on, a plain timer says what
+                            // its end will do, in its own colour.
+                            if sleeps {
+                                Label(L.t("then music stops", "pak hudba ztichne"), systemImage: "moon.fill")
+                                    .labelStyle(.titleAndIcon)
+                                    .font(.system(size: 8.5, weight: .semibold))
+                                    .foregroundStyle(tint)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.8)
+                                    .frame(maxWidth: 88)
+                            } else {
+                                Text(caption)
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundStyle(.white.opacity(0.45))
+                            }
                         }
                     }
                 }
@@ -145,6 +202,9 @@ struct TimerView: View {
         .help(delta > 0 ? L.t("A minute more", "O minutu víc") : L.t("A minute less", "O minutu míň"))
         .accessibilityLabel(delta > 0 ? L.t("A minute more", "O minutu víc") : L.t("A minute less", "O minutu míň"))
     }
+
+    /// The timer running is a plain one, and its end stops the music.
+    private var sleeps: Bool { stopsMusic && timer.phase == nil && !timer.isPaused }
 
     private var caption: String {
         if timer.isPaused { return L.t("paused", "pozastaveno") }

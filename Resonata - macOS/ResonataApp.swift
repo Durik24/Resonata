@@ -21,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let meetingReminder = MeetingReminder()
     private let claude = ClaudeMonitor()
     private let vibe = VibeMonitor()
+    private let gitHub = GitHubWatcher()
     /// MediaRemote first — it sees every player. If the adapter can't start
     /// or MediaRemote won't answer on this macOS, the AppleScript source takes
     /// over and the app behaves exactly as it did before Phase 5.
@@ -105,12 +106,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         claude.$status
             .sink { [weak self] status in self?.model.claude = status }
             .store(in: &cancellables)
-        claude.onEvent = { [weak self] activity in self?.activityPeek.show(activity) }
+        claude.onEvent = { [weak self] activity in self?.showSession(activity) }
         // Mistral Vibe, the same way: its month's allowance and its sessions.
         vibe.$status
             .sink { [weak self] status in self?.model.vibe = status }
             .store(in: &cancellables)
-        vibe.onEvent = { [weak self] activity in self?.activityPeek.show(activity) }
+        vibe.onEvent = { [weak self] activity in self?.showSession(activity) }
+
+        // A message that was clicked, or whose file was dragged away, has
+        // done its job: back in.
+        model.dismissActivity = { [weak self] in self?.activityPeek.dismiss() }
+
+        // A finished download and a screenshot drop out of the notch; a
+        // push, failed checks or a release slide out to the left; a Focus
+        // going on or off gets a word. Each off until switched on.
+        FileWatcher.shared.onArrival = { [weak self] file in self?.activityPeek.show(.fileArrived(file)) }
+        gitHub.onEvent = { [weak self] activity in self?.activityPeek.show(activity) }
+        FocusWatcher.shared.onChange = { [weak self] on in self?.activityPeek.show(.focus(on: on)) }
+        if !Demo.isOn { applyWatchers() }
         model.refreshClaude = { [weak self] in
             self?.claude.refreshUsage()
             self?.vibe.refreshUsage()
@@ -143,7 +156,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .removeDuplicates()
             .sink { [weak self] running in self?.model.timerRunning = running }
             .store(in: &cancellables)
-        timer.onFinish = { [weak self] minutes in self?.activityPeek.show(.timerDone(minutes: minutes)) }
+        timer.onFinish = { [weak self] minutes in
+            self?.activityPeek.show(.timerDone(minutes: minutes))
+            // "Stop the music at the end", when that switch is on.
+            if Preferences.timerStopsMusic { MusicSleep.run { [weak self] in self?.model.track } }
+        }
         timer.onPhase = { [weak self] phase, minutes in
             self?.activityPeek.show(.pomodoro(rest: phase == .rest, minutes: minutes))
         }
@@ -188,6 +205,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     case "meeting": .meeting(title: L.t("Meeting", "Schůzka"), start: Date().addingTimeInterval(300))
                     case "timer": .timerDone(minutes: 25)
                     case "update": .update(version: "1.0.8")
+                    // The new ones, each out its own way: a file down, the
+                    // GitHub three to the left, Focus to the right.
+                    case "download": .fileArrived(Demo.file(.download))
+                    case "screenshot": .fileArrived(Demo.file(.screenshot))
+                    case "push": .githubPush(who: "PetrSvetr321", repo: "Resonata",
+                                             message: "the tab is always on the edge",
+                                             url: URL(string: "https://github.com"))
+                    case "checks": .githubChecksFailed(repo: "Resonata", detail: "main · Windows",
+                                                       url: URL(string: "https://github.com"))
+                    case "release": .githubRelease(repo: "Resonata", tag: "win-v1.4.1",
+                                                   url: URL(string: "https://github.com"))
+                    case "focus": .focus(on: true)
+                    case "focusoff": .focus(on: false)
                     default: nil
                     }
                     if let activity { self?.activityPeek.show(activity) }
@@ -236,11 +266,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     let usage = ClaudeUsage(sessionPercent: 62, sessionResets: Date().addingTimeInterval(8280),
                                             weekPercent: 18, weekResets: Date().addingTimeInterval(250_000),
                                             models: [.init(name: "Fable", percent: 27, resets: nil)])
+                    let asks = L.t("Allow the edit?", "Povolit úpravu?")
                     func sessions(_ state: ClaudeStatus.State) -> [ClaudeStatus.Session] {
-                        [.init(pid: 1, name: "resonata", state: state, app: "Terminál"),
+                        [.init(pid: 1, name: "resonata", state: state, app: "Terminál",
+                               wants: state == .waiting ? asks : nil,
+                               since: state == .waiting ? Date().addingTimeInterval(-90) : nil),
                          .init(pid: 2, name: "web", state: .idle, app: "Visual Studio Code")]
                     }
-                    let asks = L.t("Allow the edit?", "Povolit úpravu?")
                     switch kind {
                     case "working":
                         self.model.claude = ClaudeStatus(state: .working, session: "resonata", usage: usage,
@@ -248,7 +280,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     case "waiting":
                         self.model.claude = ClaudeStatus(state: .waiting, session: "resonata", wants: asks,
                                                          usage: usage, sessions: sessions(.waiting))
-                        self.activityPeek.show(.claudeWaiting(session: "resonata", wants: asks))
+                        self.showSession(.claudeWaiting(session: "resonata", wants: asks))
                     case "done":
                         self.model.claude = ClaudeStatus(state: .idle, usage: usage, sessions: sessions(.idle))
                         self.activityPeek.show(.claudeDone(session: "resonata"))
@@ -266,10 +298,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 MainActor.assumeIsolated {
                     guard let self else { return }
                     let usage = VibeUsage(percent: 34, resets: Date().addingTimeInterval(1_600_000), plan: "Student")
-                    func sessions(_ state: ClaudeStatus.State) -> [ClaudeStatus.Session] {
-                        [.init(pid: 3, name: "milionar", state: state, app: "Terminál", key: "demo")]
-                    }
                     let asks = "python3 --version"
+                    func sessions(_ state: ClaudeStatus.State) -> [ClaudeStatus.Session] {
+                        [.init(pid: 3, name: "milionar", state: state, app: "Terminál", key: "demo",
+                               wants: state == .waiting ? asks : nil,
+                               since: state == .waiting ? Date() : nil)]
+                    }
                     switch kind {
                     case "working":
                         self.model.vibe = VibeStatus(state: .working, session: "milionar", usage: usage,
@@ -277,7 +311,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     case "waiting":
                         self.model.vibe = VibeStatus(state: .waiting, session: "milionar", wants: asks,
                                                      usage: usage, sessions: sessions(.waiting))
-                        self.activityPeek.show(.vibeWaiting(session: "milionar", wants: asks))
+                        self.showSession(.vibeWaiting(session: "milionar", wants: asks))
                     case "done":
                         self.model.vibe = VibeStatus(state: .idle, usage: usage, sessions: sessions(.idle))
                         self.activityPeek.show(.vibeDone(session: "milionar"))
@@ -287,6 +321,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         self.model.vibe = nil
                     }
                 }
+            }
+            // `com.local.resonata.github`: the followed repositories' newest
+            // commit, said as if it had just been pushed.
+            center.addObserver(forName: Notification.Name("com.local.resonata.github"),
+                               object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.gitHub.askAsIfNew() }
+            }
+            // `com.local.resonata.clipboard`: a page of made-up clips.
+            center.addObserver(forName: Notification.Name("com.local.resonata.clipboard"),
+                               object: nil, queue: .main) { _ in
+                MainActor.assumeIsolated { Demo.clips().reversed().forEach(ClipboardStore.shared.take) }
             }
             center.addObserver(forName: Notification.Name("com.local.resonata.page"),
                                object: nil, queue: .main) { [weak self] note in
@@ -315,14 +360,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.loadLyrics(for: self.model.track)
                 self.claude.setEnabled(Preferences.showClaude)
                 self.vibe.setEnabled(Preferences.showVibe)
+                self.applyWatchers()
                 // Switched off while its page was open: back to the music.
-                if !PanelTab.shown.contains(.usage), self.model.tab == .usage { self.model.tab = .music }
+                if !PanelTab.shown.contains(self.model.tab) { self.model.tab = .music }
             }
         }
 
         // Last, so nothing above overwrites the demo's song or lyrics.
         if Demo.isOn { Demo.install(on: model) }
 
+    }
+
+    /// Starts and stops what the newer switches in Settings stand for, to
+    /// match them. Each does nothing when its own switch hasn't moved.
+    private func applyWatchers() {
+        FileWatcher.shared.apply(downloads: Preferences.showDownloadPeek,
+                                 screenshots: Preferences.showScreenshotPeek)
+        gitHub.apply(enabled: Preferences.showGitHub, repos: Preferences.gitHubRepos)
+        FocusWatcher.shared.setEnabled(Preferences.showFocusPeek)
+        ClipboardStore.shared.setEnabled(Preferences.showClipboard)
+    }
+
+    /// A Claude Code or Vibe session's message. One that says a session is
+    /// waiting says so for all of them when it isn't the only one: how
+    /// many, and the one that has waited longest.
+    private func showSession(_ activity: NotchActivity) {
+        activityPeek.show(activity.forAllWaiting(claude: model.claude, vibe: model.vibe))
     }
 
     private func startNowPlaying() {

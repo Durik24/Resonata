@@ -1,6 +1,11 @@
 import Combine
 import SwiftUI
 
+/// Which way the closed pill grows for a message: sideways past the bars,
+/// as the song does; sideways the other way, over the app's menus; or
+/// downwards, under the cutout, where there is room for a picture.
+enum PeekSide: Equatable, Sendable { case right, left, down }
+
 /// A moment in the closed notch that isn't the song: it slides out like the
 /// song peek, with its own picture in the cover's place, two lines of text
 /// and a symbol where the bars are. See `ActivityPeek`.
@@ -27,13 +32,64 @@ enum NotchActivity: Equatable {
     case vibeWaiting(session: String, wants: String?, pid: Int32? = nil)
     /// A Mistral Vibe session has finished what it was doing.
     case vibeDone(session: String, pid: Int32? = nil)
+    /// Two or more sessions are waiting at once: how many, and the one that
+    /// has waited longest — `vibe` when that one is Vibe's.
+    case sessionsWaiting(count: Int, session: String, wants: String?, pid: Int32? = nil, vibe: Bool = false)
+    /// A file has landed in Downloads, or a screenshot was taken.
+    case fileArrived(FileArrival)
+    /// Somebody else pushed to a repository that is followed.
+    case githubPush(who: String, repo: String, message: String, url: URL? = nil)
+    /// The checks of a followed repository failed.
+    case githubChecksFailed(repo: String, detail: String, url: URL? = nil)
+    /// A followed repository has a new release.
+    case githubRelease(repo: String, tag: String, url: URL? = nil)
+    /// A Focus went on, or off.
+    case focus(on: Bool)
 
     /// The process of the Claude Code or Vibe session this is about, for a
     /// click to go to.
     var sessionPid: Int32? {
         switch self {
         case .claudeWaiting(_, _, let pid), .claudeDone(_, let pid),
-             .vibeWaiting(_, _, let pid), .vibeDone(_, let pid): pid
+             .vibeWaiting(_, _, let pid), .vibeDone(_, let pid),
+             .sessionsWaiting(_, _, _, let pid, _): pid
+        default: nil
+        }
+    }
+
+    /// The page a click on the message opens — GitHub's.
+    var link: URL? {
+        switch self {
+        case .githubPush(_, _, _, let url), .githubChecksFailed(_, _, let url),
+             .githubRelease(_, _, let url): url
+        default: nil
+        }
+    }
+
+    /// The file the message is about: a click shows it in Finder, and it can
+    /// be dragged out of the notch.
+    var file: FileArrival? {
+        if case .fileArrived(let file) = self { file } else { nil }
+    }
+
+    /// Which way the pill grows for it. Each kind has its own: what comes
+    /// from the Mac slides right, as it always has; what comes from other
+    /// people slides left; a file drops down, where its picture fits.
+    var side: PeekSide {
+        switch self {
+        case .fileArrived: .down
+        case .githubPush, .githubChecksFailed, .githubRelease: .left
+        default: .right
+        }
+    }
+
+    /// A ring in the cover's place, amber and pulsing, instead of a symbol —
+    /// and whose: Vibe's when true.
+    var waitingRing: Bool? {
+        switch self {
+        case .claudeWaiting: false
+        case .vibeWaiting: true
+        case .sessionsWaiting(_, _, _, _, let vibe): vibe
         default: nil
         }
     }
@@ -50,9 +106,10 @@ enum NotchActivity: Equatable {
     /// timer is worth a little longer.
     var duration: TimeInterval {
         switch self {
-        case .charging, .lowBattery, .headphones: 3
+        case .charging, .lowBattery, .headphones, .focus: 3
         case .meeting, .timerDone, .pomodoro, .update, .claudeWaiting, .claudeDone,
-             .vibeWaiting, .vibeDone: 6
+             .vibeWaiting, .vibeDone, .sessionsWaiting, .fileArrived,
+             .githubPush, .githubChecksFailed, .githubRelease: 6
         }
     }
 
@@ -61,9 +118,10 @@ enum NotchActivity: Equatable {
     /// close, while "charging" or "headphones connected" is old news by then.
     var waitsForClose: Bool {
         switch self {
-        case .lowBattery, .meeting, .timerDone, .pomodoro, .update, .claudeWaiting, .vibeWaiting: true
+        case .lowBattery, .meeting, .timerDone, .pomodoro, .update, .claudeWaiting, .vibeWaiting,
+             .sessionsWaiting, .fileArrived, .githubPush, .githubChecksFailed, .githubRelease: true
         // Finished while the panel was open: you were here, and saw it.
-        case .charging, .headphones, .claudeDone, .vibeDone: false
+        case .charging, .headphones, .claudeDone, .vibeDone, .focus: false
         }
     }
 
@@ -117,7 +175,59 @@ enum NotchActivity: Equatable {
             ActivityLook(symbol: "checkmark.circle.fill", tint: ActivityLook.green,
                          title: L.t("Vibe has finished", "Vibe dokončil"), detail: session,
                          trailing: "")
+        case .sessionsWaiting(let count, let session, let wants, _, _):
+            ActivityLook(symbol: "hand.raised.fill", tint: ActivityLook.amber,
+                         title: Self.waitingTitle(count),
+                         detail: session + (wants.flatMap { $0.isEmpty ? nil : " · \($0)" } ?? ""),
+                         trailing: "")
+        case .fileArrived(let file):
+            ActivityLook(symbol: file.kind == .screenshot ? "camera.viewfinder" : "arrow.down.circle.fill",
+                         tint: ActivityLook.green, title: file.title, detail: file.detail, trailing: "")
+        case .githubPush(let who, let repo, let message, _):
+            // "Push from", not "X pushed": Czech would need to know whether
+            // X is a he or a she.
+            ActivityLook(symbol: "arrow.triangle.branch", tint: ActivityLook.sky,
+                         title: L.t("Push from \(who)", "Push od \(who)"),
+                         detail: message.isEmpty ? repo : "\(repo) · \(message)",
+                         trailing: "", plate: .solid)
+        case .githubChecksFailed(let repo, let detail, _):
+            // A cross in a ring, where a push is a filled disc: told apart
+            // by shape, not by red against blue alone.
+            ActivityLook(symbol: "xmark.circle", tint: ActivityLook.coral,
+                         title: L.t("Checks failed", "Testy selhaly"),
+                         detail: detail.isEmpty ? repo : "\(repo) · \(detail)", trailing: "")
+        case .githubRelease(let repo, let tag, _):
+            ActivityLook(symbol: "tag.fill", tint: ActivityLook.sky,
+                         title: L.t("New release", "Nový release"), detail: "\(repo) · \(tag)",
+                         trailing: "", plate: .solid)
+        case .focus(let on):
+            ActivityLook(symbol: on ? "moon.fill" : "moon", tint: ActivityLook.violet,
+                         title: on ? L.t("Focus is on", "Soustředění zapnuto")
+                                   : L.t("Focus is off", "Soustředění vypnuto"),
+                         detail: on ? L.t("Notifications are silenced", "Oznámení jsou ztišená")
+                                    : L.t("Notifications are back", "Oznámení zase chodí"),
+                         trailing: "", plate: .soft)
         }
+    }
+
+    /// A "waiting" message as it should be said given every session there
+    /// is: itself while it is the only one waiting, and otherwise one for
+    /// all of them — how many, and the one that has waited longest.
+    /// Anything that isn't a "waiting" message comes back as it is.
+    nonisolated func forAllWaiting(claude: ClaudeStatus?, vibe: VibeStatus?) -> NotchActivity {
+        guard waitingRing != nil else { return self }
+        let waiting = ((claude?.sessions ?? []) + (vibe?.sessions ?? [])).filter { $0.state == .waiting }.count
+        guard waiting >= 2, let first = ClaudeUsagePage.longestWaiting(claude: claude, vibe: vibe) else {
+            return self
+        }
+        return .sessionsWaiting(count: waiting, session: first.session.name, wants: first.session.wants,
+                                pid: first.session.pid, vibe: first.isVibe)
+    }
+
+    /// "2 sessions are waiting" — Czech counts 2 to 4 one way and 5 up another.
+    nonisolated static func waitingTitle(_ count: Int) -> String {
+        L.t("\(count) sessions are waiting",
+            (2...4).contains(count) ? "\(count) relace čekají" : "\(count) relací čeká")
     }
 
     /// "in 5 min · 14:00" ("za 5 min · 14:00"), or "now · 14:00" once it has started.
@@ -138,7 +248,17 @@ struct ActivityLook {
     var detail: String
     /// In the bars' place.
     var trailing: String
+    /// What the symbol stands on — see `Plate`.
+    var plate: Plate = .none
 
+    /// A disc under the symbol: none, as most have; the tint itself with the
+    /// symbol dark on it; or a quarter of the tint with the symbol in it.
+    enum Plate: Equatable { case none, solid, soft }
+
+    /// GitHub's blue, lighter than `blue`: it carries a dark symbol.
+    static let sky = Color(red: 0.5, green: 0.7, blue: 1)
+    static let coral = Color(red: 1, green: 0.54, blue: 0.5)
+    static let violet = Color(red: 0.73, green: 0.66, blue: 1)
     static let green = Color(red: 0.2, green: 0.84, blue: 0.4)
     static let red = Color(red: 1, green: 0.32, blue: 0.3)
     static let blue = Color(red: 0.36, green: 0.62, blue: 1)
@@ -183,10 +303,43 @@ final class ActivityPeek {
         }
         model.activity = activity
         model.activityShown = true
+        held = 0
+        hideAfter(activity.duration)
+    }
+
+    /// Slides the message back in now — it was clicked, or dragged away.
+    func dismiss() {
+        guard model.activityShown else { return }
         hide?.cancel()
-        let work = DispatchWorkItem { [weak self] in self?.slideBack() }
+        slideBack()
+    }
+
+    private func hideAfter(_ delay: TimeInterval) {
+        hide?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.timeUp() }
         hide = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + activity.duration, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    /// How long a file has been kept out past its time, in seconds.
+    private var held: TimeInterval = 0
+    /// At most this long: a pointer parked on the notch isn't reaching for it.
+    nonisolated static let longestHold: TimeInterval = 20
+
+    /// Whether a message whose time is up stays out a second longer: a file,
+    /// with the pointer on it — on its way to click or drag it.
+    nonisolated static func holds(file: Bool, pointerOnNotch: Bool, heldFor: TimeInterval) -> Bool {
+        file && pointerOnNotch && heldFor < longestHold
+    }
+
+    private func timeUp() {
+        if Self.holds(file: model.activity?.file != nil, pointerOnNotch: model.pointerOnNotch,
+                      heldFor: held) {
+            held += 1
+            hideAfter(1)
+            return
+        }
+        slideBack()
     }
 
     private func showWaiting() {

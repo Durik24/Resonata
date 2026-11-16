@@ -101,6 +101,11 @@ keychain; `build.sh` uses it when present.
 | `Language.swift` | English and Czech, side by side where each string is used |
 | `Vibe.swift` | Mistral Vibe beside it: the month's Vibe allowance as a ring, the same two messages. Off by default; reads `~/.vibe/logs/session/` and asks Mistral's billing through Vibe's own Python |
 | `Claude.swift` | Claude Code in the notch: its limit as a ring, a message when a session stops to ask or finishes. Off by default; reads `~/.claude/sessions/` and `claude /usage` |
+| `FileWatch.swift` | A finished download or a screenshot, dropped out under the notch: watches the two folders for a new name. Off by default |
+| `GitHub.swift` | A push by somebody else, failed checks or a new release of the repositories you name, slid out to the left. Off by default; asked through `gh` where it is signed in |
+| `Focus.swift` | A word in the notch when a Focus goes on or off. Off by default |
+| `Clipboard.swift` | The clipboard's page: the last 20 things copied, in memory only. Off by default |
+| `MusicSleep.swift` | The timer's "stop the music at the end": a ten-second fade, a pause, the volume put back |
 | `ArtworkAccent.swift` | Picks the accent colour out of the album art |
 | `Controls.swift` | Transport button press style |
 | `ResonataApp.swift` | Wires it together, sets `.accessory` activation policy |
@@ -175,6 +180,16 @@ code or assets — keeping only what needs no permission:
   destination (`@objc` methods on `NotchPanel`), and sits at main menu + 3:
   at `.screenSaver` it was above the level dragged items are drawn at, and
   macOS hands drags only to windows below that.
+- **Three ways out of the closed notch**: a message slides right, as it
+  always has; GitHub's slide *left*, the row mirrored so the right edge
+  holds still; a file *drops down* under the cutout with its picture —
+  click it for Finder, or drag it out (`PeekSide`, `NotchView.peekSize`).
+- **Downloads and screenshots** (`FileWatch.swift`), **GitHub**
+  (`GitHub.swift`), **Focus** (`Focus.swift`) and a **clipboard page**
+  (`Clipboard.swift`) are each switched on in Settings. The timer page has
+  a switch that fades and pauses the music when a timer ends
+  (`MusicSleep.swift`), and the Limits page lists the sessions waiting for
+  an answer first, each with what it asks.
 - **Pages**: icons in the strip left of the cutout switch the open panel
   between Music, Notes, Apps, Timer and Shelf; they shrink to fit beside the
   cutout when the panel is narrow. Right of it: settings and the battery level.

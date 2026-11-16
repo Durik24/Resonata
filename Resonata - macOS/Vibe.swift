@@ -399,6 +399,8 @@ final class VibeMonitor: ObservableObject {
     private var timer: Timer?
     /// Each session's state at the last look, and since when it has worked.
     private var known: [String: (state: ClaudeStatus.State, workingSince: Date?)] = [:]
+    /// Since when each waiting session has waited.
+    private var waitingSince: [String: Date] = [:]
     private var usage: VibeUsage?
     /// The app each session runs in, by the session's id.
     private var apps: [String: String] = [:]
@@ -468,6 +470,8 @@ final class VibeMonitor: ObservableObject {
             if before?.state == .working, record.state != .working { finished = true }
         }
         known = seen
+        waitingSince = Dictionary(records.filter { $0.state == .waiting }
+            .map { ($0.id, waitingSince[$0.id] ?? now) }, uniquingKeysWith: { first, _ in first })
 
         let summary = VibeSessionRecord.summary(of: records)
         apps = apps.filter { seen[$0.key] != nil }
@@ -476,7 +480,9 @@ final class VibeMonitor: ObservableObject {
             let app = apps[record.id] ?? ClaudeMonitor.hostApp(of: record.pid)?.localizedName
             apps[record.id] = app
             return ClaudeStatus.Session(pid: record.pid, name: record.name, state: record.state, app: app,
-                                        key: record.id)
+                                        key: record.id,
+                                        wants: record.state == .waiting ? record.wants : nil,
+                                        since: waitingSince[record.id])
         }
         let new = VibeStatus(state: summary.state, session: summary.session, wants: summary.wants,
                              usage: usage, sessions: sessions)

@@ -77,6 +77,8 @@ extension NotchView {
             TimerView(timer: .shared, accent: ActivityLook.orange)
         case .shelf:
             ShelfView(shelf: .shared, width: model.expandedWidth - 40)
+        case .clipboard:
+            ClipboardView(store: .shared, width: model.expandedWidth - 40)
         case .usage:
             ClaudeUsagePage(status: model.claude, vibe: model.vibe,
                             wide: model.expandedWidth >= NotchView.expandedWidth) { session in

@@ -196,6 +196,10 @@ final class NotchPanel: NSPanel {
         case .scrollWheel where takesScroll?(event) ?? true:
             onScroll?(event)
             return
+        case .leftMouseDragged:
+            onMouseDragged?(event)
+        case .leftMouseUp:
+            onMouseUp?(event)
         default:
             break
         }
@@ -212,19 +216,27 @@ final class NotchPanel: NSPanel {
     /// `.screenSaver`, no drop arrived even with all of this in place).
     var onFileDragEnter: (() -> Void)?
     var onFileDrop: (([URL]) -> Void)?
+    /// The mouse moving with the button down, and the button coming up —
+    /// for a file dragged out of the closed notch, or clicked there.
+    var onMouseDragged: ((NSEvent) -> Void)?
+    var onMouseUp: ((NSEvent) -> Void)?
 
     func acceptFileDrops() {
         registerForDraggedTypes([.fileURL])
     }
 
     @objc func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        // A file on its way *out* of the notch starts over the notch. Taken
+        // for one coming in, it opened the shelf under the drag.
+        guard !(sender.draggingSource is FileDragSource) else { return [] }
         guard !Self.fileURLs(in: sender).isEmpty else { return [] }
         onFileDragEnter?()
         return .copy
     }
 
     @objc func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
-        Self.fileURLs(in: sender).isEmpty ? [] : .copy
+        guard !(sender.draggingSource is FileDragSource) else { return [] }
+        return Self.fileURLs(in: sender).isEmpty ? [] : .copy
     }
 
     @objc func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool { true }
@@ -363,6 +375,11 @@ final class NotchPanelController {
     /// leaving the notch takes it away again.
     private var hoverPeeking = false
 
+    /// The file under the closed notch has the mouse button down on it, and
+    /// where it went down — see `dragFile(with:)`.
+    private var fileGrab: (file: FileArrival, at: NSPoint)?
+    private let fileDragSource = FileDragSource()
+
     /// The swipe in progress on the notch — see `swipe(_:)`.
     private var swipeTravel = CGSize.zero
     private var swipeDone = false
@@ -449,6 +466,22 @@ final class NotchPanelController {
                         app.activate()
                         return
                     }
+                    // GitHub's: the click goes to the commit, the run or the
+                    // release it is about.
+                    if self.model.activityShown, let url = self.model.activity?.link {
+                        if NotchPanel.debugClick { NSLog("click: to %@", url.absoluteString) }
+                        NSWorkspace.shared.open(url)
+                        self.model.dismissActivity?()
+                        return
+                    }
+                    // A file: held until the button comes up (a click — shown
+                    // in Finder) or the pointer moves (a drag — the file
+                    // itself goes with it). See `dragFile` and `releaseFile`.
+                    if self.model.activityShown, let file = self.model.activity?.file {
+                        if NotchPanel.debugClick { NSLog("click: on the file %@", file.url.lastPathComponent) }
+                        self.fileGrab = (file, location)
+                        return
+                    }
                     if NotchPanel.debugClick { NSLog("click: EXPAND") }
                     self.setExpanded(true)
                     if NotchPanel.debugClick { self.debugSnapshots(tag: "open") }
@@ -463,6 +496,12 @@ final class NotchPanelController {
                     if NotchPanel.debugClick { self.debugSnapshots(tag: "close") }
                 }
             }
+        }
+        panel.onMouseDragged = { [weak self] event in
+            MainActor.assumeIsolated { self?.dragFile(with: event) }
+        }
+        panel.onMouseUp = { [weak self] _ in
+            MainActor.assumeIsolated { self?.releaseFile() }
         }
         panel.onContextMenu = { [weak self] event in
             MainActor.assumeIsolated { self?.showMenu(for: event) }
@@ -514,9 +553,14 @@ final class NotchPanelController {
             .map { hasTrack, idle, extra in (hasTrack && !idle) || extra }
             .removeDuplicates()
 
+        // Which way the pill is out, or nil while it isn't.
+        let peek = model.$peeking.removeDuplicates()
+            .combineLatest(model.$peekSide.removeDuplicates())
+            .map { on, side -> PeekSide? in on ? side : nil }
+            .removeDuplicates()
         model.$isExpanded
             .removeDuplicates()
-            .combineLatest(collapsedContentVisible, model.$peeking.removeDuplicates(),
+            .combineLatest(collapsedContentVisible, peek,
                            model.$hovering.removeDuplicates())
             // Deliver on the next run-loop pass, never inside the publish.
             //
@@ -528,8 +572,8 @@ final class NotchPanelController {
             // with music playing, the spectrum's next tick a frame later;
             // idle, the ten-second re-sync. That was the "opens after 8s".
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] expanded, hasTrack, peeking, hovering in
-                self?.apply(expanded: expanded, hasTrack: hasTrack, peeking: peeking,
+            .sink { [weak self] expanded, hasTrack, peek, hovering in
+                self?.apply(expanded: expanded, hasTrack: hasTrack, peek: peek,
                             hovering: hovering)
             }
             .store(in: &cancellables)
@@ -890,7 +934,7 @@ final class NotchPanelController {
                     // window and again in the big one, before the first
                     // frame of the open had been drawn.
                     self.apply(expanded: true, hasTrack: self.model.showsCollapsedContent,
-                               peeking: false)
+                               peek: nil)
                 }
                 if FrameProbe.isOn { FrameProbe.record("setExpanded") }
                 self.panel?.movingUntil = CACurrentMediaTime() + Preferences.animationSpeed.settleTime
@@ -940,6 +984,7 @@ final class NotchPanelController {
         let inside = Self.pointsAtNotch(point, shape: shape)
         guard inside != pointerInside else { return }
         pointerInside = inside
+        model.pointerOnNotch = inside
         hoverTask?.cancel()
         watchForLeaving(inside)
         // Published on the next pass, never from inside the event dispatch —
@@ -959,7 +1004,10 @@ final class NotchPanelController {
             break
         case .hover:
             if inside {
-                guard !model.isExpanded else { return }
+                // A file hanging under the notch is being reached for:
+                // opening the panel would take it out from under the pointer.
+                guard !model.isExpanded, !(model.activityShown && model.activity?.file != nil)
+                else { return }
                 hoverTask = Task { @MainActor [weak self] in
                     try? await Task.sleep(for: Self.hoverDwell)
                     guard let self, !Task.isCancelled, self.pointerInside,
@@ -1159,7 +1207,7 @@ final class NotchPanelController {
             return NSRect(x: mid - width / 2, y: top - height, width: width, height: height)
         }
         let pill = pillRect
-        return NSRect(x: mid - pill.width / 2 + (model.peeking ? NotchView.peekShift : 0),
+        return NSRect(x: mid - pill.width / 2 + (model.peeking ? NotchView.peekShift(model.peekSide) : 0),
                       y: top - pill.height, width: pill.width, height: pill.height)
     }
 
@@ -1224,8 +1272,39 @@ final class NotchPanelController {
             .representation(using: .png, properties: [:])?.write(to: url)
     }
 
+    // MARK: The file under the notch
+
+    /// The pointer has moved with the button down on the file: from a few
+    /// points on, that is a drag, and the file itself goes with the pointer
+    /// — into a folder, a chat, a mail.
+    private func dragFile(with event: NSEvent) {
+        guard let grab = fileGrab, let view = panel?.contentView else { return }
+        let point = event.locationInWindow
+        guard hypot(point.x - grab.at.x, point.y - grab.at.y) >= 4 else { return }
+        fileGrab = nil
+        let item = NSDraggingItem(pasteboardWriter: grab.file.url as NSURL)
+        let picture = grab.file.picture ?? NSWorkspace.shared.icon(forFile: grab.file.url.path)
+        let size = FileArrival.fitted(picture.size, into: CGSize(width: 72, height: 48))
+        let at = view.convert(point, from: nil)
+        item.setDraggingFrame(NSRect(x: at.x - size.width / 2, y: at.y - size.height / 2,
+                                     width: size.width, height: size.height), contents: picture)
+        if NotchPanel.debugClick { NSLog("click: dragging %@ out", grab.file.url.lastPathComponent) }
+        view.beginDraggingSession(with: [item], event: event, source: fileDragSource)
+        model.dismissActivity?()
+    }
+
+    /// The button came up where it went down: a click, and the file is
+    /// shown in Finder.
+    private func releaseFile() {
+        guard let grab = fileGrab else { return }
+        fileGrab = nil
+        if NotchPanel.debugClick { NSLog("click: showing %@ in Finder", grab.file.url.lastPathComponent) }
+        NSWorkspace.shared.activateFileViewerSelecting([grab.file.url])
+        model.dismissActivity?()
+    }
+
     /// Where the closed pill is drawn, in window coordinates: top-centre,
-    /// shifted right while peeking.
+    /// shifted to its side while peeking, taller while a file hangs under it.
     private var pillRect: NSRect {
         guard let panel, let screen = targetScreen else { return .zero }
         let window = panel.frame.size
@@ -1235,8 +1314,10 @@ final class NotchPanelController {
         var width = notch.width + (model.showsCollapsedContent ? NotchMetrics.contentWidth(scale: scale) : 0)
         var shift: CGFloat = 0
         if model.peeking {
-            width = NotchView.peekSize(notch: notch, scale: scale).width
-            shift = NotchView.peekShift
+            let peek = NotchView.peekSize(notch: notch, scale: scale, side: model.peekSide)
+            width = peek.width
+            height = peek.height
+            shift = NotchView.peekShift(model.peekSide)
         }
         // The swell stays on through a hover peek — the pointer is still there.
         if model.hovering {
@@ -1357,11 +1438,11 @@ final class NotchPanelController {
     /// the current and the new frame now, the exact new frame later. That
     /// also covers changes that grow one way and shrink the other, which the
     /// song-change peek brought in.
-    private func apply(expanded: Bool, hasTrack: Bool, peeking: Bool, hovering: Bool = false) {
+    private func apply(expanded: Bool, hasTrack: Bool, peek: PeekSide?, hovering: Bool = false) {
         guard let panel, let screen = targetScreen else { return }
         shrink?.cancel()
 
-        let target = frame(for: screen, expanded: expanded, hasTrack: hasTrack, peeking: peeking,
+        let target = frame(for: screen, expanded: expanded, hasTrack: hasTrack, peek: peek,
                            hovering: hovering)
         let room = panel.frame.union(target)
         if room != panel.frame { setPanelFrame(room) }
@@ -1380,7 +1461,8 @@ final class NotchPanelController {
     private func reposition() {
         guard let screen = targetScreen else { return }
         setPanelFrame(frame(for: screen, expanded: model.isExpanded,
-                            hasTrack: model.showsCollapsedContent, peeking: model.peeking,
+                            hasTrack: model.showsCollapsedContent,
+                            peek: model.peeking ? model.peekSide : nil,
                             hovering: model.hovering))
     }
 
@@ -1411,14 +1493,14 @@ final class NotchPanelController {
         for screen: NSScreen,
         expanded: Bool = false,
         hasTrack: Bool = false,
-        peeking: Bool = false,
+        peek side: PeekSide? = nil,
         hovering: Bool = false
     ) -> NSRect {
         let size: CGSize
         if expanded {
             size = CGSize(width: Self.canvasWidth, height: Self.canvasHeight)
-        } else if peeking {
-            let peek = NotchView.peekWindowSize(notch: screen.notchSize, scale: screen.pillScale)
+        } else if let side {
+            let peek = NotchView.peekWindowSize(notch: screen.notchSize, scale: screen.pillScale, side: side)
             size = CGSize(width: peek.width + (hovering ? NotchMetrics.hoverGrowth.width : 0),
                           height: peek.height + (hovering ? NotchMetrics.hoverGrowth.height : 0))
         } else {

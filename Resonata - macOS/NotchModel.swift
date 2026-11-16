@@ -81,13 +81,32 @@ final class NotchModel: ObservableObject {
     @Published var activityShown = false { didSet { updatePeeking() } }
 
     private func updatePeeking() {
+        let side = activityShown ? (activity?.side ?? .right) : .right
         let slidOut = songPeeking || activityShown
+        // Going out, the side first; coming in, the side last: whoever is
+        // told of one before the other never sees the pill out the wrong way.
+        if slidOut, peekSide != side { peekSide = side }
         if peeking != slidOut { peeking = slidOut }
+        if !slidOut, peekSide != side { peekSide = side }
     }
+
+    /// Which way the pill is out while `peeking`: right for the song and for
+    /// most messages, left or down for those that say so — see `PeekSide`.
+    /// Back to right the moment the message starts sliding in; the row keeps
+    /// the message's own layout until it is gone (`activity?.side`).
+    @Published private(set) var peekSide: PeekSide = .right
 
     /// Something other than the song, shown in the closed notch for a
     /// moment — see `NotchActivity`.
-    @Published var activity: NotchActivity?
+    @Published var activity: NotchActivity? { didSet { updatePeeking() } }
+
+    /// The pointer is on the notch, closed or open — set by
+    /// `NotchPanelController`. A file that has dropped out of the notch
+    /// stays out while it is.
+    var pointerOnNotch = false
+
+    /// Set by the app. Slides the message that is out back in.
+    var dismissActivity: (() -> Void)?
 
     /// The pointer is on the closed pill, which swells a little under it.
     @Published var hovering = false
@@ -124,6 +143,18 @@ final class NotchModel: ObservableObject {
     var showsCollapsedContent: Bool {
         musicLive || activity != nil || timerRunning || claude?.showsInPill == true
             || vibe?.showsInPill == true
+    }
+
+    /// The pill would have something in it without the message that is out:
+    /// a message that drops down leaves the row to the cover and the bars,
+    /// and when there are none it leaves it empty.
+    var showsOwnContent: Bool {
+        musicLive || timerRunning || claude?.showsInPill == true || vibe?.showsInPill == true
+    }
+
+    /// How many Claude Code and Vibe sessions are waiting for an answer.
+    var waitingSessions: Int {
+        ((claude?.sessions ?? []) + (vibe?.sessions ?? [])).filter { $0.state == .waiting }.count
     }
 
     /// Something is playing, or was until a moment ago: the cover and the
@@ -217,12 +248,17 @@ struct PillRing: Equatable {
 
 /// The open panel's pages, switched from the icons beside the notch.
 enum PanelTab: String, CaseIterable, Identifiable {
-    case music, notes, apps, timer, shelf, usage
+    case music, notes, apps, timer, shelf, clipboard, usage
 
     /// The pages there are right now: the usage page only while Claude
-    /// Code or Mistral Vibe is switched on in Settings.
+    /// Code or Mistral Vibe is switched on in Settings, the clipboard's
+    /// only while that is.
     static var shown: [PanelTab] {
-        allCases.filter { $0 != .usage || Preferences.showClaude || Preferences.showVibe }
+        shown(clipboard: Preferences.showClipboard, usage: Preferences.showClaude || Preferences.showVibe)
+    }
+
+    nonisolated static func shown(clipboard: Bool, usage: Bool) -> [PanelTab] {
+        allCases.filter { ($0 != .usage || usage) && ($0 != .clipboard || clipboard) }
     }
 
     var id: String { rawValue }
@@ -246,6 +282,7 @@ enum PanelTab: String, CaseIterable, Identifiable {
         case .apps: "square.grid.2x2"
         case .timer: "timer"
         case .shelf: "tray"
+        case .clipboard: "doc.on.clipboard"
         case .usage: "gauge.with.needle"
         }
     }
@@ -258,6 +295,7 @@ enum PanelTab: String, CaseIterable, Identifiable {
         case .apps: L.t("Apps", "Aplikace")
         case .timer: L.t("Timer", "Časovač")
         case .shelf: L.t("Shelf", "Police")
+        case .clipboard: L.t("Clipboard", "Schránka")
         case .usage: L.t("Limits", "Limity")
         }
     }
@@ -269,6 +307,7 @@ enum PanelTab: String, CaseIterable, Identifiable {
         case .apps: L.t("Apps", "Aplikace")
         case .timer: L.t("Timer", "Časovač")
         case .shelf: L.t("Shelf", "Police")
+        case .clipboard: L.t("Clipboard history", "Historie schránky")
         case .usage:
             switch (Preferences.showClaude, Preferences.showVibe) {
             case (true, true): L.t("Claude Code and Vibe limits", "Limity Claude Code a Vibe")

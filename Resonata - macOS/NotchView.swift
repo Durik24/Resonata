@@ -62,23 +62,45 @@ struct NotchView: View {
     /// bars by this much, with the title and artist in the new space.
     static let peekExtraWidth: CGFloat = 118
 
+    /// A message that drops down: the pill at its own width, taller by this
+    /// much, with the file's picture and two lines under the cutout.
+    static let dropHeight: CGFloat = 62
+
     /// The peek's shape — shared with `NotchPanelController` so the window,
-    /// the shape and the click target agree. Same height as the pill: it
-    /// grows sideways only.
-    static func peekSize(notch: CGSize, scale: CGFloat) -> CGSize {
-        CGSize(width: notch.width + NotchMetrics.contentWidth(scale: scale) + peekExtraWidth,
-               height: notch.height + NotchMetrics.collapsedExtraHeight)
+    /// the shape and the click target agree. Sideways it keeps the pill's
+    /// height and grows by `peekExtraWidth`, to either side; downwards it
+    /// keeps the width and grows by `dropHeight`.
+    static func peekSize(notch: CGSize, scale: CGFloat, side: PeekSide = .right) -> CGSize {
+        let width = notch.width + NotchMetrics.contentWidth(scale: scale)
+        let height = notch.height + NotchMetrics.collapsedExtraHeight
+        switch side {
+        case .right, .left: return CGSize(width: width + peekExtraWidth, height: height)
+        case .down: return CGSize(width: width, height: height + dropHeight)
+        }
     }
 
     /// The window during a peek: symmetric about the notch, so the notch
-    /// stays at its centre, and wide enough for the shape shifted right.
-    static func peekWindowSize(notch: CGSize, scale: CGFloat) -> CGSize {
-        let shape = peekSize(notch: notch, scale: scale)
-        return CGSize(width: shape.width + peekExtraWidth, height: shape.height)
+    /// stays at its centre, and wide enough for the shape shifted to its
+    /// side. Dropped down, the shape isn't shifted at all.
+    static func peekWindowSize(notch: CGSize, scale: CGFloat, side: PeekSide = .right) -> CGSize {
+        let shape = peekSize(notch: notch, scale: scale, side: side)
+        return CGSize(width: shape.width + abs(2 * peekShift(side)), height: shape.height)
     }
 
-    /// How far right the peeking shape sits, so its left edge doesn't move.
-    static let peekShift: CGFloat = peekExtraWidth / 2
+    /// How far to the right the peeking shape sits, so the edge on the far
+    /// side of the slide doesn't move: half of what it grew by, negative to
+    /// the left.
+    static func peekShift(_ side: PeekSide) -> CGFloat {
+        switch side {
+        case .right: peekExtraWidth / 2
+        case .left: -peekExtraWidth / 2
+        case .down: 0
+        }
+    }
+
+    /// The pill's bottom corners while a file hangs under it: rounder, as a
+    /// taller shape wants.
+    static let dropRadius: CGFloat = 16
 
     /// One spring, one clock.
     ///
@@ -192,7 +214,7 @@ struct NotchView: View {
     private var size: CGSize {
         if !model.isExpanded, model.peeking {
             // The swell stays on through a hover peek — the pointer is still there.
-            let peek = Self.peekSize(notch: notchSize, scale: model.pillScale)
+            let peek = Self.peekSize(notch: notchSize, scale: model.pillScale, side: model.peekSide)
             guard model.hovering else { return peek }
             return CGSize(width: peek.width + NotchMetrics.hoverGrowth.width,
                           height: peek.height + NotchMetrics.hoverGrowth.height)
@@ -252,8 +274,8 @@ struct NotchView: View {
             .modifier(NotchFrame(
                 size: size,
                 topRadius: model.isExpanded ? 12 : 0,
-                bottomRadius: model.isExpanded ? 24 : 7 * model.pillScale,
-                xOffset: !model.isExpanded && model.peeking ? Self.peekShift : 0,
+                bottomRadius: model.isExpanded ? 24 : (dropped ? Self.dropRadius : 7 * model.pillScale),
+                xOffset: !model.isExpanded && model.peeking ? Self.peekShift(model.peekSide) : 0,
                 background: { shape in
                     // Plain rectangles, not `shape.fill`: `NotchFrame` clips
                     // them to the silhouette anyway. A gradient filling a
@@ -280,6 +302,9 @@ struct NotchView: View {
             .animation(model.isExpanded ? settleOpen : settleClosed, value: model.isExpanded)
             .animation(settle, value: model.showsCollapsedContent)
             .animation(settle, value: model.peeking)
+            // A message taking over from the song's peek, or handing back to
+            // it: out one way, straight to out the other.
+            .animation(settle, value: model.peekSide)
             .animation(settle, value: model.tab)
             // The hover swell eases in and out without overshoot. A bouncy
             // one, on top of the song sliding out, looked like the notch
@@ -407,6 +432,15 @@ struct NotchView: View {
             if !model.isExpanded {
                 closedRow
                     .padding(.horizontal, 6)
+                    // A file hanging under the pill: the row keeps the
+                    // pill's own height at the top of the taller shape, and
+                    // the file goes under it. Any other time the row fills
+                    // the pill, as it always did.
+                    .frame(height: rowSide == .down ? closedRowHeight : nil)
+                    .frame(maxHeight: .infinity, alignment: .top)
+                    .overlay(alignment: .top) {
+                        dropContent.padding(.top, closedRowHeight)
+                    }
                     .transition(Self.closedSwap)
             }
         }
@@ -506,12 +540,20 @@ struct NotchView: View {
     /// travel out with the slide and back in with it. The title and artist
     /// fade into the slot the bars leave behind, just past the cutout.
     private var closedRow: some View {
-        HStack(spacing: 0) {
+        // A message that slides left is the row mirrored: the cover's slot
+        // and the cutout hold still against the *right* edge — closed, that
+        // is exactly where they are anyway — the symbol goes in the bars'
+        // place, and the text is uncovered leftwards by the edge moving out.
+        let left = rowSide == .left
+        let barsSlot = collapsedSlot + NotchMetrics.waveformNudge + 12 * (model.pillScale - 1)
+        return HStack(spacing: 0) {
             coverSlot
+                .opacity(emptySlots ? 0 : 1)
             middle
                 .frame(width: collapsedMiddleWidth)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.trailing, left ? barsSlot : 0)
+        .frame(maxWidth: .infinity, alignment: left ? .trailing : .leading)
         // The title and artist are an overlay, not part of the row, so they
         // never push on its layout. In the row, their fixed width overflowed
         // the pill mid-slide and the overflow got centred — measured: the
@@ -526,11 +568,16 @@ struct NotchView: View {
             // keeps its last frame for the length of its fade, so a text that
             // came and went with `peeking` was never clipped on the way out.
             Color.clear
-                .overlay(alignment: .leading) {
+                // Sliding left, the text is pinned to the box's right end —
+                // the end by the cutout, which holds still — at its full
+                // width, so it stands still too while the left edge moves.
+                .overlay(alignment: left ? .trailing : .leading) {
                     // A fixed width, not "whatever is left": a flexible one
                     // re-truncated the title on every frame of the slide back.
                     peekText
-                        .frame(width: Self.peekExtraWidth - Self.peekTextGap - Self.peekTextIndent
+                        .frame(width: left
+                                   ? Self.peekExtraWidth + collapsedSlot - Self.peekTextEdge - Self.peekTextIndent
+                                   : Self.peekExtraWidth - Self.peekTextGap - Self.peekTextIndent
                                       + peekTextSpare,
                                alignment: .leading)
                         // The fade is scoped to the opacity alone. An
@@ -538,24 +585,32 @@ struct NotchView: View {
                         // animated the row's *position* on the fade's curve,
                         // against the shape's spring — measured: artwork and
                         // bars drifting 8pt right mid-slide and creeping back.
-                        .animation(fade) { $0.opacity(model.peeking ? 1 : 0) }
+                        .animation(fade) { $0.opacity(model.peeking && rowSide != .down ? 1 : 0) }
                 }
                 .mask {
                     HStack(spacing: 0) {
+                        if left {
+                            LinearGradient(colors: [.clear, .black],
+                                           startPoint: .leading, endPoint: .trailing)
+                                .frame(width: Self.peekTextEdge)
+                        }
                         Color.black
-                        LinearGradient(colors: [.black, .clear],
-                                       startPoint: .leading, endPoint: .trailing)
-                            .frame(width: Self.peekTextGap)
+                        if !left {
+                            LinearGradient(colors: [.black, .clear],
+                                           startPoint: .leading, endPoint: .trailing)
+                                .frame(width: Self.peekTextGap)
+                        }
                     }
                 }
-                .padding(.leading, collapsedSlot + collapsedMiddleWidth + Self.peekTextIndent)
-                .padding(.trailing, collapsedSlot - peekTextSpare + NotchMetrics.waveformNudge
-                                    + Self.peekTextGap)
+                .padding(.leading, left ? 0 : collapsedSlot + collapsedMiddleWidth + Self.peekTextIndent)
+                .padding(.trailing, left
+                    ? barsSlot + collapsedMiddleWidth + Self.peekTextIndent
+                    : collapsedSlot - peekTextSpare + NotchMetrics.waveformNudge + Self.peekTextGap)
         }
         // The bars are laid over the row against its trailing edge, which is
         // the pill's own right edge less the inset — the same margin the
         // artwork keeps on the left, closed or peeking.
-        .overlay(alignment: .trailing) { waveform }
+        .overlay(alignment: .trailing) { waveform.opacity(emptySlots ? 0 : 1) }
         .padding(.horizontal, NotchMetrics.collapsedInset * model.pillScale)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .opacity(model.showsCollapsedContent ? 1 : 0)
@@ -567,7 +622,7 @@ struct NotchView: View {
     /// What sits between the artwork and the bars when closed.
     @ViewBuilder
     private var middle: some View {
-        if !hasRealNotch, let look = model.activity?.look {
+        if !hasRealNotch, let look = rowActivity?.look {
             Text(look.title)
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(.white.opacity(0.9))
@@ -593,19 +648,23 @@ struct NotchView: View {
 
     /// The cover, or an activity's picture in its place.
     private var coverSlot: some View {
-        ZStack {
-            if case .claudeWaiting = model.activity {
+        // A message that slides left has its symbol across the cutout, in
+        // the bars' place, and its text runs through here. The slot keeps
+        // whatever it held and only fades: this slot stands still on the
+        // screen while the row's left end moves out, and a view *removed*
+        // keeps its place in the row for the length of its fade —
+        // photographed, the cover rode out to the far left with the edge.
+        let left = rowSide == .left
+        let shown = left ? nil : rowActivity
+        return ZStack {
+            if let vibe = shown?.waitingRing {
                 // Its ring, amber and pulsing, with the limit in it.
-                pillRing(fraction: model.claude?.fraction, state: .waiting)
+                pillRing(fraction: vibe ? model.vibe?.fraction : model.claude?.fraction, state: .waiting,
+                         tint: vibe ? ClaudeRingView.vibe : ClaudeRingView.tint)
+                    .overlay(alignment: .topTrailing) { waitingBadge }
                     .transition(.opacity)
-            } else if case .vibeWaiting = model.activity {
-                pillRing(fraction: model.vibe?.fraction, state: .waiting)
-                    .transition(.opacity)
-            } else if let look = model.activity?.look {
-                Image(systemName: look.symbol)
-                    .font(.system(size: 15, weight: .semibold))
-                    .symbolRenderingMode(.monochrome)
-                    .foregroundStyle(look.tint)
+            } else if let look = shown?.look {
+                activitySymbol(look)
                     .frame(width: collapsedSlot, height: collapsedSlot)
                     .transition(.opacity)
             } else if model.track == nil, model.timerRunning {
@@ -628,17 +687,117 @@ struct NotchView: View {
             }
         }
         .frame(width: collapsedSlot, height: collapsedSlot)
+        .animation(fade) { $0.opacity(left ? 0 : 1) }
         // A crossfade between cover and symbol. Scoped here, on a fixed-size
         // slot, so it can't animate anything's position — see the note on
-        // the peek text below.
-        .animation(fade, value: model.activity)
+        // the peek text below. Not for a message sliding left: nothing in
+        // the slot changes for one, and the slot's place in the row does.
+        .animation(left ? nil : fade, value: model.activity)
         .animation(fade, value: model.musicLive)
     }
 
     /// A ring is what stands in the bars' place right now — the same
     /// conditions, in the same order, as `waveform` chooses by.
     private var ringInBarsPlace: Bool {
-        model.activity == nil && !model.timerRunning && model.pillRings.bars != nil
+        rowActivity == nil && !model.timerRunning && model.pillRings.bars != nil
+    }
+
+    // MARK: Messages that slide left, or drop down
+
+    /// How the row is laid out for the message in it — its own side, kept
+    /// until the message has slid all the way back in.
+    private var rowSide: PeekSide { model.activity?.side ?? .right }
+
+    /// The message the row itself shows. One that drops down has its own
+    /// place under the row, and leaves the cover and the bars as they are.
+    private var rowActivity: NotchActivity? {
+        model.activity?.side == .down ? nil : model.activity
+    }
+
+    /// A file is dropping from a notch that had nothing in it: no cover and
+    /// no bars to show beside the cutout, so nothing is.
+    private var emptySlots: Bool { rowSide == .down && !model.showsOwnContent }
+
+    /// The pill is out downwards.
+    private var dropped: Bool { model.peeking && model.peekSide == .down }
+
+    /// The row's height while a file hangs under it: the pill's own.
+    private var closedRowHeight: CGFloat { notchSize.height + NotchMetrics.collapsedExtraHeight }
+
+    /// A message's symbol, on its plate when it has one — see `ActivityLook.Plate`.
+    @ViewBuilder
+    private func activitySymbol(_ look: ActivityLook) -> some View {
+        switch look.plate {
+        case .none:
+            Image(systemName: look.symbol)
+                .font(.system(size: look.symbol == "xmark.circle" ? 19 : 15, weight: .semibold))
+                .symbolRenderingMode(.monochrome)
+                .foregroundStyle(look.tint)
+        case .solid:
+            Image(systemName: look.symbol)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(.black.opacity(0.82))
+                .frame(width: collapsedSlot - 8, height: collapsedSlot - 8)
+                .background(Circle().fill(look.tint))
+        case .soft:
+            Image(systemName: look.symbol)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(look.tint)
+                .frame(width: collapsedSlot - 8, height: collapsedSlot - 8)
+                .background(Circle().fill(look.tint.opacity(0.24)))
+        }
+    }
+
+    /// How many sessions are waiting, on the corner of an amber ring — only
+    /// from two up: one is what the ring already says.
+    @ViewBuilder
+    private var waitingBadge: some View {
+        let count = model.waitingSessions
+        if count >= 2 {
+            Text("\(min(count, 9))")
+                .font(.system(size: 8, weight: .heavy).monospacedDigit())
+                .foregroundStyle(.black.opacity(0.85))
+                .frame(width: 12, height: 12)
+                .background(Circle().fill(ActivityLook.amber))
+                .overlay(Circle().strokeBorder(Self.panelBlack, lineWidth: 1.25).padding(-1.25))
+                .offset(x: 4, y: -3)
+                .accessibilityLabel(NotchActivity.waitingTitle(count))
+        }
+    }
+
+    /// The file under the pill: its picture, and what it is.
+    @ViewBuilder
+    private var dropContent: some View {
+        if let file = model.activity?.file {
+            HStack(spacing: 10) {
+                FilePicture(file: file)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(file.title)
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(.white)
+                    Text(file.detail)
+                        .font(.system(size: 9.5, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.78))
+                        .truncationMode(.middle)
+                }
+                .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 13)
+            // A little above the middle of the drop: the rounded bottom
+            // takes the last few points of it.
+            .frame(height: Self.dropHeight - 6)
+            .frame(width: closedWidth)
+            .animation(fade) { $0.opacity(dropped ? 1 : 0) }
+            .accessibilityElement(children: .combine)
+            .accessibilityHint(L.t("Click to show in Finder, or drag it out",
+                                   "Klik ho ukáže ve Finderu, nebo ho odtáhni"))
+        }
+    }
+
+    /// The closed pill's width with something in it.
+    private var closedWidth: CGFloat {
+        notchSize.width + NotchMetrics.contentWidth(scale: model.pillScale)
     }
 
     /// A ring as `PillRing.placed` hands it out, in its tool's colour and
@@ -651,6 +810,7 @@ struct NotchView: View {
         case .vibe: model.vibe?.summary(now: Date()) ?? "Vibe"
         }
         return pillRing(fraction: ring.fraction, state: ring.state, tint: ring.tint)
+            .overlay(alignment: .topTrailing) { if ring.state == .waiting { waitingBadge } }
             .accessibilityLabel(label)
     }
 
@@ -677,7 +837,7 @@ struct NotchView: View {
 
     /// Title over artist, left-aligned, while peeking — or the activity's.
     private var peekText: some View {
-        let look = model.activity?.look
+        let look = rowActivity?.look
         return VStack(alignment: .leading, spacing: 1) {
             // Without a cutout the title is already in the pill's middle.
             if hasRealNotch {
@@ -697,8 +857,12 @@ struct NotchView: View {
     /// Claude Code's, which say which session and what it wants and need
     /// the width: without it "Claude Code čeká" ran into the fade.
     private var peekTextSpare: CGFloat {
-        model.activity?.look.trailing.isEmpty == true ? collapsedSlot : 0
+        rowActivity?.look.trailing.isEmpty == true ? collapsedSlot : 0
     }
+
+    /// Sliding left: the margin the text keeps from the pill's left end,
+    /// and the length of the fade it comes out from under that edge through.
+    private static let peekTextEdge: CGFloat = 6
 
     /// How far past the cutout's gap the peek text starts. Flush with the
     /// slot the bars left, it sat tight against the notch.
@@ -731,9 +895,13 @@ struct NotchView: View {
     private var waveform: some View {
         let live = isLive
         return Group {
-            if let look = model.activity?.look {
-                // Claude Code's messages leave this side to their text.
-                if !look.trailing.isEmpty {
+            if let look = rowActivity?.look {
+                if rowSide == .left {
+                    // Sliding left, this is the side that holds still: the
+                    // message's own symbol stands here.
+                    activitySymbol(look)
+                } else if !look.trailing.isEmpty {
+                    // Claude Code's messages leave this side to their text.
                     Image(systemName: look.trailing)
                         .font(.system(size: 13))
                         // One colour for outline and fill alike. (The debug
@@ -765,7 +933,8 @@ struct NotchView: View {
             // The bars are 16 high, and fill whatever height they are given;
             // only a ring gets the cover's height. Keyed on Claude Code
             // being switched on, the bars stood the full height of the pill.
-            .frame(width: collapsedSlot, height: ringInBarsPlace ? collapsedSlot : 16)
+            .frame(width: collapsedSlot,
+                   height: ringInBarsPlace || (rowSide == .left && rowActivity != nil) ? collapsedSlot : 16)
             // Trailing padding shifts only the wave inward — the artwork sits
             // on the far side of the cutout and stays put.
             .padding(.trailing, NotchMetrics.waveformNudge)

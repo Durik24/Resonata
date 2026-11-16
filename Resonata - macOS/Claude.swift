@@ -40,6 +40,11 @@ struct ClaudeStatus: Equatable {
         /// The tool's own id for the session, where one process can hold
         /// several — Vibe's; Claude Code's are told apart by their pid.
         var key: String?
+        /// What it is waiting for, when it is waiting and says.
+        var wants: String?
+        /// Since when it has been waiting: the one that has waited longest
+        /// is listed first.
+        var since: Date?
         var id: String { key ?? String(pid) }
     }
 
@@ -295,6 +300,8 @@ final class ClaudeMonitor: ObservableObject {
     private var timer: Timer?
     /// Each session's state at the last look, and since when it has worked.
     private var known: [Int32: (state: ClaudeStatus.State, workingSince: Date?)] = [:]
+    /// Since when each waiting session has waited.
+    private var waitingSince: [Int32: Date] = [:]
     private var usage: ClaudeUsage?
     /// The app each session runs in, by the session's pid.
     private var apps: [Int32: String] = [:]
@@ -354,6 +361,8 @@ final class ClaudeMonitor: ObservableObject {
             if before?.state == .working, record.state != .working { finished = true }
         }
         known = seen
+        waitingSince = Dictionary(records.filter { $0.state == .waiting }
+            .map { ($0.pid, waitingSince[$0.pid] ?? now) }, uniquingKeysWith: { first, _ in first })
 
         let summary = ClaudeSessionRecord.summary(of: records)
         apps = apps.filter { seen[$0.key] != nil }
@@ -361,7 +370,9 @@ final class ClaudeMonitor: ObservableObject {
             // Looked up once per session: it never moves to another app.
             let app = apps[record.pid] ?? Self.hostApp(of: record.pid)?.localizedName
             apps[record.pid] = app
-            return ClaudeStatus.Session(pid: record.pid, name: record.name, state: record.state, app: app)
+            return ClaudeStatus.Session(pid: record.pid, name: record.name, state: record.state, app: app,
+                                        wants: record.state == .waiting ? record.wants : nil,
+                                        since: waitingSince[record.pid])
         }
         let new = ClaudeStatus(state: summary.state, session: summary.session, wants: summary.wants,
                                usage: usage, sessions: sessions)
@@ -772,16 +783,23 @@ struct ClaudeUsagePage: View {
             // The countdown is against the clock, so it stays right between
             // readings; twice a minute is as often as its minutes change.
             TimelineView(.periodic(from: .now, by: 30)) { context in
-                HStack(spacing: 8) {
-                    if let status {
-                        sessionCard(status, now: context.date)
-                        // Three cards fit the narrow panel. With Vibe's
-                        // among them the week gives up its own: it keeps
-                        // its line at the foot of the session's.
-                        if vibe == nil || wide { weekCard(status) }
+                GeometryReader { proxy in
+                    // Three cards fit the narrow panel. With Vibe's among
+                    // them the week gives up its own: it keeps its line at
+                    // the foot of the session's.
+                    let showsWeek = status != nil && (vibe == nil || wide)
+                    let others = (status != nil ? 1 : 0) + (showsWeek ? 1 : 0) + (vibe != nil ? 1 : 0)
+                    HStack(spacing: 8) {
+                        if let status {
+                            sessionCard(status, now: context.date)
+                            if showsWeek { weekCard(status) }
+                        }
+                        if let vibe { vibeCard(vibe) }
+                        // A little wider than the rest: its lines are
+                        // sentences, the others' are numbers.
+                        sessionsCard(Self.rows(claude: status, vibe: vibe))
+                            .frame(width: Self.sessionsWidth(total: proxy.size.width, others: others))
                     }
-                    if let vibe { vibeCard(vibe) }
-                    sessionsCard(Self.rows(claude: status, vibe: vibe))
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -792,6 +810,14 @@ struct ClaudeUsagePage: View {
                 .foregroundStyle(Self.quiet)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+    }
+
+    /// How wide the sessions card is, of `total` shared with `others` cards
+    /// 8 apart: a share and an eighth, where each of the others gets one.
+    nonisolated static func sessionsWidth(total: CGFloat, others: Int) -> CGFloat {
+        let share: CGFloat = 1.12
+        let cards = CGFloat(others) + share
+        return max(0, (total - 8 * CGFloat(others)) / cards * share)
     }
 
     /// The five-hour window: the ring the closed notch shows.
@@ -842,8 +868,9 @@ struct ClaudeUsagePage: View {
         var tool: String?
     }
 
-    /// Both tools' sessions in one list. The ones at work or waiting come
-    /// first: the card has room for four.
+    /// Both tools' sessions in one list. The ones waiting come first — the
+    /// one that has waited longest at the top — then the ones at work: the
+    /// card has room for four.
     nonisolated static func rows(claude: ClaudeStatus?, vibe: VibeStatus?) -> [Row] {
         let both = claude != nil && vibe != nil
         let all = (claude?.sessions ?? []).map { Row(id: "c" + $0.id, session: $0, tool: both ? "Claude" : nil) }
@@ -855,40 +882,89 @@ struct ClaudeUsagePage: View {
             case .idle: 2
             }
         }
-        return all.enumerated().sorted { (rank($0.element), $0.offset) < (rank($1.element), $1.offset) }
-            .map(\.element)
+        func waited(_ row: Row) -> TimeInterval {
+            row.session.state == .waiting ? (row.session.since?.timeIntervalSinceReferenceDate ?? .infinity) : 0
+        }
+        return all.enumerated().sorted {
+            (rank($0.element), waited($0.element), $0.offset) < (rank($1.element), waited($1.element), $1.offset)
+        }
+        .map(\.element)
+    }
+
+    /// The session that has waited longest, of both tools' — what a message
+    /// about several waiting at once names.
+    nonisolated static func longestWaiting(claude: ClaudeStatus?, vibe: VibeStatus?) -> Row? {
+        rows(claude: claude, vibe: vibe).first { $0.session.state == .waiting }
+    }
+
+    /// "2 waiting" on the card's chip — Czech counts one, 2 to 4 and 5 up
+    /// each its own way.
+    nonisolated static func waitingChip(_ count: Int) -> String {
+        L.t("\(count) waiting", count == 1 ? "1 čeká" : (2...4).contains(count) ? "\(count) čekají" : "\(count) čeká")
     }
 
     /// Every running session and what it is doing.
     private func sessionsCard(_ rows: [Row]) -> some View {
         card {
-            header(mark: "\(rows.count)", tint: Self.violet, title: L.t("Sessions", "Relace")) { EmptyView() }
+            let waiting = rows.filter { $0.session.state == .waiting }.count
+            header(mark: "\(rows.count)", tint: Self.violet, title: L.t("Sessions", "Relace")) {
+                if waiting > 0 {
+                    // Solid, where the other chips are quiet: this one is
+                    // the thing on the page to act on.
+                    Text(Self.waitingChip(waiting))
+                        .font(.system(size: 7.5, weight: .bold))
+                        .foregroundStyle(.black.opacity(0.85))
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(Capsule().fill(Self.amber))
+                        .fixedSize()
+                }
+            }
             if rows.isEmpty {
                 Text(L.t("None running", "Žádná neběží"))
                     .font(.system(size: 9))
                     .foregroundStyle(Self.quiet)
             } else {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 5) {
                     ForEach(rows.prefix(4)) { row in
                         let session = row.session
+                        let waits = session.state == .waiting
                         // A click goes to the session: its app, its tab.
                         Button { onOpen(session) } label: {
                             HStack(spacing: 6) {
                                 Circle()
                                     .fill(session.state == .working ? (row.isVibe ? Self.vibe : Self.orange)
-                                          : session.state == .waiting ? Self.amber : Color.white.opacity(0.3))
+                                          : waits ? Self.amber : Color.white.opacity(0.3))
                                     .frame(width: 6, height: 6)
                                 VStack(alignment: .leading, spacing: 0) {
                                     Text(session.name)
                                         .font(.system(size: 9.5, weight: .semibold))
                                         .foregroundStyle(.white)
+                                    // A waiting one says what it asks, in
+                                    // amber: that is the line to read.
                                     Text(Self.doing(row))
-                                        .font(.system(size: 8))
-                                        .foregroundStyle(Self.quiet)
+                                        .font(.system(size: 8, weight: waits ? .semibold : .regular))
+                                        .foregroundStyle(waits ? Self.amber : Self.quiet)
                                 }
                                 .lineLimit(1)
+                                if waits {
+                                    Spacer(minLength: 0)
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 7, weight: .bold))
+                                        .foregroundStyle(Self.amber)
+                                }
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
+                            // Waiting rows stand on amber, so they read as
+                            // a group apart from the rest of the list.
+                            .padding(.horizontal, waits ? 5 : 0)
+                            .padding(.vertical, waits ? 2 : 0)
+                            .background {
+                                if waits {
+                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                        .fill(Self.amber.opacity(0.16))
+                                }
+                            }
                         }
                         .buttonStyle(SessionRowStyle())
                         .help(session.app.map { L.t("Open in \($0)", "Otevřít v aplikaci \($0)") }
@@ -905,12 +981,17 @@ struct ClaudeUsagePage: View {
     /// "working · Terminál", "waiting for you", "idle" — "Vibe · working ·
     /// Terminál" where the tool has to be said.
     nonisolated static func doing(_ row: Row) -> String {
+        let tool = row.tool.map { "\($0) · " } ?? ""
+        // Waiting, and saying for what: the question itself is the line.
+        if row.session.state == .waiting, let wants = row.session.wants, !wants.isEmpty {
+            return tool + wants
+        }
         let state = switch row.session.state {
         case .working: L.t("working", "pracuje")
         case .waiting: L.t("waiting for you", "čeká na tebe")
         case .idle: L.t("idle", "volno")
         }
-        return (row.tool.map { "\($0) · " } ?? "") + state + (row.session.app.map { " · \($0)" } ?? "")
+        return tool + state + (row.session.app.map { " · \($0)" } ?? "")
     }
 
     // MARK: The pieces of a card

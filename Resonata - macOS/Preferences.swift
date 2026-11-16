@@ -32,6 +32,13 @@ enum Preferences {
         static let pinnedScreen = "pinnedScreen"
         static let calendarsOff = "calendarsOff"
         static let skipDeclined = "skipDeclinedEvents"
+        static let showDownloadPeek = "showDownloadPeek"
+        static let showScreenshotPeek = "showScreenshotPeek"
+        static let showFocusPeek = "showFocusPeek"
+        static let showGitHub = "showGitHub"
+        static let gitHubRepos = "gitHubRepos"
+        static let showClipboard = "showClipboard"
+        static let timerStopsMusic = "timerStopsMusic"
     }
 
     /// Call before anything reads a preference.
@@ -60,6 +67,17 @@ enum Preferences {
             Key.language: AppLanguage.system.rawValue,
             Key.skipDeclined: true,
             Key.openMode: OpenMode.nook.rawValue,
+            // Off until asked for, each for its own reason: the first two
+            // read a folder macOS asks about, Focus is asked about too,
+            // GitHub needs a repository named, and a clipboard history is
+            // not something to start keeping unasked.
+            Key.showDownloadPeek: false,
+            Key.showScreenshotPeek: false,
+            Key.showFocusPeek: false,
+            Key.showGitHub: false,
+            Key.gitHubRepos: "",
+            Key.showClipboard: false,
+            Key.timerStopsMusic: false,
             Key.quickApps: QuickApps.defaultPaths().joined(separator: "\n"),
         ])
     }
@@ -109,6 +127,23 @@ enum Preferences {
 
     /// Mistral Vibe's ring and messages in the notch — see `VibeMonitor`.
     static var showVibe: Bool { UserDefaults.standard.bool(forKey: Key.showVibe) }
+
+    /// A finished download, and a screenshot, drop out of the notch — see `FileWatcher`.
+    static var showDownloadPeek: Bool { UserDefaults.standard.bool(forKey: Key.showDownloadPeek) }
+    static var showScreenshotPeek: Bool { UserDefaults.standard.bool(forKey: Key.showScreenshotPeek) }
+
+    /// A Focus going on or off gets a word in the notch — see `FocusWatcher`.
+    static var showFocusPeek: Bool { UserDefaults.standard.bool(forKey: Key.showFocusPeek) }
+
+    /// Pushes, failed checks and releases of the repositories named — see `GitHubWatcher`.
+    static var showGitHub: Bool { UserDefaults.standard.bool(forKey: Key.showGitHub) }
+    static var gitHubRepos: String { UserDefaults.standard.string(forKey: Key.gitHubRepos) ?? "" }
+
+    /// The clipboard's page in the open panel — see `ClipboardStore`.
+    static var showClipboard: Bool { UserDefaults.standard.bool(forKey: Key.showClipboard) }
+
+    /// The timer running out fades the music and pauses it — see `MusicSleep`.
+    static var timerStopsMusic: Bool { UserDefaults.standard.bool(forKey: Key.timerStopsMusic) }
 
     /// The Pomodoro lengths the user has set — see `PomodoroPlan`.
     static var pomodoroPlan: PomodoroPlan {
