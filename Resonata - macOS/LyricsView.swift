@@ -83,9 +83,12 @@ struct LyricsView: View {
     }
 }
 
-/// A few lines of the song at once, the one being sung picked out and kept
-/// in the middle; the column slides up a line as each new one begins. Click
-/// a line and the song jumps to it.
+/// The lyrics page: the line being sung big, bold and white — wrapped onto
+/// a second line rather than cut short — with the line just sung small and
+/// faded above it and the coming lines dim below. As each line begins the
+/// column glides up and the new one grows into the big line's place. The
+/// edges fade out, so lines drift in and out rather than being cut off.
+/// Click a line and the song jumps to it.
 ///
 /// The bigger view of the lyrics: the one line under the artist says where
 /// the song is, this says where it's going. Redrawn only as a line begins,
@@ -93,66 +96,127 @@ struct LyricsView: View {
 struct LyricsList: View {
     var lines: [LyricLine]
     var track: Track?
-    /// The line being sung is drawn in this.
+    /// Kept for the call site; the sung line is white, the album's colour
+    /// stays in the header.
     var accent: Color
     /// Called with a line's time when it is clicked.
     var onSeek: (TimeInterval) -> Void
 
-    static let rowHeight: CGFloat = 18
-    /// Lines in view. An odd number, so the sung one has a middle to sit in.
-    static let visible = 5
+    /// Where the sung line's top sits, from the column's top: room for
+    /// one faded line above it.
+    static let currentTop: CGFloat = 22
+    static let sungSize: CGFloat = 16
+    static let otherSize: CGFloat = 12
 
     var body: some View {
         TimelineView(.explicit(LyricsView.lineStarts(lines, track: track, after: Date()))) { context in
             let position = track?.position(at: context.date) ?? 0
-            rows(current: LyricsStore.index(in: lines, at: position))
+            column(current: LyricsView.row(for: LyricsStore.index(in: lines, at: position)))
         }
-        .frame(height: Self.rowHeight * CGFloat(Self.visible), alignment: .top)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .clipped()
-    }
-
-    private func rows(current: Int?) -> some View {
-        let window = Self.window(count: lines.count, current: current, visible: Self.visible)
-        // One more line above and below, out of sight past the clip: a line
-        // then arrives and leaves by sliding, already drawn, rather than
-        // fading in on the spot while its neighbours move over it.
-        let drawn = max(window.lowerBound - 1, 0)..<min(window.upperBound + 1, lines.count)
-        return VStack(alignment: .leading, spacing: 0) {
-            ForEach(Array(drawn), id: \.self) { index in
-                row(index, sung: index == current)
-                    // Clipping hides the spare lines but doesn't stop them
-                    // taking clicks: the one above lies over the title row.
-                    .allowsHitTesting(window.contains(index))
-            }
+        .mask {
+            LinearGradient(stops: [
+                .init(color: .clear, location: 0),
+                .init(color: .black.opacity(0.55), location: 0.16),
+                .init(color: .black, location: 0.3),
+                .init(color: .black, location: 0.72),
+                .init(color: .clear, location: 1),
+            ], startPoint: .top, endPoint: .bottom)
         }
-        .offset(y: -CGFloat(window.lowerBound - drawn.lowerBound) * Self.rowHeight)
-        .animation(.spring(response: 0.45, dampingFraction: 0.9), value: window.lowerBound)
     }
 
-    private func row(_ index: Int, sung: Bool) -> some View {
-        let text = lines[index].text.isEmpty ? "\u{266A}" : lines[index].text
-        return Button { onSeek(lines[index].time) } label: {
+    /// Every row stacked, slid so the sung one's top is at `currentTop`.
+    /// Rows differ in height (the sung one is bigger and may wrap), so the
+    /// slide is an alignment guide on that row rather than a row count times
+    /// a fixed height; animating `current` glides the column.
+    private func column(current: Int) -> some View {
+        let rows = LyricsView.rows(lines)
+        let live = Self.clickable(rows: rows.count, current: current)
+        // The overlay is as big as the space it's given, whatever the
+        // column's height: a ZStack took the whole column's height as its
+        // own and pushed the header out of the panel.
+        return Color.clear
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .alignmentGuide(.sungLine) { _ in Self.currentTop }
+            .overlay(alignment: Alignment(horizontal: .leading, vertical: .sungLine)) {
+                VStack(alignment: .leading, spacing: 5) {
+                    ForEach(rows.indices, id: \.self) { i in
+                        row(rows[i], at: i, current: current)
+                            // Only the sung row names the guide: a stack
+                            // takes it from the first row that does, so a
+                            // value on every row sent the column far away.
+                            .modifier(SungLineGuide(on: i == current))
+                            // Clipping hides the far rows but doesn't stop
+                            // them taking clicks: one above would lie over
+                            // the header.
+                            .allowsHitTesting(live.contains(i))
+                    }
+                }
+                .fixedSize(horizontal: false, vertical: true)
+            }
+        .animation(.spring(response: 0.5, dampingFraction: 0.86), value: current)
+    }
+
+    private func row(_ text: String, at i: Int, current: Int) -> some View {
+        let sung = i == current
+        let past = i < current
+        return Button {
+            // Row 0 is the intro note before the first line.
+            onSeek(i == 0 ? 0 : lines[i - 1].time)
+        } label: {
             Text(text)
-                .font(.system(size: 12, weight: sung ? .semibold : .medium))
-                .foregroundStyle(sung ? accent : Color.white.opacity(0.4))
-                .lineLimit(1)
+                .font(.system(size: sung ? Self.sungSize : Self.otherSize,
+                              weight: sung ? .bold : .semibold))
+                .foregroundStyle(.white.opacity(sung ? 1 : past ? 0.22 : 0.42))
+                .lineLimit(sung ? 2 : 1)
                 .truncationMode(.tail)
+                .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .frame(height: Self.rowHeight)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help(L.t("Jump to this line", "Skočit na tenhle řádek"))
-        .animation(.easeOut(duration: 0.25), value: sung)
     }
 
-    /// The lines in view around `current`: it in the middle where there are
-    /// enough either side of it, the first or the last few at the ends of
-    /// the song. All of them when the song has no more than fit.
-    nonisolated static func window(count: Int, current: Int?, visible: Int) -> Range<Int> {
-        guard count > visible else { return 0..<max(count, 0) }
-        let start = min(max((current ?? 0) - visible / 2, 0), count - visible)
-        return start..<(start + visible)
+    /// The rows that take clicks: the faded one above the sung line, it,
+    /// and the three under it — what can be seen.
+    nonisolated static func clickable(rows: Int, current: Int) -> Range<Int> {
+        let lower = min(max(current - 1, 0), rows)
+        return lower..<min(max(current + 4, lower), rows)
     }
+
+    /// The song's name without what follows it in brackets — "(feat. …)",
+    /// "[From …]", "- Remastered 2011" — so the artist fits beside it in the
+    /// lyrics page's header. The whole title when nothing would be left.
+    nonisolated static func shortTitle(_ title: String) -> String {
+        var t = title
+        if let dash = t.range(of: " - ") { t = String(t[..<dash.lowerBound]) }
+        while let open = t.lastIndex(where: { $0 == "(" || $0 == "[" }), open != t.startIndex {
+            t = String(t[..<open])
+        }
+        t = t.trimmingCharacters(in: .whitespaces)
+        return t.isEmpty ? title : t
+    }
+}
+
+/// Puts the lyrics page's alignment guide on a row's top — only on the
+/// row being sung.
+private struct SungLineGuide: ViewModifier {
+    var on: Bool
+    func body(content: Content) -> some View {
+        if on {
+            content.alignmentGuide(.sungLine) { d in d[.top] }
+        } else {
+            content
+        }
+    }
+}
+
+private extension VerticalAlignment {
+    /// The top of the line being sung, in the lyrics page.
+    enum SungLine: AlignmentID {
+        static func defaultValue(in d: ViewDimensions) -> CGFloat { d[.top] }
+    }
+    static let sungLine = VerticalAlignment(SungLine.self)
 }

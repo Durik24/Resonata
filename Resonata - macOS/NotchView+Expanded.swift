@@ -417,14 +417,15 @@ extension NotchView {
     private func lyricsColumn(_ lines: [LyricLine]) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 6) {
-                Text(model.track?.title ?? "")
-                    .font(.system(size: 12, weight: .bold))
+                // One text, so a long name ends in "…" before the artist
+                // rather than squeezing the artist down to a sliver.
+                (Text(LyricsList.shortTitle(model.track?.title ?? ""))
+                    .foregroundStyle(.white.opacity(0.9))
+                 + Text("  \(model.track?.artist ?? "")")
+                    .foregroundStyle(accentText ?? .white.opacity(0.55)))
+                    .font(.system(size: 11, weight: .bold))
                     .lineLimit(1)
-                Text(model.track?.artist ?? "")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(accentText ?? .white.opacity(0.55))
-                    .lineLimit(1)
-                    .layoutPriority(-1)
+                    .truncationMode(.tail)
                 Spacer(minLength: 4)
                 Button { model.showingLyrics = false } label: {
                     Image(systemName: "chevron.backward")

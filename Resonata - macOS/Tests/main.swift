@@ -1304,12 +1304,14 @@ do {
 
 // MARK: - The bigger lyrics view
 
-check(LyricsList.window(count: 40, current: 10, visible: 5) == 8..<13, "lyrics list: the sung line in the middle")
-check(LyricsList.window(count: 40, current: nil, visible: 5) == 0..<5, "lyrics list: before the first line, the first five")
-check(LyricsList.window(count: 40, current: 1, visible: 5) == 0..<5, "lyrics list: no gap above the first line")
-check(LyricsList.window(count: 40, current: 39, visible: 5) == 35..<40, "lyrics list: the last five at the end")
-check(LyricsList.window(count: 4, current: 2, visible: 5) == 0..<4, "lyrics list: a short song shows whole")
-check(LyricsList.window(count: 0, current: nil, visible: 5).isEmpty, "lyrics list: nothing to show")
+check(LyricsList.clickable(rows: 40, current: 10) == 9..<14, "lyrics list: the faded line above, the sung one and three under it take clicks")
+check(LyricsList.clickable(rows: 40, current: 0) == 0..<4, "lyrics list: nothing above the intro")
+check(LyricsList.clickable(rows: 40, current: 39) == 38..<40, "lyrics list: the end of the song")
+check(LyricsList.clickable(rows: 0, current: 0).isEmpty, "lyrics list: nothing to click")
+check(LyricsList.shortTitle("Lose My Mind (feat. Doja Cat) [From F1 The Movie]") == "Lose My Mind", "lyrics header: brackets dropped")
+check(LyricsList.shortTitle("Yesterday - Remastered 2009") == "Yesterday", "lyrics header: a dash's tail dropped")
+check(LyricsList.shortTitle("(I Can't Get No) Satisfaction") == "(I Can't Get No) Satisfaction", "lyrics header: a title starting with brackets kept")
+check(LyricsList.shortTitle("Neon Rain") == "Neon Rain", "lyrics header: a plain title kept")
 
 // MARK: - Live streams
 
