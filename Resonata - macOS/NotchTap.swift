@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import IOKit
 import IOKit.hid
 
@@ -20,8 +21,12 @@ import IOKit.hid
 /// future macOS can change the reports, and then the tap stops working —
 /// the rest of Resonata doesn't depend on it.
 @MainActor
-final class NotchTap {
+final class NotchTap: ObservableObject {
     static let shared = NotchTap()
+
+    enum State { case off, tooDark, ready }
+    /// Whether a tap would work right now — for the line in Settings.
+    @Published private(set) var state = State.off
 
     var onTap: (() -> Void)?
 
@@ -131,6 +136,7 @@ final class NotchTap {
 
     private func stop() {
         running = false
+        state = .off
         lidTimer?.invalidate(); lidTimer = nil
         statusTimer?.invalidate(); statusTimer = nil
         if let manager {
@@ -207,9 +213,18 @@ final class NotchTap {
             case 4 where length >= 36:
                 // Four colour channels; their sum is how much light there is.
                 tap.handle(tap.detector.light(int32(20) + int32(24) + int32(28) + int32(32), at: now), at: now)
+                tap.updateState()
             default: break
             }
         }
+    }
+
+    /// Too dark below 15, light enough again from 25, so a room right at
+    /// the edge doesn't flicker between the two.
+    private func updateState() {
+        guard let base = detector.baseline else { return }
+        let next: State = base < 15 ? .tooDark : base >= 25 ? .ready : (state == .off ? .tooDark : state)
+        if next != state { state = next }
     }
 
     private func readLid() {

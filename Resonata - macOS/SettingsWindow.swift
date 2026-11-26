@@ -58,6 +58,7 @@ struct SettingsView: View {
     @AppStorage(Preferences.Key.showClipboard) private var showClipboard = false
     @AppStorage(Preferences.Key.notchTap) private var notchTap = false
     @AppStorage(Preferences.Key.tapSensitivity) private var tapSensitivity = TapSensitivity.gentle.rawValue
+    @ObservedObject private var tap = NotchTap.shared
     @ObservedObject private var updater = Updater.shared
     @ObservedObject private var calendar = CalendarStore.shared
 
@@ -114,6 +115,13 @@ struct SettingsView: View {
                 if notchTap {
                     Picker(L.t("Tap", "Ťuknutí"), selection: $tapSensitivity) {
                         ForEach(TapSensitivity.allCases) { Text($0.title).tag($0.rawValue) }
+                    }
+                    LabeledContent(L.t("Right now", "Právě teď")) {
+                        switch tap.state {
+                        case .ready: Text(L.t("Ready", "Připraveno")).foregroundStyle(.green)
+                        case .tooDark: Text(L.t("Too dark to tap", "Na ťuknutí je moc tma")).foregroundStyle(.orange)
+                        case .off: Text(L.t("Starting…", "Spouští se…")).foregroundStyle(.secondary)
+                        }
                     }
                 }
                 Picker(L.t("Animation", "Animace"), selection: $speed) {
