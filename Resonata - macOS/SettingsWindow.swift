@@ -56,6 +56,8 @@ struct SettingsView: View {
     @AppStorage(Preferences.Key.showGitHub) private var showGitHub = false
     @AppStorage(Preferences.Key.gitHubRepos) private var gitHubRepos = ""
     @AppStorage(Preferences.Key.showClipboard) private var showClipboard = false
+    @AppStorage(Preferences.Key.notchTap) private var notchTap = false
+    @AppStorage(Preferences.Key.tapSensitivity) private var tapSensitivity = TapSensitivity.gentle.rawValue
     @ObservedObject private var updater = Updater.shared
     @ObservedObject private var calendar = CalendarStore.shared
 
@@ -104,9 +106,15 @@ struct SettingsView: View {
                 }
             }
 
-            Section(L.t("Opening", "Otevírání")) {
+            Section {
                 Picker(L.t("Open the notch", "Otevírat notch"), selection: $openMode) {
                     ForEach(OpenMode.allCases) { Text($0.title).tag($0.rawValue) }
+                }
+                Toggle(L.t("Tap the screen beside the camera", "Ťuknutí na displej vedle kamery"), isOn: $notchTap)
+                if notchTap {
+                    Picker(L.t("Tap", "Ťuknutí"), selection: $tapSensitivity) {
+                        ForEach(TapSensitivity.allCases) { Text($0.title).tag($0.rawValue) }
+                    }
                 }
                 Picker(L.t("Animation", "Animace"), selection: $speed) {
                     ForEach(AnimationSpeed.allCases) { Text($0.title).tag($0.rawValue) }
@@ -114,6 +122,15 @@ struct SettingsView: View {
                 Picker(L.t("Shrink the notch after a pause of", "Zmenšit notch po pauze za"),
                        selection: $idleTimeout) {
                     ForEach(Preferences.idleChoices, id: \.self) { Text("\(Int($0)) s").tag($0) }
+                }
+            } header: {
+                Text(L.t("Opening", "Otevírání"))
+            } footer: {
+                if notchTap {
+                    Text(L.t("Tap the frame just left of the camera to open or close the panel. A MacBook's screen doesn't feel touch, so Resonata reads its light sensor, which goes dark under your finger, and the small knock: one without the other doesn't count. It needs some light in the room, and does nothing while the lid moves.",
+                             "Ťukni na rámeček kousek vlevo od kamery a panel se otevře nebo zavře. Displej MacBooku dotyk necítí, takže Resonata čte senzor světla, který pod prstem ztmavne, a malý otřes: jedno bez druhého se nepočítá. Potřebuje v místnosti trochu světla a nedělá nic, když se hýbe víkem."))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
 

@@ -75,6 +75,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if !Demo.isOn { startNowPlaying() }
 
         HotKey.shared.action = { [weak self] in self?.controller.toggle(fromKeyboard: true) }
+        NotchTap.shared.onTap = { [weak self] in self?.controller.toggle() }
+        // Debug: `RESONATA_DEBUG_TAP=1` switches the tap on whatever Settings
+        // say, the demo included, and logs what it decides.
+        if NotchTap.debug { NotchTap.shared.setEnabled(true) }
         HotKey.shared.apply(Preferences.hotKey)
 
         // Plugging in the charger gets a moment in the closed notch too.
@@ -379,6 +383,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         gitHub.apply(enabled: Preferences.showGitHub, repos: Preferences.gitHubRepos)
         FocusWatcher.shared.setEnabled(Preferences.showFocusPeek)
         ClipboardStore.shared.setEnabled(Preferences.showClipboard)
+        NotchTap.shared.setEnabled(Preferences.notchTap || NotchTap.debug)
     }
 
     /// A Claude Code or Vibe session's message. One that says a session is

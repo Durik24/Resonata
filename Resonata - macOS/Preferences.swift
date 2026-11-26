@@ -39,6 +39,8 @@ enum Preferences {
         static let gitHubRepos = "gitHubRepos"
         static let showClipboard = "showClipboard"
         static let timerStopsMusic = "timerStopsMusic"
+        static let notchTap = "notchTap"
+        static let tapSensitivity = "tapSensitivity"
     }
 
     /// Call before anything reads a preference.
@@ -78,6 +80,8 @@ enum Preferences {
             Key.gitHubRepos: "",
             Key.showClipboard: false,
             Key.timerStopsMusic: false,
+            Key.notchTap: false,
+            Key.tapSensitivity: TapSensitivity.gentle.rawValue,
             Key.quickApps: QuickApps.defaultPaths().joined(separator: "\n"),
         ])
     }
@@ -144,6 +148,13 @@ enum Preferences {
 
     /// The timer running out fades the music and pauses it — see `MusicSleep`.
     static var timerStopsMusic: Bool { UserDefaults.standard.bool(forKey: Key.timerStopsMusic) }
+
+    /// A tap beside the camera opens and closes the panel — see `NotchTap`.
+    static var notchTap: Bool { UserDefaults.standard.bool(forKey: Key.notchTap) }
+
+    static var tapSensitivity: TapSensitivity {
+        TapSensitivity(rawValue: UserDefaults.standard.string(forKey: Key.tapSensitivity) ?? "") ?? .gentle
+    }
 
     /// The Pomodoro lengths the user has set — see `PomodoroPlan`.
     static var pomodoroPlan: PomodoroPlan {

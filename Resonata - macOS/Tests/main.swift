@@ -1471,6 +1471,114 @@ do {
           "Hidden notch: in the menu bar beside it")
 }
 
+// MARK: - Notch tap
+
+// A room at light 80, the lid at 100°, the Mac at rest (1 g down). Light comes
+// ten times a second, motion a hundred and the lid ten, as on the sensors.
+func calm(_ d: inout TapDetector, _ out: inout [TapDetector.Verdict], from: Double, to: Double,
+          room: Double = 80, lid: Double? = 100) {
+    var t = from
+    while t < to - 1e-9 {
+        if let lid { d.lid(lid, at: t) }
+        out.append(d.light(room, at: t))
+        for k in 0..<10 { out.append(d.accel(x: 0, y: 0, z: -1, at: t + Double(k) * 0.01)) }
+        t += 0.1
+    }
+}
+// Motion and lid only, for while the finger is on the sensor.
+func still(_ d: inout TapDetector, _ out: inout [TapDetector.Verdict], from: Double, to: Double) {
+    var t = from
+    while t < to - 1e-9 { out.append(d.accel(x: 0, y: 0, z: -1, at: t)); t += 0.01 }
+}
+func knock(_ d: inout TapDetector, _ out: inout [TapDetector.Verdict], at t: Double, g: Double) {
+    out.append(d.accel(x: 0, y: 0, z: -1 - g, at: t))
+    out.append(d.accel(x: 0, y: 0, z: -1, at: t + 0.01))
+}
+/// 5 s of calm, `events`, then 1.5 s of calm after `end`.
+func tapRun(end: Double = 5.5, sensitivity: TapSensitivity = .standard, room: Double = 80,
+            confirmDelay: Double = 0,
+            _ events: (inout TapDetector, inout [TapDetector.Verdict]) -> Void) -> [TapDetector.Verdict] {
+    var d = TapDetector(sensitivity: sensitivity)
+    d.confirmDelay = confirmDelay
+    var out: [TapDetector.Verdict] = []
+    calm(&d, &out, from: 0, to: 5, room: room)
+    events(&d, &out)
+    calm(&d, &out, from: end, to: end + 1.5, room: room)
+    return out.filter { $0 != .none }
+}
+/// A fingertip: a reading of `dark` at `at`, a knock 50 ms later, motion on.
+func fingertip(_ d: inout TapDetector, _ out: inout [TapDetector.Verdict], at t: Double,
+               g: Double = 0.02, dark: Double = 2) {
+    out.append(d.light(dark, at: t))
+    knock(&d, &out, at: t + 0.05, g: g)
+    still(&d, &out, from: t + 0.07, to: t + 0.1)
+}
+
+check(tapRun { d, out in fingertip(&d, &out, at: 5.0) } == [.tap], "Tap: shadow then knock")
+do {
+    // Without the wait, the tap comes on the very next motion reading.
+    var d = TapDetector(); var out: [TapDetector.Verdict] = []
+    calm(&d, &out, from: 0, to: 5)
+    out.append(d.light(2, at: 5.0))
+    knock(&d, &out, at: 5.05, g: 0.02)
+    check(out.last == .tap, "Tap: no waiting by default", "\(out.suffix(2))")
+}
+check(tapRun { d, out in
+    knock(&d, &out, at: 5.0, g: 0.02); still(&d, &out, from: 5.02, to: 5.1)
+    out.append(d.light(3, at: 5.1)); still(&d, &out, from: 5.1, to: 5.2)
+} == [.tap], "Tap: knock then shadow")
+check(tapRun { d, out in
+    for i in 0..<5 { out.append(d.light(30, at: 5.0 + Double(i) * 0.1)) }
+} == [], "Tap: a hand over the screen is no tap")
+check(tapRun { d, out in
+    knock(&d, &out, at: 5.0, g: 0.05); knock(&d, &out, at: 5.3, g: 0.05)
+} == [], "Tap: a knock on the desk is no tap")
+check(tapRun { d, out in
+    out.append(d.light(2, at: 5.0)); out.append(d.light(80, at: 5.1)); knock(&d, &out, at: 5.5, g: 0.02)
+} == [], "Tap: shadow and knock too far apart")
+check(tapRun(room: 3) { d, out in fingertip(&d, &out, at: 5.0, dark: 0) } == [], "Tap: nothing in a dark room")
+check(tapRun { d, out in fingertip(&d, &out, at: 5.0, g: 0.004) } == [], "Tap: a knock too soft for Standard")
+check(tapRun(sensitivity: .gentle) { d, out in fingertip(&d, &out, at: 5.0, g: 0.004) } == [.tap],
+      "Tap: the same knock counts on Gentle")
+check(tapRun { d, out in
+    d.lid(80, at: 4.4); d.lid(80, at: 4.5)
+    fingertip(&d, &out, at: 5.0)
+} == [.rejected("the lid moved")], "Tap: not while the lid has just moved")
+check(tapRun { d, out in
+    // A firm tap wobbles the lid a degree or two: still a tap.
+    d.lid(102, at: 5.0); d.lid(101, at: 5.05)
+    fingertip(&d, &out, at: 5.0, g: 0.2)
+} == [.tap], "Tap: the lid's wobble from a firm tap")
+check(tapRun { d, out in
+    // One stray reading of the lid is ignored.
+    d.lid(19, at: 4.9)
+    fingertip(&d, &out, at: 5.0)
+} == [.tap], "Tap: one nonsense lid reading")
+check(tapRun(end: 5.6, confirmDelay: 0.2) { d, out in
+    // With the wait on, a hand grabs the top of the lid and tilts it: shadow and knock, then the lid turns.
+    fingertip(&d, &out, at: 5.0, g: 0.05)
+    d.lid(105, at: 5.1); d.lid(110, at: 5.15)
+    still(&d, &out, from: 5.1, to: 5.6)
+} == [.rejected("the lid started moving")], "Tap: tilting the screen by its top edge")
+check(tapRun(end: 6.0) { d, out in
+    // A finger held for a second at five light readings a second, knocking twice: one tap.
+    for i in 0..<5 {
+        let t = 5.0 + Double(i) * 0.2
+        out.append(d.light(1, at: t))
+        if i < 2 { knock(&d, &out, at: t + 0.05, g: 0.05) }
+        still(&d, &out, from: t + 0.07, to: t + 0.2)
+    }
+} == [.tap], "Tap: a finger left on the sensor is one tap")
+check(tapRun(end: 6.2) { d, out in
+    fingertip(&d, &out, at: 5.0); calm(&d, &out, from: 5.1, to: 6.0)
+    fingertip(&d, &out, at: 6.0); still(&d, &out, from: 6.1, to: 6.2)
+} == [.tap, .tap], "Tap: two taps a second apart")
+check(tapRun(end: 9.7) { d, out in
+    // A lamp goes off: half the light for good, then a tap in the dimmer room.
+    calm(&d, &out, from: 5.0, to: 9.5, room: 40)
+    fingertip(&d, &out, at: 9.5); still(&d, &out, from: 9.6, to: 9.7)
+} == [.tap], "Tap: follows the room after a lamp goes off")
+
 // The stamp's end was taken as a UTF-16 offset and walked as a count of
 // characters. Anything wider than one UTF-16 unit before the stamp walked
 // past the end of the string — a crash, not a wrong answer — so this runs
