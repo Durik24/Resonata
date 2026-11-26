@@ -1471,6 +1471,31 @@ do {
           "Hidden notch: in the menu bar beside it")
 }
 
+// The page the panel opens on.
+check(PanelTab.forOpening(current: .music, musicLive: false, usageShown: true, limitsByRule: false) == .usage,
+      "Opening: nothing playing, the limits")
+check(PanelTab.forOpening(current: .music, musicLive: true, usageShown: true, limitsByRule: false) == nil,
+      "Opening: music playing, the music stays")
+check(PanelTab.forOpening(current: .usage, musicLive: true, usageShown: true, limitsByRule: true) == .music,
+      "Opening: music back after the rule chose the limits")
+check(PanelTab.forOpening(current: .usage, musicLive: true, usageShown: true, limitsByRule: false) == nil,
+      "Opening: limits chosen by hand stay")
+check(PanelTab.forOpening(current: .notes, musicLive: false, usageShown: true, limitsByRule: false) == nil,
+      "Opening: another page is left alone")
+check(PanelTab.forOpening(current: .music, musicLive: false, usageShown: false, limitsByRule: false) == nil,
+      "Opening: no limits page without Claude Code or Vibe")
+
+// The cover flies between the pill and the panel only when the pill shows it.
+check(NotchView.pillShowsCover(onMusicPage: true, hasTrack: true, collapsedContent: true,
+                               activity: false, ringInCoverSlot: false), "Cover flight: music playing")
+check(!NotchView.pillShowsCover(onMusicPage: true, hasTrack: true, collapsedContent: true,
+                                activity: false, ringInCoverSlot: true),
+      "Cover flight: not out of the Claude ring standing in the cover's place")
+check(!NotchView.pillShowsCover(onMusicPage: false, hasTrack: true, collapsedContent: true,
+                                activity: false, ringInCoverSlot: false), "Cover flight: not onto another page")
+check(!NotchView.pillShowsCover(onMusicPage: true, hasTrack: true, collapsedContent: true,
+                                activity: true, ringInCoverSlot: false), "Cover flight: not out of a message")
+
 // MARK: - Notch tap
 
 // A room at light 80, the lid at 100°, the Mac at rest (1 g down). Light comes

@@ -137,6 +137,13 @@ final class NotchModel: ObservableObject {
     /// other way slid the old page out on the wrong side.
     @Published private(set) var shownTab: PanelTab = .music
 
+    /// Turns to a page with no page turn, for while the panel is closed:
+    /// it opens already on it.
+    func showPage(_ page: PanelTab) {
+        tab = page
+        shownTab = page
+    }
+
     /// The collapsed pill carries artwork and waveform only while playback is
     /// live. Idle, it shrinks back to the bare cutout — but `track` is still
     /// there, so a click brings up the last song and its play button.
@@ -265,6 +272,22 @@ enum PanelTab: String, CaseIterable, Identifiable {
 
     /// Its place in the strip, from 0.
     var index: Int { Self.shown.firstIndex(of: self) ?? 0 }
+
+    /// The page the panel should open on, or nil to leave it where it was.
+    ///
+    /// With nothing playing, the limits — the pill already shows their ring,
+    /// so that is what the open is for. With music back, the music again,
+    /// but only if it was the limits page put there by this rule, not one
+    /// chosen by hand. Any other page is left alone.
+    nonisolated static func forOpening(current: PanelTab, musicLive: Bool, usageShown: Bool,
+                                       limitsByRule: Bool) -> PanelTab? {
+        guard usageShown else { return nil }
+        switch current {
+        case .music where !musicLive: return .usage
+        case .usage where musicLive && limitsByRule: return .music
+        default: return nil
+        }
+    }
 
     /// The page `step` places along the strip — one to the right for 1, to
     /// the left for -1 — or nil past either end. No wrapping round: swiping

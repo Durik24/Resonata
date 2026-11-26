@@ -351,6 +351,9 @@ final class NotchPanelController {
     private var shrink: DispatchWorkItem?
     private var clickMonitors: [Any] = []
     private var visibilityTimer: Timer?
+    /// The limits page is open because nothing was playing — see
+    /// `PanelTab.forOpening`.
+    private var limitsByRule = false
 
     /// Whether a full-screen app owns the target display, as of the last
     /// visibility check. Cached because the check walks the window server's
@@ -526,6 +529,18 @@ final class NotchPanelController {
         }
         self.panel = panel
         updateVisibility()
+
+        // A page turned by hand in the open panel is a choice the opening
+        // rule leaves alone from then on.
+        model.$tab
+            .dropFirst()
+            .sink { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self, self.model.isExpanded else { return }
+                    self.limitsByRule = false
+                }
+            }
+            .store(in: &cancellables)
 
         // The window is only ever as big as the shape currently drawn in it.
         //
@@ -923,6 +938,7 @@ final class NotchPanelController {
             MainActor.assumeIsolated {
                 guard let self, self.model.isExpanded != expanded else { return }
                 if expanded {
+                    self.choosePageForOpening()
                     self.model.songPeeking = false
                     self.model.activityShown = false
                     self.model.activity = nil
@@ -1388,6 +1404,17 @@ final class NotchPanelController {
         // where it would be. Not for Mission Control, which is the pointer
         // roaming over other things.
         watchForReturning(hidden && !missionControl)
+    }
+
+    /// Nothing playing, the panel opens on the limits; music back, on the
+    /// music again.
+    private func choosePageForOpening() {
+        let usageShown = PanelTab.shown.contains(.usage)
+        if model.tab != .usage { limitsByRule = false }
+        guard let page = PanelTab.forOpening(current: model.tab, musicLive: model.musicLive,
+                                             usageShown: usageShown, limitsByRule: limitsByRule) else { return }
+        model.showPage(page)
+        limitsByRule = page == .usage
     }
 
     /// While the notch is hidden over a full-screen app, follows the pointer

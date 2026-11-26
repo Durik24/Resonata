@@ -474,8 +474,18 @@ struct NotchView: View {
     /// showing one, and the panel open on the music page.
     var coverFlies: Bool {
         (inFlight || model.isExpanded != landed)
-            && model.shownTab == .music
-            && model.track != nil && model.showsCollapsedContent && model.activity == nil
+            && Self.pillShowsCover(onMusicPage: model.shownTab == .music, hasTrack: model.track != nil,
+                                   collapsedContent: model.showsCollapsedContent,
+                                   activity: model.activity != nil, ringInCoverSlot: model.pillRings.cover != nil)
+    }
+
+    /// The pill's cover slot holds the song's cover, and the panel will show
+    /// it too. Not when a Claude Code or Vibe ring stands in the slot —
+    /// nothing playing, the pill is theirs — or the song's cover flew out
+    /// over the ring on every open and back over it on every close.
+    nonisolated static func pillShowsCover(onMusicPage: Bool, hasTrack: Bool, collapsedContent: Bool,
+                                           activity: Bool, ringInCoverSlot: Bool) -> Bool {
+        onMusicPage && hasTrack && collapsedContent && !activity && !ringInCoverSlot
     }
 
     /// The cover growing out of the pill into the panel, and shrinking back.
